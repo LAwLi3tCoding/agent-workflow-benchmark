@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "case.schema.json",
+  "type": "object",
+  "required": ["schemaVersion", "id", "targetId", "suite", "templateId", "title", "contractHash", "caseHash", "oracleIds", "expectedHardFailures", "prompt", "bindings", "budgets"],
+  "properties": {
+    "schemaVersion": { "type": "string" },
+    "id": { "type": "string" },
+    "targetId": { "type": "string" },
+    "suite": { "type": "string" },
+    "templateId": { "type": "string" },
+    "title": { "type": "string" },
+    "contractHash": { "type": "string" },
+    "caseHash": { "type": "string" },
+    "oracleIds": { "type": "array", "items": { "type": "string" } },
+    "expectedHardFailures": { "type": "array", "items": { "type": "string" } },
+    "prompt": { "type": "string" },
+    "bindings": { "type": "object", "additionalProperties": { "type": "string" } },
+    "budgets": {
+      "type": "object",
+      "required": ["wallClockSeconds", "tokenTotal"],
+      "properties": {
+        "wallClockSeconds": { "type": "number" },
+        "tokenTotal": { "type": "number" }
+      }
+    },
+    "generation": {
+      "type": "object",
+      "properties": {
+        "mode": { "enum": ["template", "ai-first"] },
+        "planner": { "type": "string" },
+        "model": { "type": "string" },
+        "targetUnderstanding": { "type": "string" },
+        "riskFocus": { "type": "string" },
+        "operationSequence": { "type": "array", "items": { "type": "string" } },
+        "coverageTags": { "type": "array", "items": { "type": "string" } },
+        "scoringRubric": { "type": "array", "items": { "type": "string" } }
+      }
+    }
+  }
+}

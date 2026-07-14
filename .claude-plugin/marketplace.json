@@ -1,0 +1,28 @@
+{
+  "name": "agent-workflow-benchmark",
+  "owner": {
+    "name": "LAwLi3tCoding"
+  },
+  "description": "AI-first benchmark tooling for evaluating, comparing, and debugging agent workflows.",
+  "version": "0.1.0",
+  "plugins": [
+    {
+      "name": "agent-workflow-benchmark",
+      "source": "./plugins/agent-workflow-benchmark",
+      "displayName": "Agent Workflow Benchmark",
+      "description": "Evaluate agent workflows with AI-generated cases, live Codex/Claude runners, explainable scoring, token and efficiency metrics, and mutation-based self-debug validation.",
+      "version": "0.1.0+codex.20260706202456",
+      "author": {
+        "name": "LAwLi3tCoding"
+      },
+      "category": "Productivity",
+      "keywords": [
+        "agent",
+        "benchmark",
+        "workflow",
+        "codex",
+        "claude"
+      ]
+    }
+  ]
+}

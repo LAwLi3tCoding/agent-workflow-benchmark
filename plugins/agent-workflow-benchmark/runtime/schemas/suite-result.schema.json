@@ -1,0 +1,181 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "suite-result.schema.json",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "resultType",
+    "targetId",
+    "suite",
+    "runId",
+    "caseResults",
+    "dimensionScores",
+    "recommendations",
+    "p0CaseRecords",
+    "rawSuiteScore",
+    "cappedSuiteScore",
+    "releaseDecision",
+    "releaseRuleId",
+    "telemetryCompleteness",
+    "debugHealth"
+  ],
+  "properties": {
+    "schemaVersion": { "type": "string" },
+    "resultType": { "const": "suite" },
+    "targetId": { "type": "string" },
+    "suite": { "type": "string" },
+    "runId": { "type": "string" },
+    "caseResults": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["caseId", "verdict", "rawScore", "cappedScore", "hardFailures"],
+        "properties": {
+          "caseId": { "type": "string" },
+          "verdict": { "enum": ["PASS", "PASS_WITH_WARNINGS", "FAIL", "DIAGNOSTIC_ONLY"] },
+          "rawScore": { "type": "number" },
+          "cappedScore": { "type": "number" },
+          "hardFailures": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["code", "severity", "why", "evidenceEventIds"],
+              "properties": {
+                "code": { "type": "string" },
+                "severity": { "enum": ["P0", "P1"] },
+                "why": { "type": "string" },
+                "evidenceEventIds": { "type": "array", "items": { "type": "string" } }
+              }
+            }
+          }
+        }
+      }
+    },
+    "dimensionScores": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["dimension", "score", "status", "affectedCaseIds", "why"],
+        "properties": {
+          "dimension": { "type": "string" },
+          "rawPoints": { "type": "number" },
+          "maxPoints": { "type": "number" },
+          "score": { "type": "number" },
+          "status": { "enum": ["PASS", "WARN", "FAIL", "DIAGNOSTIC_ONLY"] },
+          "affectedCaseIds": { "type": "array", "items": { "type": "string" } },
+          "why": { "type": "string" }
+        }
+      }
+    },
+    "recommendations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "priority", "category", "summary", "suggestedChange", "evidenceCaseIds", "sourceFailureCodes"],
+        "properties": {
+          "id": { "type": "string" },
+          "priority": { "enum": ["P0", "P1", "P2"] },
+          "category": { "type": "string" },
+          "summary": { "type": "string" },
+          "suggestedChange": { "type": "string" },
+          "evidenceCaseIds": { "type": "array", "items": { "type": "string" } },
+          "sourceFailureCodes": { "type": "array", "items": { "type": "string" } },
+          "targetRoles": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    },
+    "p0CaseRecords": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["targetId", "runId", "caseId", "failureCode", "severity", "recommendedAction"],
+        "properties": {
+          "schemaVersion": { "type": "string" },
+          "recordedAt": { "type": "string" },
+          "targetId": { "type": "string" },
+          "suite": { "type": "string" },
+          "runId": { "type": "string" },
+          "caseId": { "type": "string" },
+          "caseHash": { "type": "string" },
+          "contractHash": { "type": "string" },
+          "templateId": { "type": "string" },
+          "title": { "type": "string" },
+          "failureCode": { "type": "string" },
+          "severity": { "const": "P0" },
+          "why": { "type": "string" },
+          "evidenceEventIds": { "type": "array", "items": { "type": "string" } },
+          "recommendedAction": { "type": "string" }
+        }
+      }
+    },
+    "rawSuiteScore": { "type": "number" },
+    "cappedSuiteScore": { "type": "number" },
+    "releaseDecision": { "enum": ["APPROVE", "CONDITIONAL_APPROVE", "BLOCK", "DIAGNOSTIC_ONLY"] },
+    "releaseRuleId": { "type": "string" },
+    "telemetryCompleteness": { "type": "number" },
+    "debugHealth": {
+      "type": "object",
+      "required": [
+        "status",
+        "mutationKillRate",
+        "falseNegativeCount",
+        "falsePositiveCount",
+        "environmentReproducibility",
+        "lastReverseValidationRunId",
+        "doesNotAffectTargetScore"
+      ],
+      "properties": {
+        "status": { "enum": ["NOT_RUN", "PASS", "FAIL"] },
+        "mutationKillRate": { "type": ["number", "null"] },
+        "falseNegativeCount": { "type": ["number", "null"] },
+        "falsePositiveCount": { "type": ["number", "null"] },
+        "environmentReproducibility": { "type": ["number", "null"] },
+        "lastReverseValidationRunId": { "type": ["string", "null"] },
+        "doesNotAffectTargetScore": { "const": true }
+      }
+    },
+    "harnessValidation": {
+      "type": "object",
+      "required": ["schemaVersion", "status", "plan", "phases"],
+      "properties": {
+        "schemaVersion": { "type": "string" },
+        "status": { "enum": ["PASS", "WARN", "FAIL"] },
+        "plan": {
+          "type": "object",
+          "required": [
+            "status",
+            "recommendedCaseCount",
+            "coverageTargetCount",
+            "coveredCoverageTargetCount",
+            "missingCoverageTargetCount",
+            "unknownCoverageTagCount",
+            "invalidBindingCount",
+            "warnings"
+          ],
+          "properties": {
+            "status": { "enum": ["PASS", "WARN", "FAIL"] },
+            "recommendedCaseCount": { "type": "number" },
+            "coverageTargetCount": { "type": "number" },
+            "coveredCoverageTargetCount": { "type": "number" },
+            "missingCoverageTargetCount": { "type": "number" },
+            "unknownCoverageTagCount": { "type": "number" },
+            "invalidBindingCount": { "type": "number" },
+            "warnings": { "type": "array", "items": { "type": "string" } }
+          }
+        },
+        "phases": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["phase", "status", "why"],
+            "properties": {
+              "phase": { "type": "string" },
+              "status": { "enum": ["PASS", "WARN", "FAIL"] },
+              "why": { "type": "string" }
+            }
+          }
+        }
+      }
+    }
+  }
+}

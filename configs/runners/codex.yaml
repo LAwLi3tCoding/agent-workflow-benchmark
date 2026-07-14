@@ -1,0 +1,9 @@
+schemaVersion: 0.1.0
+name: codex
+adapterVersion: 0.1.0
+command: codex
+defaultExecutionMode: simulated
+supportsEntrypointKinds: [file, cli]
+tokenSourceDetail:
+  source: estimated
+  confidence: medium

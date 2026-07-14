@@ -1,0 +1,8 @@
+schemaVersion: 0.1.0
+id: route-break
+type: route-break
+description: Simulate a forbidden route being taken.
+scope: overlay-only
+expectedOutcome:
+  verdict: FAIL
+  hardFailureCode: TARGET_ROUTE_FORBIDDEN

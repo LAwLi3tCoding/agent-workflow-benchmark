@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "debug-environment.schema.json",
+  "type": "object",
+  "required": ["schemaVersion", "debugId", "targetId", "caseId", "contractHash", "caseHash", "sandboxRoot", "mockProfile", "fakeTools", "networkPolicyHash", "commandPolicyHash", "reproduceCommands"],
+  "properties": {
+    "schemaVersion": { "type": "string" },
+    "debugId": { "type": "string" },
+    "targetId": { "type": "string" },
+    "caseId": { "type": "string" },
+    "contractHash": { "type": "string" },
+    "caseHash": { "type": "string" },
+    "sandboxRoot": { "type": "string" },
+    "mockProfile": { "type": "string" },
+    "fakeTools": { "type": "array" },
+    "networkPolicyHash": { "type": "string" },
+    "commandPolicyHash": { "type": "string" },
+    "reproduceCommands": { "type": "array" }
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "debug-dossier.schema.json",
+  "type": "object",
+  "required": ["schemaVersion", "debugId", "targetId", "caseId", "mutationId", "gapClassification"],
+  "properties": {
+    "schemaVersion": { "type": "string" },
+    "debugId": { "type": "string" },
+    "targetId": { "type": "string" },
+    "caseId": { "type": "string" },
+    "mutationId": { "type": "string" },
+    "gapClassification": { "type": "string" }
+  }
+}

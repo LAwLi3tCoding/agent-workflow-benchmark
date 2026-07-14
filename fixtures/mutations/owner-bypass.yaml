@@ -1,0 +1,8 @@
+schemaVersion: 0.1.0
+id: owner-bypass
+type: owner-bypass
+description: Simulate owner-only work being completed by the wrong owner.
+scope: overlay-only
+expectedOutcome:
+  verdict: FAIL
+  hardFailureCode: TARGET_OWNER_BYPASS

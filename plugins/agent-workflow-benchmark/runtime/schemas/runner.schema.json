@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "runner.schema.json",
+  "type": "object",
+  "required": ["schemaVersion", "name", "adapterVersion", "command", "defaultExecutionMode", "supportsEntrypointKinds", "tokenSourceDetail"],
+  "properties": {
+    "schemaVersion": { "type": "string" },
+    "name": { "enum": ["codex", "claude", "opencode", "simulated"] },
+    "adapterVersion": { "type": "string" },
+    "command": { "type": "string" },
+    "defaultExecutionMode": { "enum": ["live", "simulated", "disabled"] },
+    "supportsEntrypointKinds": {
+      "type": "array",
+      "items": { "enum": ["file", "cli"] }
+    },
+    "tokenSourceDetail": {
+      "type": "object",
+      "required": ["source", "confidence"]
+    }
+  }
+}

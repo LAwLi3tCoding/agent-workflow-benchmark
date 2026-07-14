@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "target-pack.schema.json",
+  "type": "object",
+  "required": ["schemaVersion", "id", "targetType", "root", "entrypoints", "roles", "contracts", "commandPolicy"],
+  "properties": {
+    "schemaVersion": { "type": "string" },
+    "id": { "type": "string" },
+    "name": { "type": "string" },
+    "targetType": { "enum": ["directory", "cli", "hybrid"] },
+    "root": { "type": "string" },
+    "entrypoints": { "type": "array", "minItems": 1 },
+    "roles": { "type": "array", "minItems": 1 },
+    "contracts": {
+      "type": "object",
+      "required": ["statuses", "requiredOwners", "routing", "joins", "artifacts", "states", "budgets"]
+    },
+    "commandPolicy": {
+      "type": "object",
+      "required": ["allowedExecutables", "forbiddenArgs"]
+    }
+  }
+}

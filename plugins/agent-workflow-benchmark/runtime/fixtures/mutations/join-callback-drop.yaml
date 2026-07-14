@@ -1,0 +1,8 @@
+schemaVersion: 0.1.0
+id: join-callback-drop
+type: join-callback-drop
+description: Simulate downstream handoff before required join callback.
+scope: overlay-only
+expectedOutcome:
+  verdict: FAIL
+  hardFailureCode: TARGET_JOIN_MISSING

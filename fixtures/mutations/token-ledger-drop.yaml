@@ -1,0 +1,8 @@
+schemaVersion: 0.1.0
+id: token-ledger-drop
+type: token-ledger-drop
+description: Simulate token ledger confidence degradation and expect debug validation to detect score/cost confidence loss.
+scope: overlay-only
+expectedOutcome:
+  verdict: PASS_WITH_WARNINGS
+  hardFailureCode: TOKEN_LEDGER_DEGRADATION

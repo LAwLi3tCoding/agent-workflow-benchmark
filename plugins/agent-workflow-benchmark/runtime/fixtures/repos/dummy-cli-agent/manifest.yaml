@@ -1,0 +1,5 @@
+name: dummy-cli-agent
+capabilities:
+  - triage
+  - implementation
+  - dod

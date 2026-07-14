@@ -1,0 +1,33 @@
+{
+  "name": "agent-workflow-benchmark",
+  "version": "0.1.0+codex.20260706202456",
+  "description": "AI-first benchmark workflow for evaluating agent workflows through Codex, Claude Code, and local runner evidence.",
+  "author": {
+    "name": "LAwLi3tCoding"
+  },
+  "license": "UNLICENSED",
+  "keywords": [
+    "agent",
+    "benchmark",
+    "workflow",
+    "codex",
+    "claude"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Agent Workflow Benchmark",
+    "shortDescription": "Evaluate agent workflows with AI-generated cases and runner evidence.",
+    "longDescription": "Profiles a target agent workflow, uses the runtime LLM to understand it and generate benchmark cases, materializes executable cases, runs Codex/Claude-capable benchmark flows, scores results, and produces explainable reports plus self-debug reverse validation.",
+    "developerName": "LAwLi3tCoding",
+    "category": "Productivity",
+    "capabilities": [
+      "Read",
+      "Write"
+    ],
+    "defaultPrompt": [
+      "Benchmark this agent workflow with AI-generated cases.",
+      "Run AI-first V8 workflow benchmark.",
+      "Diagnose benchmark blind spots with mutations."
+    ]
+  }
+}

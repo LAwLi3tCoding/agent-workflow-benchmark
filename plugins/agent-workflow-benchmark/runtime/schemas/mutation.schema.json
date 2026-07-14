@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "mutation.schema.json",
+  "type": "object",
+  "required": ["schemaVersion", "id", "type", "scope", "expectedOutcome"],
+  "properties": {
+    "schemaVersion": { "type": "string" },
+    "id": { "type": "string" },
+    "type": { "type": "string" },
+    "scope": { "const": "overlay-only" },
+    "expectedOutcome": {
+      "type": "object",
+      "required": ["verdict", "hardFailureCode"]
+    }
+  }
+}

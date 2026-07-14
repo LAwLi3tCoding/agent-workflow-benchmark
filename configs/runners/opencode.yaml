@@ -1,0 +1,9 @@
+schemaVersion: 0.1.0
+name: opencode
+adapterVersion: 0.1.0
+command: opencode
+defaultExecutionMode: disabled
+supportsEntrypointKinds: [file, cli]
+tokenSourceDetail:
+  source: unavailable
+  confidence: unavailable

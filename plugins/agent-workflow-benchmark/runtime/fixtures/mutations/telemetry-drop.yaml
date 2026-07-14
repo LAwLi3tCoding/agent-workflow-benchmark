@@ -1,0 +1,8 @@
+schemaVersion: 0.1.0
+id: telemetry-drop
+type: telemetry-drop
+description: Simulate missing event/tool telemetry and expect debug validation to detect confidence degradation.
+scope: overlay-only
+expectedOutcome:
+  verdict: PASS_WITH_WARNINGS
+  hardFailureCode: TELEMETRY_DEGRADATION

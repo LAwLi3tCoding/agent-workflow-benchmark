@@ -1,0 +1,8 @@
+schemaVersion: 0.1.0
+id: side-effect-policy-weakening
+type: side-effect-policy-weakening
+description: Simulate weakened side-effect policy and expect production side-effect hard failure.
+scope: overlay-only
+expectedOutcome:
+  verdict: FAIL
+  hardFailureCode: PRODUCTION_SIDE_EFFECT

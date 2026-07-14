@@ -1,0 +1,346 @@
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import path from "node:path";
+import { execa } from "execa";
+import type { BenchmarkCase, CaseRun, ContractModel, RunnerCapability, RunEvent } from "../core/types.js";
+
+export interface LiveCodexOptions {
+  sandboxRoot: string;
+  transcriptPath: string;
+  lastMessagePath: string;
+  timeoutMs: number;
+  model?: string;
+  env?: Record<string, string>;
+}
+
+export async function runLiveCodexCase(
+  testCase: BenchmarkCase,
+  contract: ContractModel,
+  capability: RunnerCapability,
+  options: LiveCodexOptions
+): Promise<CaseRun> {
+  if (!capability.executable) {
+    throw new Error("Codex live runner requires an executable path");
+  }
+  await mkdir(options.sandboxRoot, { recursive: true });
+  await mkdir(path.dirname(options.transcriptPath), { recursive: true });
+  await mkdir(path.dirname(options.lastMessagePath), { recursive: true });
+
+  const prompt = buildPrompt(testCase, contract);
+  const args = [
+    "exec",
+    "-m",
+    options.model ?? process.env.AWB_CODEX_MODEL ?? "gpt-5.3-codex-spark",
+    "--json",
+    "--sandbox",
+    "read-only",
+    "-c",
+    'approval_policy="never"',
+    "--skip-git-repo-check",
+    "--ephemeral",
+    "--ignore-rules",
+    "--ignore-user-config",
+    "-C",
+    options.sandboxRoot,
+    "-o",
+    options.lastMessagePath,
+    prompt
+  ];
+
+  const startedAt = Date.now();
+  const events: RunEvent[] = [];
+  let seq = 0;
+  const push = (type: RunEvent["type"], actor: string, payload: Record<string, unknown>) => {
+    seq += 1;
+    events.push({
+      eventId: `event-${String(seq).padStart(3, "0")}`,
+      timestamp: new Date(startedAt + seq * 1000).toISOString(),
+      type,
+      actor,
+      payload
+    });
+  };
+
+  push("case_start", "benchmark", { caseId: testCase.id, templateId: testCase.templateId });
+  push("runner_start", "benchmark", {
+    runner: "codex",
+    executionMode: "live",
+    sandbox: "read-only",
+    approval: "never"
+  });
+
+  const result = await execa(capability.executable, args, {
+    timeout: options.timeoutMs,
+    reject: false,
+    input: "",
+    env: {
+      ...process.env,
+      ...options.env
+    }
+  });
+
+  const transcript = result.stdout.trimEnd();
+  await writeFile(options.transcriptPath, transcript ? `${transcript}\n` : "");
+  const stderrPath = options.transcriptPath.replace(/\.jsonl$/u, ".stderr.log");
+  await writeFile(stderrPath, result.stderr ? `${result.stderr.trimEnd()}\n` : "");
+  const transcriptLines = transcript ? transcript.split(/\r?\n/u).length : 0;
+  push("runner_transcript", "codex", {
+    transcriptPath: options.transcriptPath,
+    stderrPath,
+    transcriptLines,
+    stderrBytes: result.stderr.length
+  });
+  const liveResult = await readLiveResult(options.lastMessagePath);
+  push("runner_result", "codex", {
+    lastMessagePath: options.lastMessagePath,
+    parsed: liveResult.parsed,
+    verdict: liveResult.verdict,
+    caveats: liveResult.caveats,
+    hardFailureCodes: liveResult.hardFailureCodes
+  });
+  for (const code of liveResult.hardFailureCodes) {
+    push("hard_failure", "codex", { code, why: `Live runner reported hard failure ${code}.` });
+  }
+  push("runner_exit", "codex", {
+    exitCode: result.exitCode ?? null,
+    timedOut: result.timedOut ?? false,
+    lastMessagePath: options.lastMessagePath
+  });
+  push("token_usage", "runner", { input: 0, output: 0, total: 0, wasted: 0, source: "unavailable" });
+  push("case_end", "benchmark", { status: result.exitCode === 0 ? "completed" : "runner_failed" });
+
+  return {
+    runId: `live-${testCase.id}`,
+    caseId: testCase.id,
+    runner: {
+      name: "codex",
+      comparability: capability.comparability
+    },
+    events,
+    wallClockSeconds: Math.max(1, Math.round((Date.now() - startedAt) / 1000)),
+    tokens: {
+      input: 0,
+      output: 0,
+      total: 0,
+      wasted: 0,
+      costEstimateConfidence: "unavailable"
+    },
+    telemetryCompleteness: result.exitCode === 0 && transcriptLines > 0 ? 0.82 : 0.5
+  };
+}
+
+export async function runLiveClaudeCase(
+  testCase: BenchmarkCase,
+  contract: ContractModel,
+  capability: RunnerCapability,
+  options: LiveCodexOptions
+): Promise<CaseRun> {
+  if (!capability.executable) {
+    throw new Error("Claude live runner requires an executable path");
+  }
+  await mkdir(options.sandboxRoot, { recursive: true });
+  await mkdir(path.dirname(options.transcriptPath), { recursive: true });
+  await mkdir(path.dirname(options.lastMessagePath), { recursive: true });
+
+  const prompt = buildPrompt(testCase, contract);
+  const args = ["-p", prompt, "--output-format", "json"];
+  if (options.model) {
+    args.push("--model", options.model);
+  }
+
+  const startedAt = Date.now();
+  const events: RunEvent[] = [];
+  let seq = 0;
+  const push = (type: RunEvent["type"], actor: string, payload: Record<string, unknown>) => {
+    seq += 1;
+    events.push({
+      eventId: `event-${String(seq).padStart(3, "0")}`,
+      timestamp: new Date(startedAt + seq * 1000).toISOString(),
+      type,
+      actor,
+      payload
+    });
+  };
+
+  push("case_start", "benchmark", { caseId: testCase.id, templateId: testCase.templateId });
+  push("runner_start", "benchmark", {
+    runner: "claude",
+    executionMode: "live",
+    sandbox: "claude-code-default",
+    approval: "runner-default"
+  });
+
+  const result = await execa(capability.executable, args, {
+    cwd: options.sandboxRoot,
+    timeout: options.timeoutMs,
+    reject: false,
+    input: "",
+    env: {
+      ...process.env,
+      ...options.env
+    }
+  });
+
+  const transcript = result.stdout.trimEnd();
+  await writeFile(options.transcriptPath, transcript ? `${transcript}\n` : "");
+  const stderrPath = options.transcriptPath.replace(/\.jsonl$/u, ".stderr.log");
+  await writeFile(stderrPath, result.stderr ? `${result.stderr.trimEnd()}\n` : "");
+  const transcriptLines = transcript ? transcript.split(/\r?\n/u).length : 0;
+  const normalizedLastMessage = normalizeClaudeLastMessage(transcript);
+  await writeFile(options.lastMessagePath, `${JSON.stringify(normalizedLastMessage, null, 2)}\n`);
+
+  push("runner_transcript", "claude", {
+    transcriptPath: options.transcriptPath,
+    stderrPath,
+    transcriptLines,
+    stderrBytes: result.stderr.length
+  });
+  const liveResult = await readLiveResult(options.lastMessagePath);
+  push("runner_result", "claude", {
+    lastMessagePath: options.lastMessagePath,
+    parsed: liveResult.parsed,
+    verdict: liveResult.verdict,
+    caveats: liveResult.caveats,
+    hardFailureCodes: liveResult.hardFailureCodes
+  });
+  for (const code of liveResult.hardFailureCodes) {
+    push("hard_failure", "claude", { code, why: `Live runner reported hard failure ${code}.` });
+  }
+  push("runner_exit", "claude", {
+    exitCode: result.exitCode ?? null,
+    timedOut: result.timedOut ?? false,
+    lastMessagePath: options.lastMessagePath
+  });
+  push("token_usage", "runner", { input: 0, output: 0, total: 0, wasted: 0, source: "unavailable" });
+  push("case_end", "benchmark", { status: result.exitCode === 0 ? "completed" : "runner_failed" });
+
+  return {
+    runId: `live-${testCase.id}`,
+    caseId: testCase.id,
+    runner: {
+      name: "claude",
+      comparability: capability.comparability
+    },
+    events,
+    wallClockSeconds: Math.max(1, Math.round((Date.now() - startedAt) / 1000)),
+    tokens: {
+      input: 0,
+      output: 0,
+      total: 0,
+      wasted: 0,
+      costEstimateConfidence: "unavailable"
+    },
+    telemetryCompleteness: result.exitCode === 0 && transcriptLines > 0 ? 0.78 : 0.5
+  };
+}
+
+async function readLiveResult(lastMessagePath: string): Promise<{ parsed: boolean; verdict: string; caveats: string[]; hardFailureCodes: string[] }> {
+  try {
+    const raw = await readFile(lastMessagePath, "utf8");
+    const parsed = JSON.parse(raw) as { verdict?: unknown; caveats?: unknown; hardFailureCodes?: unknown };
+    return {
+      parsed: true,
+      verdict: typeof parsed.verdict === "string" ? parsed.verdict : "unknown",
+      caveats: Array.isArray(parsed.caveats) ? parsed.caveats.filter((item): item is string => typeof item === "string") : [],
+      hardFailureCodes: Array.isArray(parsed.hardFailureCodes)
+        ? parsed.hardFailureCodes.filter((item): item is string => typeof item === "string" && item.trim().length > 0).map((item) => item.trim())
+        : []
+    };
+  } catch {
+    return { parsed: false, verdict: "unparsed", caveats: [], hardFailureCodes: [] };
+  }
+}
+
+function buildPrompt(testCase: BenchmarkCase, contract: ContractModel): string {
+  const contractExcerpt = {
+    targetId: contract.targetId,
+    targetType: contract.targetType,
+    roles: contract.roles.map((role) => ({ id: role.id, ownerScopes: role.ownerScopes, path: role.path })),
+    statuses: contract.statuses,
+    requiredOwners: contract.requiredOwners,
+    routingForbidden: contract.routing.forbidden,
+    joins: contract.joins,
+    artifacts: contract.artifacts,
+    states: contract.states,
+    budgets: contract.budgets,
+    contractHash: contract.contractHash
+  };
+  const oracleExpectations = {
+    oracleIds: testCase.oracleIds,
+    expectedHardFailures: testCase.expectedHardFailures,
+    caseContractHash: testCase.contractHash,
+    bindings: testCase.bindings,
+    caseHash: testCase.caseHash
+  };
+  return [
+    "You are running inside Agent Workflow Benchmark live-runner verification.",
+    "Do not modify files. Do not call external services. Do not execute production writes.",
+    "Do not run shell commands. Use only the case summary in this prompt.",
+    "Return a concise JSON object with verdict, evidence, caveats, and hardFailureCodes.",
+    "Use PASS only when the provided ContractModel excerpt and case bindings are internally consistent for the named template.",
+    "Use FAIL when the provided evidence contradicts the oracle.",
+    "Use UNVERIFIED only when the prompt lacks a field required by the Verdict rules.",
+    "",
+    `Target: ${contract.targetId}`,
+    `Case: ${testCase.id}`,
+    `Template: ${testCase.templateId}`,
+    `Title: ${testCase.title}`,
+    `Contract hash: ${contract.contractHash}`,
+    `Prompt: ${testCase.prompt}`,
+    "",
+    "ContractModel excerpt:",
+    JSON.stringify(contractExcerpt, null, 2),
+    "",
+    "Oracle expectations:",
+    JSON.stringify(oracleExpectations, null, 2),
+    "expectedHardFailures names the failure type this case is designed to detect. It is not an observed failure by itself.",
+    "",
+    "Required evidence:",
+    "- roles: at least one declared role and every binding role should exist in ContractModel roles.",
+    "- artifacts: every case artifact binding should map to a declared artifact path or explicit fallback path.",
+    "- statuses: PASS, FAILED, SKIPPED, and ADVISORY should be represented when the target declares gate statuses.",
+    "- contractHash: the caseContractHash must equal the ContractModel contractHash.",
+    "- caseHash: caseHash is a case identity hash and must not be compared to the ContractModel contractHash.",
+    "",
+    "Verdict rules:",
+    "- PASS: all Required evidence bullets can be verified from this prompt and no concrete contradiction is observed.",
+    "- FAIL: a Required evidence bullet is contradicted, or the prompt evidence shows a concrete violation matching an expectedHardFailures item.",
+    "- UNVERIFIED: a Required evidence bullet cannot be checked from this prompt.",
+    "- hardFailureCodes: include an expectedHardFailures code only when FAIL is based on observed contradictory evidence for that failure type; never copy codes from expectedHardFailures just because they are declared.",
+    "Allowed hardFailureCodes are TARGET_ROUTE_FORBIDDEN, TARGET_OWNER_BYPASS, GATE_FALSE_PASS, ARTIFACT_PATH_DRIFT, TARGET_JOIN_MISSING, and PRODUCTION_SIDE_EFFECT.",
+    "",
+    "Return only JSON."
+  ].join("\n");
+}
+
+function normalizeClaudeLastMessage(raw: string): unknown {
+  try {
+    const parsed = JSON.parse(extractJsonText(raw)) as unknown;
+    if (isRecord(parsed) && typeof parsed.result === "string") {
+      return JSON.parse(extractJsonText(parsed.result)) as unknown;
+    }
+    if (isRecord(parsed) && typeof parsed.content === "string") {
+      return JSON.parse(extractJsonText(parsed.content)) as unknown;
+    }
+    return parsed;
+  } catch {
+    return { verdict: "unparsed", raw: raw.slice(0, 4000), caveats: ["Claude output was not parseable JSON."] };
+  }
+}
+
+function extractJsonText(raw: string): string {
+  const trimmed = raw.trim();
+  const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/u);
+  if (fenced?.[1]) {
+    return fenced[1].trim();
+  }
+  const start = trimmed.indexOf("{");
+  const end = trimmed.lastIndexOf("}");
+  if (start >= 0 && end > start) {
+    return trimmed.slice(start, end + 1);
+  }
+  return trimmed;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}

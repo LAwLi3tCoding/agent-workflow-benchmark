@@ -1,0 +1,20 @@
+{
+  "name": "agent-workflow-benchmark",
+  "interface": {
+    "displayName": "Agent Workflow Benchmark"
+  },
+  "plugins": [
+    {
+      "name": "agent-workflow-benchmark",
+      "source": {
+        "source": "local",
+        "path": "./plugins/agent-workflow-benchmark"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}

@@ -1,0 +1,37 @@
+schemaVersion: 0.1.0
+id: dummy-cli-agent
+name: Dummy CLI Agent
+targetType: cli
+root: fixtures/repos/dummy-cli-agent
+entrypoints:
+  - id: dummy-cli
+    kind: cli
+    command: bin/dummy-agent
+roles:
+  - id: cli-agent
+    path: manifest.yaml
+    ownerScopes: [triage, implementation, dod]
+contracts:
+  statuses: [PASS, FAILED, SKIPPED, ADVISORY]
+  requiredOwners:
+    implementation: cli-agent
+  routing:
+    forbidden:
+      - id: dangerous-args
+        from: cli-agent
+        to: external-write
+        when: args contains --prod-write
+  joins: []
+  artifacts:
+    - id: cli-output
+      path: deliverables/cli-output.json
+      owner: cli-agent
+  states:
+    - id: cli-state
+      path: process/cli-state.json
+  budgets:
+    wallClockSeconds: 60
+    tokenTotal: 4000
+commandPolicy:
+  allowedExecutables: [node, bin/dummy-agent]
+  forbiddenArgs: [--prod-write]

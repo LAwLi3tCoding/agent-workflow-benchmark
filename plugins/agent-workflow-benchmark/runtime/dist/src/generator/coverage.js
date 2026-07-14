@@ -1,0 +1,318 @@
+import { resolveArtifactPathBinding, resolveJoinBinding, resolveOwnerBinding, resolveRoleBinding } from "./bindings.js";
+import { dedupeCaseIds } from "./caseIds.js";
+const coreDimensions = [
+    ["dimension:entrypoint", "Entrypoint and admission path"],
+    ["dimension:owner-routing", "Declared owner routing and handoff"],
+    ["dimension:gate-statuses", "Gate status semantics"],
+    ["dimension:artifacts", "Required artifact production"],
+    ["dimension:states", "State reads and recovery"],
+    ["dimension:side-effect-policy", "Side-effect and command policy"],
+    ["dimension:budget-efficiency", "Wall-clock and token budget behavior"]
+];
+export function deriveWorkflowCoverageTargets(contract) {
+    const targets = [];
+    const add = (target) => targets.push(target);
+    for (const [id, label] of coreDimensions) {
+        add({ id, category: "dimension", label, required: true });
+    }
+    if (contract.routing.forbidden.length > 0) {
+        add({ id: "dimension:forbidden-routing", category: "dimension", label: "Forbidden route prevention", required: true });
+    }
+    if (contract.joins.length > 0) {
+        add({ id: "dimension:joins", category: "dimension", label: "Required join and callback ordering", required: true });
+    }
+    for (const role of contract.roles) {
+        add({ id: `role:${role.id}`, category: "role", label: `Role ${role.id}`, required: true });
+    }
+    for (const ownerScope of Object.keys(contract.requiredOwners).sort()) {
+        add({ id: `owner:${ownerScope}`, category: "owner", label: `Owner scope ${ownerScope}`, required: true });
+    }
+    for (const join of contract.joins) {
+        add({ id: `join:${join.id}`, category: "join", label: `Join ${join.id}`, required: true });
+    }
+    for (const route of contract.routing.forbidden) {
+        add({ id: `route:${route.id}`, category: "route", label: `Forbidden route ${route.id}`, required: true });
+    }
+    for (const artifact of contract.artifacts) {
+        add({ id: `artifact:${artifact.id}`, category: "artifact", label: `Artifact ${artifact.path}`, required: true });
+    }
+    for (const state of contract.states) {
+        add({ id: `state:${state.id}`, category: "state", label: `State ${state.path}`, required: true });
+    }
+    for (const status of contract.statuses) {
+        add({ id: `status:${status}`, category: "status", label: `Gate status ${status}`, required: true });
+    }
+    add({ id: "policy:command", category: "policy", label: "Allowed and forbidden command policy", required: true });
+    return dedupeTargets(targets);
+}
+export function recommendedAiCaseCount(contract, options = {}) {
+    const coverageMode = options.coverageMode ?? "smoke";
+    const targetCount = deriveWorkflowCoverageTargets(contract).length;
+    const structuralFlowCount = contract.roles.length + contract.joins.length + contract.routing.forbidden.length;
+    const evidenceSurfaceCount = Object.keys(contract.requiredOwners).length + Math.ceil((contract.artifacts.length + contract.states.length + contract.statuses.length) / 3);
+    const baseCount = Math.max(12, structuralFlowCount + Math.ceil(evidenceSurfaceCount / 2));
+    if (coverageMode === "smoke") {
+        return Math.min(32, baseCount);
+    }
+    if (coverageMode === "full") {
+        return Math.min(128, Math.max(32, baseCount, Math.ceil(targetCount * 0.8)));
+    }
+    return Math.min(192, Math.max(32, baseCount * 2, targetCount));
+}
+export function normalizeAiCasePlanBindings(plan, contract) {
+    return {
+        ...plan,
+        cases: dedupeCaseIds(plan.cases).map((testCase) => {
+            const coverageTags = testCase.coverageTags?.map(normalizeCoverageTag) ?? [];
+            const inferredBindings = inferBindingsFromCoverageTags(contract, coverageTags);
+            const rawBindings = { ...inferredBindings, ...(testCase.bindings ?? {}) };
+            return {
+                ...testCase,
+                coverageTags,
+                bindings: Object.keys(rawBindings).length > 0 ? normalizeBindings(rawBindings, contract) : undefined
+            };
+        })
+    };
+}
+export function validateAiCasePlan(plan, contract, options = {}) {
+    const normalizedPlan = normalizeAiCasePlanBindings(plan, contract);
+    const coverageMode = options.coverageMode ?? plan.coverageMode ?? "smoke";
+    const targets = deriveWorkflowCoverageTargets(contract);
+    const targetIds = new Set(targets.map((target) => target.id));
+    const covered = new Set();
+    const unknown = new Set();
+    const invalidBindings = [];
+    for (const testCase of normalizedPlan.cases) {
+        const invalidClaimTags = validateBindingClaims(invalidBindings, contract, testCase.id, testCase.coverageTags ?? [], testCase.bindings);
+        for (const tag of testCase.coverageTags ?? []) {
+            if (targetIds.has(tag)) {
+                if (!invalidClaimTags.has(tag)) {
+                    covered.add(tag);
+                }
+            }
+            else {
+                unknown.add(tag);
+            }
+        }
+        validateRoleBinding(invalidBindings, contract, testCase.id, "primaryRole", testCase.bindings?.primaryRole);
+        validateOwnerBinding(invalidBindings, contract, testCase.id, testCase.bindings?.owner);
+        validateJoinBinding(invalidBindings, contract, testCase.id, testCase.bindings?.joinId);
+        validateArtifactBinding(invalidBindings, contract, testCase.id, testCase.bindings?.artifactPath);
+    }
+    const missing = targets.filter((target) => target.required && !covered.has(target.id)).map((target) => target.id);
+    const warnings = buildWarnings(plan, targets.length, covered.size, missing.length, unknown.size);
+    const status = invalidBindings.length > 0 ? "FAIL" : warnings.length > 0 ? "WARN" : "PASS";
+    return {
+        schemaVersion: "0.1.0",
+        coverageMode,
+        status,
+        recommendedCaseCount: recommendedAiCaseCount(contract, { coverageMode }),
+        coverageTargetCount: targets.length,
+        coveredCoverageTargetIds: [...covered].sort(),
+        missingCoverageTargetIds: missing.sort(),
+        unknownCoverageTags: [...unknown].sort(),
+        invalidBindings,
+        warnings
+    };
+}
+function validateRoleBinding(invalidBindings, contract, caseId, field, value) {
+    if (value && !resolveRoleBinding(contract, value)) {
+        invalidBindings.push({ caseId, field, value, why: "Role binding is not declared in ContractModel roles." });
+    }
+}
+function validateOwnerBinding(invalidBindings, contract, caseId, value) {
+    if (value && !resolveOwnerBinding(contract, value)) {
+        invalidBindings.push({ caseId, field: "owner", value, why: "Owner binding is neither a declared role nor a requiredOwner scope." });
+    }
+}
+function validateJoinBinding(invalidBindings, contract, caseId, value) {
+    if (value && !resolveJoinBinding(contract, value)) {
+        invalidBindings.push({ caseId, field: "joinId", value, why: "Join binding is not declared in ContractModel joins." });
+    }
+}
+function validateArtifactBinding(invalidBindings, contract, caseId, value) {
+    if (value && contract.artifacts.length + contract.states.length > 0 && !resolveArtifactPathBinding(contract, value)) {
+        invalidBindings.push({
+            caseId,
+            field: "artifactPath",
+            value,
+            why: "Evidence path binding is not declared in ContractModel artifacts or states."
+        });
+    }
+}
+function normalizeBindings(bindings, contract) {
+    const output = { ...bindings };
+    if (output.primaryRole) {
+        output.primaryRole = resolveRoleBinding(contract, output.primaryRole) ?? resolveOwnerBinding(contract, output.primaryRole) ?? output.primaryRole.trim();
+    }
+    if (output.owner) {
+        output.owner = resolveOwnerBinding(contract, output.owner) ?? output.owner.trim();
+    }
+    if (output.joinId) {
+        output.joinId = resolveJoinBinding(contract, output.joinId) ?? output.joinId.trim();
+    }
+    if (output.artifactPath) {
+        output.artifactPath = resolveArtifactPathBinding(contract, output.artifactPath) ?? output.artifactPath.trim();
+    }
+    return output;
+}
+function inferBindingsFromCoverageTags(contract, coverageTags) {
+    const claims = collectBindingClaims(contract, coverageTags);
+    const inferred = {};
+    const primaryRole = unique(claims.primaryRole.map((claim) => claim.value));
+    const owner = unique(claims.owner.map((claim) => claim.value));
+    const joinId = unique(claims.joinId.map((claim) => claim.value));
+    const artifactPath = unique(claims.artifactPath.map((claim) => claim.value));
+    if (primaryRole) {
+        inferred.primaryRole = primaryRole;
+    }
+    if (owner) {
+        inferred.owner = owner;
+    }
+    if (joinId) {
+        inferred.joinId = joinId;
+    }
+    if (artifactPath) {
+        inferred.artifactPath = artifactPath;
+    }
+    return inferred;
+}
+function validateBindingClaims(invalidBindings, contract, caseId, coverageTags, bindings) {
+    const claims = collectBindingClaims(contract, coverageTags);
+    const invalidClaimTags = new Set();
+    const recordInvalid = (claimTags) => {
+        for (const tag of claimTags) {
+            invalidClaimTags.add(tag);
+        }
+    };
+    if (!validateClaimedBinding(invalidBindings, caseId, "primaryRole", bindings?.primaryRole, claims.primaryRole.map((claim) => claim.value))) {
+        recordInvalid(claims.primaryRole.map((claim) => claim.tag));
+    }
+    if (!validateClaimedBinding(invalidBindings, caseId, "owner", bindings?.owner, claims.owner.map((claim) => claim.value))) {
+        recordInvalid(claims.owner.map((claim) => claim.tag));
+    }
+    if (!validateClaimedBinding(invalidBindings, caseId, "joinId", bindings?.joinId, claims.joinId.map((claim) => claim.value))) {
+        recordInvalid(claims.joinId.map((claim) => claim.tag));
+    }
+    if (!validateClaimedBinding(invalidBindings, caseId, "artifactPath", bindings?.artifactPath, claims.artifactPath.map((claim) => claim.value))) {
+        recordInvalid(claims.artifactPath.map((claim) => claim.tag));
+    }
+    return invalidClaimTags;
+}
+function validateClaimedBinding(invalidBindings, caseId, field, value, claims) {
+    if (claims.length === 0) {
+        return true;
+    }
+    const uniqueClaims = [...new Set(claims)];
+    if (uniqueClaims.length > 1) {
+        invalidBindings.push({
+            caseId,
+            field,
+            value: value ?? uniqueClaims.join(","),
+            why: `Coverage tag(s) claim multiple ${field} targets (${uniqueClaims.join(", ")}), but the executable case binding is a single scalar.`
+        });
+        return false;
+    }
+    if (!value) {
+        invalidBindings.push({
+            caseId,
+            field,
+            value: uniqueClaims.join(","),
+            why: `Coverage tag(s) claim ${field} target(s), but the case has no matching binding.`
+        });
+        return false;
+    }
+    if (!uniqueClaims.includes(value)) {
+        invalidBindings.push({
+            caseId,
+            field,
+            value,
+            why: `Binding does not match coverage tag target(s): ${uniqueClaims.join(", ")}.`
+        });
+        return false;
+    }
+    return true;
+}
+function collectBindingClaims(contract, coverageTags) {
+    const claims = {
+        primaryRole: [],
+        owner: [],
+        joinId: [],
+        artifactPath: []
+    };
+    for (const tag of coverageTags) {
+        if (tag.startsWith("role:")) {
+            const role = resolveRoleBinding(contract, tag);
+            if (role) {
+                claims.primaryRole.push({ tag, value: role });
+            }
+        }
+        else if (tag.startsWith("owner:")) {
+            const owner = resolveOwnerBinding(contract, tag);
+            if (owner) {
+                claims.owner.push({ tag, value: owner });
+            }
+        }
+        else if (tag.startsWith("join:")) {
+            const join = resolveJoinBinding(contract, tag);
+            if (join) {
+                claims.joinId.push({ tag, value: join });
+            }
+        }
+        else if (tag.startsWith("artifact:") || tag.startsWith("state:")) {
+            const evidencePath = resolveArtifactPathBinding(contract, tag);
+            if (evidencePath) {
+                claims.artifactPath.push({ tag, value: evidencePath });
+            }
+        }
+    }
+    return claims;
+}
+function unique(values) {
+    const uniqueValues = [...new Set(values)];
+    return uniqueValues.length === 1 ? uniqueValues[0] : undefined;
+}
+function normalizeCoverageTag(value) {
+    const trimmed = value.trim();
+    const aliases = {
+        "dimension:artifact": "dimension:artifacts",
+        "dimension:state": "dimension:states",
+        "dimension:join": "dimension:joins",
+        "dimension:gate-status": "dimension:gate-statuses",
+        "dimension:owner": "dimension:owner-routing",
+        "dimension:routing": "dimension:owner-routing",
+        "dimension:side-effect": "dimension:side-effect-policy",
+        "dimension:side-effects": "dimension:side-effect-policy",
+        "dimension:budget": "dimension:budget-efficiency",
+        "dimension:efficiency": "dimension:budget-efficiency",
+        "artifact:block:state": "state:blocked"
+    };
+    return aliases[trimmed] ?? trimmed;
+}
+function buildWarnings(plan, targetCount, coveredCount, missingCount, unknownCount) {
+    const warnings = [];
+    if (!plan.workflowUnderstanding) {
+        warnings.push("Plan is missing workflowUnderstanding; targetUnderstanding alone is weaker evidence.");
+    }
+    if (plan.cases.length < 3) {
+        warnings.push("Plan has fewer than three cases; workflow-level coverage is likely too narrow.");
+    }
+    if (targetCount > 0 && coveredCount / targetCount < 0.7) {
+        warnings.push(`Coverage tags cover ${coveredCount}/${targetCount} targets; ${missingCount} target(s) remain uncovered.`);
+    }
+    if (unknownCount > 0) {
+        warnings.push(`${unknownCount} coverage tag(s) do not map to ContractModel-derived targets.`);
+    }
+    return warnings;
+}
+function dedupeTargets(targets) {
+    const seen = new Set();
+    const output = [];
+    for (const target of targets) {
+        if (!seen.has(target.id)) {
+            seen.add(target.id);
+            output.push(target);
+        }
+    }
+    return output;
+}

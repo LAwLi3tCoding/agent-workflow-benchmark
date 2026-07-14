@@ -1,0 +1,8 @@
+schemaVersion: 0.1.0
+id: gate-status-alias
+type: gate-status-alias
+description: Simulate SKIPPED or ADVISORY being represented as PASS.
+scope: overlay-only
+expectedOutcome:
+  verdict: FAIL
+  hardFailureCode: GATE_FALSE_PASS

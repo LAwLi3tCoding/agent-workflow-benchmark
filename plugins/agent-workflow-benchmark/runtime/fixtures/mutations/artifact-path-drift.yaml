@@ -1,0 +1,8 @@
+schemaVersion: 0.1.0
+id: artifact-path-drift
+type: artifact-path-drift
+description: Simulate required artifact being written to the wrong path.
+scope: overlay-only
+expectedOutcome:
+  verdict: FAIL
+  hardFailureCode: ARTIFACT_PATH_DRIFT

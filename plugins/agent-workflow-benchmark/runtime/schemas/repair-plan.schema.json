@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "repair-plan.schema.json",
+  "type": "object",
+  "required": ["schemaVersion", "gapClassification", "allowedApplyScope", "targetWorkflowModificationAllowed", "proposedChanges"],
+  "properties": {
+    "schemaVersion": { "type": "string" },
+    "gapClassification": { "type": "string" },
+    "allowedApplyScope": { "const": "benchmark-repo-only" },
+    "targetWorkflowModificationAllowed": { "const": false },
+    "proposedChanges": { "type": "array" }
+  }
+}

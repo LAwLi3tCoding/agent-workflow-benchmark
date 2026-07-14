@@ -1,0 +1,9 @@
+mutations:
+  - fixtures/mutations/route-break.yaml
+  - fixtures/mutations/owner-bypass.yaml
+  - fixtures/mutations/gate-status-alias.yaml
+  - fixtures/mutations/artifact-path-drift.yaml
+  - fixtures/mutations/join-callback-drop.yaml
+  - fixtures/mutations/side-effect-policy-weakening.yaml
+  - fixtures/mutations/telemetry-drop.yaml
+  - fixtures/mutations/token-ledger-drop.yaml

@@ -1,0 +1,5 @@
+targets:
+  - id: minimal-directory-agent
+    configPath: configs/targets/minimal-directory-agent.yaml
+  - id: dummy-cli-agent
+    configPath: configs/targets/dummy-cli-agent.yaml

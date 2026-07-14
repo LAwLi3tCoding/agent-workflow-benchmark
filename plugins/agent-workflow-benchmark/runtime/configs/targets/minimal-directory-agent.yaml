@@ -1,0 +1,54 @@
+schemaVersion: 0.1.0
+id: minimal-directory-agent
+name: Minimal Directory Agent
+targetType: directory
+root: fixtures/repos/minimal-directory-agent
+entrypoints:
+  - id: orchestrator
+    kind: file
+    path: orchestrator-agent/CLAUDE.md
+roles:
+  - id: orchestrator-agent
+    path: orchestrator-agent/CLAUDE.md
+    ownerScopes: [triage, dod]
+  - id: worker-agent
+    path: worker-agent/CLAUDE.md
+    ownerScopes: [implementation]
+contracts:
+  statuses: [PASS, FAILED, SKIPPED, ADVISORY]
+  requiredOwners:
+    design: orchestrator-agent
+    implementation: worker-agent
+  routing:
+    forbidden:
+      - id: l2-platform-only
+        from: orchestrator-agent
+        to: worker-agent
+        when: complexity >= L2
+  joins:
+    - id: code-testdesign
+      producer: worker-agent
+      consumer: orchestrator-agent
+      artifact: deliverables/test-design.md
+    - id: review-summary-return
+      producer: worker-agent
+      consumer: orchestrator-agent
+      artifact: reviews/summary.md
+  artifacts:
+    - id: implementation-plan
+      path: deliverables/implementation-plan.md
+      owner: orchestrator-agent
+    - id: worker-summary
+      path: reviews/summary.md
+      owner: worker-agent
+  states:
+    - id: workflow-state
+      path: process/workflow-state.json
+    - id: blocked
+      path: blocked/BLOCKED.md
+  budgets:
+    wallClockSeconds: 120
+    tokenTotal: 12000
+commandPolicy:
+  allowedExecutables: [node, npm]
+  forbiddenArgs: [--prod-write]

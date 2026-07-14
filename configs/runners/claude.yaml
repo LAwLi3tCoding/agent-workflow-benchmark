@@ -1,0 +1,9 @@
+schemaVersion: 0.1.0
+name: claude
+adapterVersion: 0.1.0
+command: claude
+defaultExecutionMode: disabled
+supportsEntrypointKinds: [file, cli]
+tokenSourceDetail:
+  source: unavailable
+  confidence: unavailable
