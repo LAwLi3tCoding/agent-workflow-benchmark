@@ -1,0 +1,21 @@
+{
+  "schemaVersion": "0.1.0",
+  "artifactType": "contract-validity",
+  "targetId": "minimal-directory-agent",
+  "contractHash": "sha256:a504c25c525b6b3c2af7d52e6fc935040bff8a69718a4fbc129c72e965461c7b",
+  "decision": "approved",
+  "reviewerId": "generic-fixture-maintainer",
+  "reviewedAt": "2026-07-25T00:00:00.000Z",
+  "reviewedContractFields": [
+    "entrypoints",
+    "roles",
+    "statuses",
+    "requiredOwners",
+    "routing",
+    "joins",
+    "artifacts",
+    "states",
+    "budgets",
+    "commandPolicy"
+  ]
+}

@@ -128,6 +128,31 @@ async function forgeLiveWorkflowTraceRun(
   await writeFile(provenancePath, `${JSON.stringify(provenance, null, 2)}\n`);
 }
 
+async function injectUnregisteredSuiteFailure(source: string, destination: string): Promise<void> {
+  await cp(source, destination, { recursive: true });
+  const suitePath = path.join(destination, "suite-result.json");
+  const provenancePath = path.join(destination, "provenance.json");
+  const suite = JSON.parse(await readFile(suitePath, "utf8"));
+  const provenance = JSON.parse(await readFile(provenancePath, "utf8"));
+
+  suite.caseResults[0].hardFailures = [
+    {
+      code: "TARGET_PRIVATE_FAILURE",
+      severity: "P1",
+      why: "private target implementation detail",
+      evidenceEventIds: ["private-event"]
+    }
+  ];
+  suite.caseResults[0].verdict = "FAIL";
+  suite.releaseDecision = "BLOCK";
+  await writeFile(suitePath, `${JSON.stringify(suite, null, 2)}\n`);
+
+  provenance.integrity.artifacts.find(
+    (artifact: { ref: string }) => artifact.ref === "suite-result.json"
+  ).sha256 = await hashFile(suitePath);
+  await writeFile(provenancePath, `${JSON.stringify(provenance, null, 2)}\n`);
+}
+
 async function expectValidGate(value: unknown): Promise<void> {
   const ajv = new Ajv2020({ strict: false });
   const schema = JSON.parse(await readFile(path.join(cwd, "schemas", "gate-result.schema.json"), "utf8"));
@@ -215,6 +240,48 @@ describe("paired workflow comparison", () => {
         })
       ])
     );
+  });
+
+  test("comparison canonicalizes unregistered suite hard failures without leaking private labels", async () => {
+    const candidate = path.join(root, "unregistered-hard-failure-candidate");
+    await injectUnregisteredSuiteFailure(cleanCandidate, candidate);
+
+    const comparison = await comparePair(
+      cleanBaseline,
+      candidate,
+      "unregistered-hard-failure"
+    );
+    expect(comparison.result.classification).toBe("HARD_FAILURE");
+    expect(comparison.result.hardFailures).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "UNREGISTERED_HARD_FAILURE",
+          severity: "P0",
+          source: "candidate"
+        })
+      ])
+    );
+    expect(comparison.result.caseDeltas[0].newHardFailures).toContain(
+      "UNREGISTERED_HARD_FAILURE"
+    );
+    expect(JSON.stringify(comparison.result)).not.toContain("TARGET_PRIVATE_FAILURE");
+    expect(JSON.stringify(comparison.result)).not.toContain(
+      "private target implementation detail"
+    );
+    expect(comparison.report).not.toContain("TARGET_PRIVATE_FAILURE");
+    expect(comparison.report).not.toContain("private target implementation detail");
+
+    const gate = await gateComparison(
+      path.join(comparison.out, "comparison-result.json"),
+      "unregistered-hard-failure"
+    );
+    expect(gate.exitCode).toBe(1);
+    expect(gate.result).toMatchObject({
+      decision: "BLOCK",
+      ruleId: "GATE-HARD-FAILURE"
+    });
+    expect(gate.report).not.toContain("TARGET_PRIVATE_FAILURE");
+    expect(gate.report).not.toContain("private target implementation detail");
   });
 
   test("mismatched paired conditions are incomparable instead of silently ranked", async () => {
@@ -381,7 +448,7 @@ describe("paired workflow comparison", () => {
     });
   });
 
-  test("gate policy passes only an integrity-verified live workflow-trace comparison", async () => {
+  test("gate policy passes only an integrity-verified, observer-qualified live workflow-trace comparison", async () => {
     const comparison = await comparePair(cleanBaseline, cleanCandidate, "gate-live-policy");
     const live = structuredClone(comparison.result);
     live.baseline.releaseDecision = "APPROVE";
@@ -390,6 +457,8 @@ describe("paired workflow comparison", () => {
     live.candidate.evidenceKind = "live";
     live.baseline.observationLevel = "workflow_trace";
     live.candidate.observationLevel = "workflow_trace";
+    live.baseline.observerQualificationStatus = "valid";
+    live.candidate.observerQualificationStatus = "valid";
 
     const gate = evaluateGate(live, { status: "VALID", reasons: [] });
     expect(gate).toMatchObject({

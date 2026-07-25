@@ -22,6 +22,7 @@ import { buildRunProvenance, publicRunnerCapability, semanticCaseSetHash } from 
 import { verifyWorkflowTraceBundle } from "../observer/workflowTrace.js";
 import { createComparisonBundle, renderComparisonReport, verifyComparisonBundle } from "../regression/compare.js";
 import { evaluateGate, gateExitCode, renderGateReport } from "../regression/gate.js";
+import { getEvaluationContract } from "../evaluation/evaluationContract.js";
 import { profileEvidenceSensitiveValues, publicAiCasePlan, publicProfileEvidence } from "../utils/redaction.js";
 const program = new Command();
 program.name(CLI_NAME).description(`${PRODUCT_NAME} — ${PRODUCT_TAGLINE}`).version(AWB_VERSION);
@@ -181,7 +182,7 @@ program
         throw new Error(`Runner ${runnerCapability.name} is unavailable: ${runnerCapability.disabledReason}`);
     }
     if (options.dryRun) {
-        const suiteResult = scoreSuite(path.basename(runDir), contract, options.suite, []);
+        const suiteResult = scoreSuite(path.basename(runDir), contract, options.suite, [], runEvidenceContext(executionMode, true));
         await writeJson(path.join(runDir, "suite-result.json"), suiteResult);
         await writeRecommendationArtifacts(runDir, suiteResult);
         await writeP0CaseArtifacts(runDir, suiteResult, options.p0CaseLog);
@@ -235,7 +236,7 @@ program
         await writeJson(path.join(runDir, "events", `${testCase.id}.json`), run.events);
         await writeJson(path.join(runDir, "case-results", `${testCase.id}.json`), result);
     }
-    const suiteResult = scoreSuite(path.basename(runDir), contract, options.suite, caseResults);
+    const suiteResult = scoreSuite(path.basename(runDir), contract, options.suite, caseResults, runEvidenceContext(executionMode));
     await writeJson(path.join(runDir, "suite-result.json"), suiteResult);
     await writeRecommendationArtifacts(runDir, suiteResult);
     await writeP0CaseArtifacts(runDir, suiteResult, options.p0CaseLog);
@@ -272,7 +273,7 @@ program
 });
 program
     .command("ingest-trace")
-    .description("Verify and score an externally observed, signed workflow trace")
+    .description("Verify and score a signed workflow trace (diagnostic until Observer qualification)")
     .option("--target <id>")
     .option("--target-root <path>", "override the registered target root for this isolated checkout")
     .option("--suite <name>", "suite name", "smoke")
@@ -307,7 +308,11 @@ program
         await writeJson(path.join(options.out, "events", `${testCase.id}.json`), run.events);
         await writeJson(path.join(options.out, "case-results", `${testCase.id}.json`), result);
     }
-    const suiteResult = scoreSuite(path.basename(options.out), contract, options.suite, caseResults);
+    const suiteResult = scoreSuite(path.basename(options.out), contract, options.suite, caseResults, {
+        evidenceKind: "live",
+        observationLevel: "workflow_trace",
+        observerQualification: "missing"
+    });
     await writeJson(path.join(options.out, "suite-result.json"), suiteResult);
     await writeRecommendationArtifacts(options.out, suiteResult);
     await writeP0CaseArtifacts(options.out, suiteResult);
@@ -335,7 +340,8 @@ program
             observer: {
                 id: verifiedTrace.bundle.observer.id,
                 version: verifiedTrace.bundle.observer.version,
-                keyFingerprint: verifiedTrace.keyFingerprint
+                keyFingerprint: verifiedTrace.keyFingerprint,
+                qualificationStatus: "missing"
             }
         }
     });
@@ -445,7 +451,7 @@ program
         await writeJson(path.join(runDir, "events", `${testCase.id}.json`), run.events);
         await writeJson(path.join(runDir, "case-results", `${testCase.id}.json`), result);
     }
-    const suiteResult = scoreSuite(path.basename(runDir), profile.contract, options.suite, caseResults);
+    const suiteResult = scoreSuite(path.basename(runDir), profile.contract, options.suite, caseResults, runEvidenceContext(executionMode));
     suiteResult.harnessValidation = buildHarnessValidation(profile, aiPlanRun.plan, aiPlanValidation, suite, suiteResult);
     applyHarnessGate(suiteResult);
     await writeJson(path.join(runDir, "suite-result.json"), suiteResult);
@@ -534,7 +540,7 @@ program
 });
 program
     .command("gate")
-    .description("Apply the deterministic CI gate to a paired comparison")
+    .description("Apply evidence-first CI policy; unqualified evidence remains diagnostic")
     .requiredOption("--comparison <path>", "comparison-result.json")
     .option("--trusted-observer-key <path>", "trusted Ed25519 observer public key for workflow_trace evidence")
     .requiredOption("--out <dir>")
@@ -884,6 +890,23 @@ function applyHarnessGate(suiteResult) {
     suiteResult.releaseDecision = "DIAGNOSTIC_ONLY";
     suiteResult.releaseRuleId = harnessStatus === "FAIL" ? "REL-HARNESS-VALIDATION-FAIL" : "REL-HARNESS-VALIDATION-WARN";
 }
+function runEvidenceContext(executionMode, dryRun = false) {
+    if (dryRun) {
+        return {
+            evidenceKind: "unknown",
+            observationLevel: "capability_only"
+        };
+    }
+    return executionMode === "simulated"
+        ? {
+            evidenceKind: "simulated",
+            observationLevel: "synthetic_events"
+        }
+        : {
+            evidenceKind: "live",
+            observationLevel: "contract_summary"
+        };
+}
 function normalizeCoverageMode(value) {
     if (value === "smoke" || value === "full" || value === "adaptive") {
         return value;
@@ -931,6 +954,8 @@ async function validateSchemasAndTargets() {
     const schemaFiles = (await readdir(schemaDir)).filter((file) => file.endsWith(".schema.json"));
     let validateTarget;
     let validateRunner;
+    let validateEvaluationContract;
+    let validateContractValidity;
     for (const file of schemaFiles) {
         const schema = JSON.parse(await readFile(path.join(schemaDir, file), "utf8"));
         const validate = ajv.compile(schema);
@@ -940,6 +965,12 @@ async function validateSchemasAndTargets() {
         if (file === "runner.schema.json") {
             validateRunner = validate;
         }
+        if (file === "evaluation-contract.schema.json") {
+            validateEvaluationContract = validate;
+        }
+        if (file === "contract-validity.schema.json") {
+            validateContractValidity = validate;
+        }
     }
     if (!validateTarget) {
         throw new Error("target-pack.schema.json missing");
@@ -947,10 +978,28 @@ async function validateSchemasAndTargets() {
     if (!validateRunner) {
         throw new Error("runner.schema.json missing");
     }
+    if (!validateEvaluationContract) {
+        throw new Error("evaluation-contract.schema.json missing");
+    }
+    if (!validateContractValidity) {
+        throw new Error("contract-validity.schema.json missing");
+    }
+    const evaluationContract = getEvaluationContract();
+    if (!validateEvaluationContract(evaluationContract)) {
+        throw new Error(`Canonical evaluation contract failed schema validation: ${ajv.errorsText(validateEvaluationContract.errors)}`);
+    }
     for (const id of await listTargetIds()) {
         const target = await loadTargetPack(id);
-        if (!validateTarget(target)) {
+        const { configPath: _configPath, ...declaredTarget } = target;
+        if (!validateTarget(declaredTarget)) {
             throw new Error(`Target ${id} failed schema validation: ${ajv.errorsText(validateTarget.errors)}`);
+        }
+        if (target.contractReview.status !== "reviewed") {
+            throw new Error(`Target ${id} is not owner-reviewed.`);
+        }
+        const contractValidity = await readJson(path.join(benchmarkRoot, target.contractReview.artifactPath));
+        if (!validateContractValidity(contractValidity)) {
+            throw new Error(`Target ${id} contract-validity artifact failed schema validation: ${ajv.errorsText(validateContractValidity.errors)}`);
         }
     }
     const runnerDir = path.join(benchmarkRoot, "configs/runners");

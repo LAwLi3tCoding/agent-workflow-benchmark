@@ -3,6 +3,7 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import YAML from "yaml";
+import { assertRegisteredTargetReview } from "./targetReview.js";
 const repoRoot = findBenchmarkRoot();
 export function getBenchmarkRoot() {
     return repoRoot;
@@ -21,7 +22,9 @@ export async function loadTargetPack(targetId, options = {}) {
         : path.isAbsolute(raw.root)
             ? raw.root
             : path.resolve(repoRoot, raw.root);
-    return { ...raw, root, configPath };
+    const target = { ...raw, root, configPath };
+    await assertRegisteredTargetReview(target, repoRoot);
+    return target;
 }
 export async function listTargetIds() {
     const registryPath = path.join(repoRoot, "configs/targets/registry.yaml");

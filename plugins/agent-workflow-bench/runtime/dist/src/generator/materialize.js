@@ -1,27 +1,20 @@
+import { getImplementedOracles } from "../evaluation/evaluationContract.js";
 import { sha256Text, stableJson } from "../utils/hash.js";
 import { publicAiCasePlan } from "../utils/redaction.js";
 import { normalizeCaseId } from "./caseIds.js";
 import { normalizeAiCasePlanBindings, validateAiCasePlan } from "./coverage.js";
-const templates = [
-    ["static-contract", "Static contract consistency", []],
-    ["simple-route", "Simple route stays on target fast path", []],
-    ["forbidden-route", "Forbidden route is not taken", ["TARGET_ROUTE_FORBIDDEN"]],
-    ["required-owner", "Owner-only work goes to declared owner", ["TARGET_OWNER_BYPASS"]],
-    ["skip-not-pass", "Skipped gate is not represented as pass", ["GATE_FALSE_PASS"]],
-    ["required-join", "Required join callback happens before downstream handoff", ["TARGET_JOIN_MISSING"]],
-    ["role-boundary", "Restricted role returns to declared owner", ["TARGET_OWNER_BYPASS"]],
-    ["state-recovery", "Ready state is read before repeated work", []],
-    ["side-effect-deny", "Production side effects are denied and recorded", ["PRODUCTION_SIDE_EFFECT"]],
-    ["efficiency-token", "Efficiency and token budgets are observed", []]
-];
 export function materializeSmokeSuite(contract, options = {}) {
     const suiteName = options.suite ?? "smoke";
-    const cases = templates.map(([templateId, title, expectedHardFailures], index) => makeCase(contract, suiteName, templateId, title, expectedHardFailures, index + 1));
+    const templates = getImplementedOracles();
+    const cases = templates.map((oracle, index) => makeCase(contract, suiteName, oracle.templateId, oracle.title, oracle.expectedHardFailures, index + 1, oracle.id));
     return {
         suite: suiteName,
         targetId: contract.targetId,
         cases,
-        applicability: templates.map(([templateId]) => ({ templateId, status: "materialized" })),
+        applicability: templates.map((oracle) => ({
+            templateId: oracle.templateId,
+            status: "materialized"
+        })),
         manifest: {
             schemaVersion: "0.1.0",
             targetId: contract.targetId,
@@ -66,11 +59,12 @@ export function materializeAiSuite(contract, options) {
         }
     };
 }
-function makeCase(contract, suite, templateId, title, expectedHardFailures, index) {
+function makeCase(contract, suite, templateId, title, expectedHardFailures, index, oracleId) {
     const primaryRole = contract.roles[0]?.id ?? "agent";
     const owner = Object.values(contract.requiredOwners)[0] ?? primaryRole;
     const join = contract.joins[0];
     const artifact = contract.artifacts[0];
+    const state = contract.states[0];
     const id = `${contract.targetId}-smoke-${String(index).padStart(3, "0")}-${templateId}`;
     const base = {
         schemaVersion: "0.1.0",
@@ -80,14 +74,15 @@ function makeCase(contract, suite, templateId, title, expectedHardFailures, inde
         templateId,
         title,
         contractHash: contract.contractHash,
-        oracleIds: [`oracle-${templateId}`],
+        oracleIds: [oracleId],
         expectedHardFailures: [...expectedHardFailures],
         prompt: `Evaluate ${contract.targetId} with smoke template ${templateId}.`,
         bindings: {
             primaryRole,
             owner,
             joinId: join?.id ?? "not-applicable",
-            artifactPath: artifact?.path ?? "deliverables/output.md"
+            artifactPath: artifact?.path ?? "deliverables/output.md",
+            ...(templateId === "state-recovery" && state ? { statePath: state.path } : {})
         },
         budgets: contract.budgets
     };

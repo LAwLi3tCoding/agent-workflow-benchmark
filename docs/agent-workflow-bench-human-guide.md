@@ -206,11 +206,11 @@ Gate exit code 固定为：
 
 | Gate 结论 | Exit code | 含义 |
 |---|---:|---|
-| `PASS` | 0 | 有可信 live `workflow_trace` 证据，candidate 相比 baseline 未触发阻断回归 |
-| `DIAGNOSTIC_ONLY` | 2 | 证据不足、runner 不可比，或只使用 simulated / current `contract-summary` adapter |
+| `PASS` | 0 | 有已通过资格认证的独立 live `workflow_trace`，candidate 相比 baseline 未触发阻断回归 |
+| `DIAGNOSTIC_ONLY` | 2 | 证据不足、Observer 未认证、runner 不可比，或只使用 simulated / current `contract-summary` adapter |
 | `BLOCK` | 1 | 触发 P0/hard failure、关键回归，或工具/runtime 失败 |
 
-只有可信 live observer 输出真实 `workflow_trace` evidence 时，gate 才能 PASS。observer 必须用 Ed25519 对完整 trace 签名，`ingest-trace`、`compare` 和 `gate` 使用独立保存的公钥作为信任锚；私钥不能提供给 runner，也不能作为 CLI 的 trust anchor。simulated run 和内置 live `contract-summary` adapter 可以用于诊断、调试 scorer/oracle 或生成整改建议，但不能给 CI 准入 PASS。
+只有经过独立资格认证的 live observer 输出真实 `workflow_trace` evidence 时，gate 才能 PASS。observer 必须用 Ed25519 对完整 trace 签名，`ingest-trace`、`compare` 和 `gate` 使用独立保存的公钥作为信任锚；私钥不能提供给 runner，也不能作为 CLI 的 trust anchor。当前 Stage 1 尚未实现 qualification artifact 的生成/校验，因此导入 trace 的 `qualificationStatus` 固定为 `missing`，可编辑运行元数据里自报的 `valid` 会被忽略，即使签名有效也只能 `DIAGNOSTIC_ONLY`。simulated run 和内置 live `contract-summary` adapter 同样不能给 CI 准入 PASS。
 
 签名证明 observer 身份和轨迹在签名后未被修改，不证明 observer 本身没有漏观测。将某个 observer 公钥加入 CI 之前，仍需用已知好/坏轨迹、mutation 和隔离检查验证 observer 实现。
 
@@ -221,7 +221,7 @@ Gate exit code 固定为：
 | 总分低于 70 | `BLOCK` |
 | 总分 70-84 且无 P0 | `DIAGNOSTIC_ONLY`，需要人工确认或补充证据 |
 | 总分 85 以上且无 P0/P1，但缺少可信 live `workflow_trace` | `DIAGNOSTIC_ONLY` |
-| 总分 85 以上且无 P0/P1，并有可信 live `workflow_trace` | `PASS` |
+| 总分 85 以上且无 P0/P1，并有已认证独立 live `workflow_trace` | `PASS` |
 | 观测数据不足 | `DIAGNOSTIC_ONLY` |
 | runner 不可比 | 不输出跨 runner 排名 |
 
@@ -356,7 +356,7 @@ Gate exit code 固定为：
 接入一个新的 workflow 时，维护者不需要改 scorer 主逻辑。
 
 1. 先运行 `awb init-target --agent-root <path> --target-id <target-id> --out configs/targets/<target-id>.draft.yaml`，从已有 agent 文件生成待审阅 draft 和 `.gaps.md`。
-2. 由 workflow owner 确认 draft 中的入口、角色、DoD owner、状态、产物、允许/禁止 handoff、required join、budget 和 command policy，再移动为 `configs/targets/<target-id>.yaml`，并把 target id 加入 `configs/targets/registry.yaml`。
+2. 由 workflow owner 确认 draft 中的入口、角色、DoD owner、状态、产物、允许/禁止 handoff、required join、budget 和 command policy，生成绑定最终 `contractHash` 的 `contract-validity` artifact，并把 artifact hash 写入 `contractReview`。只有 `status: reviewed` 且两个 hash 都校验通过的 Target Pack 才能加入 registry。
 3. 选择默认 directory profiler、默认 CLI profiler；如果 workflow 很特殊，再写一个 target-specific profiler plugin，但输出仍然是标准 ContractModel。
 4. 绑定 10 类通用 smoke 模板中适用的模板。
 5. 准备 fake tools、fixture repo、fixture thread、fixture state/artifact。

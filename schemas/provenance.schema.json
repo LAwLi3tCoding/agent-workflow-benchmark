@@ -68,11 +68,12 @@
         },
         "observer": {
           "type": "object",
-          "required": ["id", "version", "keyFingerprint"],
+          "required": ["id", "version", "keyFingerprint", "qualificationStatus"],
           "properties": {
             "id": { "type": "string", "minLength": 1 },
             "version": { "type": "string", "minLength": 1 },
-            "keyFingerprint": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" }
+            "keyFingerprint": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+            "qualificationStatus": { "enum": ["missing", "valid", "invalid"] }
           }
         },
         "executionMode": { "enum": ["live", "simulated"] },

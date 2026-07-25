@@ -4,6 +4,7 @@ import { verifyWorkflowTraceBundle } from "../observer/workflowTrace.js";
 import { PRODUCT_NAME } from "../core/product.js";
 import { hashFile, sha256Text, stableJson } from "../utils/hash.js";
 import { readJson } from "../utils/io.js";
+import { getHardFailureDefinition } from "../evaluation/evaluationContract.js";
 export async function compareRunArtifacts(baselineInput, candidateInput, options = {}) {
     const baseline = await loadRun(baselineInput, options);
     const candidate = await loadRun(candidateInput, options);
@@ -401,6 +402,7 @@ function validateRuntimeManifest(runtime, suite, provenance, verifiedTrace) {
             runtimeTrace.observer.id !== verifiedTrace.bundle.observer.id ||
             runtimeTrace.observer.version !== verifiedTrace.bundle.observer.version ||
             runtimeTrace.observer.keyFingerprint !== verifiedTrace.keyFingerprint ||
+            runtimeTrace.observer.qualificationStatus !== observer.qualificationStatus ||
             observer.id !== verifiedTrace.bundle.observer.id ||
             observer.version !== verifiedTrace.bundle.observer.version ||
             observer.keyFingerprint !== verifiedTrace.keyFingerprint) {
@@ -499,28 +501,36 @@ function comparisonReasons(baseline, candidate) {
 function provenanceFailures(baseline, candidate) {
     const failures = [];
     if (baseline.provenanceStatus === "INVALID") {
+        const definition = requiredComparisonFailureDefinition("PROVENANCE_INVALID");
         failures.push({
-            code: "PROVENANCE_INVALID",
+            code: definition.code,
+            severity: definition.severity,
             source: "baseline",
-            why: baseline.provenanceWhy ?? "Baseline provenance is invalid."
+            why: definition.why
         });
     }
     if (candidate.provenanceStatus === "INVALID") {
+        const definition = requiredComparisonFailureDefinition("PROVENANCE_INVALID");
         failures.push({
-            code: "PROVENANCE_INVALID",
+            code: definition.code,
+            severity: definition.severity,
             source: "candidate",
-            why: candidate.provenanceWhy ?? "Candidate provenance is invalid."
+            why: definition.why
         });
     }
     return failures;
 }
 function collectCandidateHardFailures(candidate) {
-    return candidate.caseResults.flatMap((caseResult) => caseResult.hardFailures.map((failure) => ({
-        code: failure.code,
-        source: "candidate",
-        caseId: caseResult.caseId,
-        why: failure.why
-    })));
+    return candidate.caseResults.flatMap((caseResult) => caseResult.hardFailures.map((failure) => {
+        const definition = canonicalComparisonFailureDefinition(failure.code);
+        return {
+            code: definition.code,
+            severity: definition.severity,
+            source: "candidate",
+            caseId: caseResult.caseId,
+            why: definition.why
+        };
+    }));
 }
 function compareCases(baseline, candidate) {
     const baselineById = new Map(baseline.caseResults.map((item) => [item.caseId, item]));
@@ -540,8 +550,8 @@ function compareCases(baseline, candidate) {
                 resolvedHardFailures: []
             };
         }
-        const baselineCodes = new Set(left.hardFailures.map((failure) => failure.code));
-        const candidateCodes = new Set(right.hardFailures.map((failure) => failure.code));
+        const baselineCodes = new Set(left.hardFailures.map((failure) => canonicalComparisonFailureDefinition(failure.code).code));
+        const candidateCodes = new Set(right.hardFailures.map((failure) => canonicalComparisonFailureDefinition(failure.code).code));
         const newHardFailures = [...candidateCodes].filter((code) => !baselineCodes.has(code)).sort();
         const resolvedHardFailures = [...baselineCodes].filter((code) => !candidateCodes.has(code)).sort();
         const scoreDelta = right.cappedScore - left.cappedScore;
@@ -604,8 +614,31 @@ function runSummary(run) {
         score: run.suite.cappedSuiteScore,
         provenanceStatus: run.provenanceStatus,
         evidenceKind: run.provenance?.conditions.evidenceKind ?? "unknown",
-        observationLevel: run.provenance?.conditions.observationLevel ?? "unknown"
+        observationLevel: run.provenance?.conditions.observationLevel ?? "unknown",
+        observerQualificationStatus: stageOneObserverQualificationStatus(run)
     };
+}
+function stageOneObserverQualificationStatus(run) {
+    if (run.provenance?.conditions.observationLevel !== "workflow_trace") {
+        return "not_applicable";
+    }
+    if (run.provenanceStatus !== "VALID") {
+        return "invalid";
+    }
+    return run.provenance.conditions.observer?.qualificationStatus === "invalid"
+        ? "invalid"
+        : "missing";
+}
+function canonicalComparisonFailureDefinition(code) {
+    return (getHardFailureDefinition(code) ??
+        requiredComparisonFailureDefinition("UNREGISTERED_HARD_FAILURE"));
+}
+function requiredComparisonFailureDefinition(code) {
+    const definition = getHardFailureDefinition(code);
+    if (!definition) {
+        throw new Error(`Canonical hard-failure registry is missing implemented code ${code}.`);
+    }
+    return definition;
 }
 function verdictRank(verdict) {
     if (verdict === "PASS")

@@ -52,3 +52,9 @@ contracts:
 commandPolicy:
   allowedExecutables: [node, npm]
   forbiddenArgs: [--prod-write]
+contractReview:
+  status: reviewed
+  reviewerId: generic-fixture-maintainer
+  reviewedAt: 2026-07-25T00:00:00.000Z
+  artifactPath: configs/targets/reviews/minimal-directory-agent.contract-validity.json
+  artifactHash: sha256:09b8ab7cac7c528e89458bfc6c25d42e3853b0924999429ca4fed3027f38ea45

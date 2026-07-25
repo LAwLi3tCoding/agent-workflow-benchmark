@@ -29,7 +29,8 @@ export async function buildRunProvenance(options) {
                 observer: {
                     id: options.verifiedTrace.bundle.observer.id,
                     version: options.verifiedTrace.bundle.observer.version,
-                    keyFingerprint: options.verifiedTrace.keyFingerprint
+                    keyFingerprint: options.verifiedTrace.keyFingerprint,
+                    qualificationStatus: "missing"
                 }
             }
             : {}),

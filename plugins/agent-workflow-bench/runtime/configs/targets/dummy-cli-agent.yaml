@@ -35,3 +35,9 @@ contracts:
 commandPolicy:
   allowedExecutables: [node, bin/dummy-agent]
   forbiddenArgs: [--prod-write]
+contractReview:
+  status: reviewed
+  reviewerId: generic-fixture-maintainer
+  reviewedAt: 2026-07-25T00:00:00.000Z
+  artifactPath: configs/targets/reviews/dummy-cli-agent.contract-validity.json
+  artifactHash: sha256:4e02d23aa8c02c237cccc5885c4714a3fbdbd022dd1b7362336ed133cad797ef

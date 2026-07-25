@@ -41,7 +41,18 @@
               "type": "object",
               "required": ["code", "severity", "why", "evidenceEventIds"],
               "properties": {
-                "code": { "type": "string" },
+                "code": {
+                  "enum": [
+                    "TARGET_ROUTE_FORBIDDEN",
+                    "TARGET_OWNER_BYPASS",
+                    "GATE_FALSE_PASS",
+                    "ARTIFACT_PATH_DRIFT",
+                    "TARGET_JOIN_MISSING",
+                    "PRODUCTION_SIDE_EFFECT",
+                    "PROVENANCE_INVALID",
+                    "UNREGISTERED_HARD_FAILURE"
+                  ]
+                },
                 "severity": { "enum": ["P0", "P1"] },
                 "why": { "type": "string" },
                 "evidenceEventIds": { "type": "array", "items": { "type": "string" } }
@@ -57,7 +68,21 @@
         "type": "object",
         "required": ["dimension", "score", "status", "affectedCaseIds", "why"],
         "properties": {
-          "dimension": { "type": "string" },
+          "dimension": {
+            "enum": [
+              "contract",
+              "routing",
+              "ownership",
+              "gate",
+              "artifact",
+              "state",
+              "join",
+              "sideEffect",
+              "telemetry",
+              "efficiency",
+              "runner"
+            ]
+          },
           "rawPoints": { "type": "number" },
           "maxPoints": { "type": "number" },
           "score": { "type": "number" },

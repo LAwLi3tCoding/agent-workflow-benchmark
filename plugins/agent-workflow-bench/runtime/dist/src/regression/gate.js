@@ -73,6 +73,18 @@ export function evaluateGate(comparison, verification) {
             ]
         };
     }
+    if (comparison.baseline.observerQualificationStatus !== "valid" ||
+        comparison.candidate.observerQualificationStatus !== "valid") {
+        return {
+            ...base,
+            decision: "DIAGNOSTIC_ONLY",
+            ruleId: "GATE-OBSERVER-UNQUALIFIED",
+            reasons: [
+                `Baseline observer qualification: ${comparison.baseline.observerQualificationStatus}.`,
+                `Candidate observer qualification: ${comparison.candidate.observerQualificationStatus}.`
+            ]
+        };
+    }
     if (comparison.candidate.releaseDecision === "DIAGNOSTIC_ONLY") {
         return {
             ...base,

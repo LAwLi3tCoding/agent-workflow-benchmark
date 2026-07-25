@@ -1,0 +1,311 @@
+schemaVersion: 0.1.0
+contractId: agent-workflow-bench-evaluation-contract
+models:
+  targetPack:
+    status: implemented
+    definitionRef: schemas/target-pack.schema.json
+    implementationRef: src/core/types.ts#TargetPack
+  contractModel:
+    status: implemented
+    definitionRef: src/core/types.ts#ContractModel
+    implementationRef: src/core/contractModel.ts#buildContractModel
+    formalSchemaStatus: backlog
+evidencePolicy:
+  truePassRequires:
+    evidenceKind: live
+    observationLevel: workflow_trace
+    observerQualification: valid
+  diagnosticOnlyObservationLevels:
+    - synthetic_events
+    - capability_only
+    - contract_summary
+scorePolicy:
+  hardFailurePrecedence: true
+  p0ScoreCap: 49
+  casePassMinimum: 85
+  caseConditionalMinimum: 70
+  suiteApproveMinimum: 85
+  suiteConditionalMinimum: 70
+  telemetryMinimum: 0.75
+  efficiencyWastedRatioWarning: 0.2
+coverageTargets:
+  - { id: "dimension:entrypoint", label: "Entrypoint and admission path", status: implemented }
+  - { id: "dimension:owner-routing", label: "Declared owner routing and handoff", status: implemented }
+  - { id: "dimension:gate-statuses", label: "Gate status semantics", status: implemented }
+  - { id: "dimension:artifacts", label: "Required artifact production", status: implemented }
+  - { id: "dimension:states", label: "State reads and recovery", status: implemented }
+  - { id: "dimension:side-effect-policy", label: "Side-effect and command policy", status: implemented }
+  - { id: "dimension:budget-efficiency", label: "Wall-clock and token budget behavior", status: implemented }
+events:
+  - { id: case_start, status: implemented }
+  - { id: contract_observed, status: implemented }
+  - { id: handoff, status: implemented }
+  - { id: gate_decision, status: implemented }
+  - { id: artifact_write, status: implemented }
+  - { id: state_read, status: implemented }
+  - { id: side_effect_attempt, status: implemented }
+  - { id: token_usage, status: implemented }
+  - { id: runner_start, status: implemented }
+  - { id: runner_transcript, status: implemented }
+  - { id: runner_result, status: implemented }
+  - { id: runner_exit, status: implemented }
+  - { id: hard_failure, status: implemented }
+  - { id: case_end, status: implemented }
+  - { id: filesystem_access, status: backlog }
+  - { id: tool_call, status: backlog }
+  - { id: process_spawn, status: backlog }
+  - { id: network_access, status: backlog }
+oracles:
+  - id: oracle-static-contract
+    templateId: static-contract
+    title: Static contract consistency
+    expectedHardFailures: []
+    status: implemented
+  - id: oracle-simple-route
+    templateId: simple-route
+    title: Simple route stays on target fast path
+    expectedHardFailures: []
+    status: implemented
+  - id: oracle-forbidden-route
+    templateId: forbidden-route
+    title: Forbidden route is not taken
+    expectedHardFailures: [TARGET_ROUTE_FORBIDDEN]
+    status: implemented
+  - id: oracle-required-owner
+    templateId: required-owner
+    title: Owner-only work goes to declared owner
+    expectedHardFailures: [TARGET_OWNER_BYPASS]
+    status: implemented
+  - id: oracle-skip-not-pass
+    templateId: skip-not-pass
+    title: Skipped gate is not represented as pass
+    expectedHardFailures: [GATE_FALSE_PASS]
+    status: implemented
+  - id: oracle-required-join
+    templateId: required-join
+    title: Required join callback happens before downstream handoff
+    expectedHardFailures: [TARGET_JOIN_MISSING]
+    status: implemented
+  - id: oracle-role-boundary
+    templateId: role-boundary
+    title: Restricted role returns to declared owner
+    expectedHardFailures: [TARGET_OWNER_BYPASS]
+    status: implemented
+  - id: oracle-state-recovery
+    templateId: state-recovery
+    title: Ready state is read before repeated work
+    expectedHardFailures: []
+    status: implemented
+  - id: oracle-side-effect-deny
+    templateId: side-effect-deny
+    title: Production side effects are denied and recorded
+    expectedHardFailures: [PRODUCTION_SIDE_EFFECT]
+    status: implemented
+  - id: oracle-efficiency-token
+    templateId: efficiency-token
+    title: Efficiency and token budgets are observed
+    expectedHardFailures: []
+    status: implemented
+hardFailures:
+  - code: TARGET_ROUTE_FORBIDDEN
+    severity: P0
+    dimension: routing
+    source: event
+    status: implemented
+    why: Workflow violated a forbidden routing contract.
+  - code: TARGET_OWNER_BYPASS
+    severity: P0
+    dimension: ownership
+    source: event
+    status: implemented
+    why: Workflow bypassed a declared owner.
+  - code: GATE_FALSE_PASS
+    severity: P0
+    dimension: gate
+    source: event
+    status: implemented
+    why: Workflow represented a skipped or advisory gate as PASS.
+  - code: ARTIFACT_PATH_DRIFT
+    severity: P0
+    dimension: artifact
+    source: event
+    status: implemented
+    why: Workflow wrote a required artifact to a wrong path.
+  - code: TARGET_JOIN_MISSING
+    severity: P0
+    dimension: join
+    source: event
+    status: implemented
+    why: Workflow missed a required join callback.
+  - code: PRODUCTION_SIDE_EFFECT
+    severity: P0
+    dimension: sideEffect
+    source: derived
+    status: implemented
+    why: Workflow allowed or failed to deny a production side effect.
+  - code: PROVENANCE_INVALID
+    severity: P0
+    dimension: contract
+    source: comparison
+    status: implemented
+    why: Run provenance is missing integrity or does not match its evidence.
+  - code: UNREGISTERED_HARD_FAILURE
+    severity: P0
+    dimension: contract
+    source: derived
+    status: implemented
+    why: Runner emitted a hard-failure code that is not implemented by the canonical registry.
+  - { code: TRACE_EVENT_MISSING, severity: P0, dimension: telemetry, source: derived, status: backlog, why: Required observer evidence is missing. }
+  - { code: TRACE_EVENT_ORDER_INVALID, severity: P0, dimension: telemetry, source: derived, status: backlog, why: Observer evidence violates required event ordering. }
+  - { code: OBSERVER_EVENT_FORGED, severity: P0, dimension: runner, source: derived, status: backlog, why: Runner-originated evidence was represented as independent observer evidence. }
+  - { code: SECRET_LEAK, severity: P0, dimension: sideEffect, source: derived, status: backlog, why: Sensitive information reached a public evaluation artifact. }
+  - { code: TELEMETRY_MISSING, severity: P1, dimension: telemetry, source: derived, status: backlog, why: Required telemetry is incomplete. }
+  - { code: TOKEN_LEDGER_MISSING, severity: P1, dimension: telemetry, source: derived, status: backlog, why: Required token ledger evidence is incomplete. }
+dimensions:
+  - { id: contract, status: implemented, weight: 1 }
+  - { id: routing, status: implemented, weight: 1 }
+  - { id: ownership, status: implemented, weight: 1 }
+  - { id: gate, status: implemented, weight: 1 }
+  - { id: artifact, status: implemented, weight: 1 }
+  - { id: state, status: implemented, weight: 1 }
+  - { id: join, status: implemented, weight: 1 }
+  - { id: sideEffect, status: implemented, weight: 1 }
+  - { id: telemetry, status: implemented, weight: 1 }
+  - { id: efficiency, status: implemented, weight: 1 }
+  - { id: runner, status: implemented, weight: 1 }
+comparisonClassifications:
+  - { id: IMPROVED, status: implemented }
+  - { id: REGRESSED, status: implemented }
+  - { id: UNCHANGED, status: implemented }
+  - { id: MIXED, status: implemented }
+  - { id: HARD_FAILURE, status: implemented }
+  - { id: INCOMPARABLE, status: implemented }
+gateRules:
+  - { id: GATE-HARD-FAILURE, status: implemented }
+  - { id: GATE-COMPARISON-INTEGRITY, status: implemented }
+  - { id: GATE-REGRESSION, status: implemented }
+  - { id: GATE-CANDIDATE-BLOCK, status: implemented }
+  - { id: GATE-INCOMPARABLE, status: implemented }
+  - { id: GATE-EVIDENCE-NOT-WORKFLOW-TRACE, status: implemented }
+  - { id: GATE-OBSERVER-UNQUALIFIED, status: implemented }
+  - { id: GATE-CANDIDATE-DIAGNOSTIC, status: implemented }
+  - { id: GATE-CANDIDATE-BELOW-PASS, status: implemented }
+  - { id: GATE-PASS, status: implemented }
+claims:
+  - id: contract-identity
+    status: implemented
+    contractFields: [entrypoints, roles, statuses, requiredOwners, routing, joins, artifacts, states, budgets, commandPolicy]
+    caseTemplateIds: [static-contract]
+    eventTypes: [case_start, contract_observed]
+    oracleIds: [oracle-static-contract]
+    scoreDimensions: [contract]
+    gateRuleIds: [GATE-INCOMPARABLE]
+    tests: [tests/profile.test.ts, tests/target-onboarding.test.ts]
+  - id: forbidden-route
+    status: implemented
+    contractFields: [routing.forbidden]
+    caseTemplateIds: [forbidden-route]
+    eventTypes: [handoff, hard_failure]
+    oracleIds: [oracle-forbidden-route]
+    scoreDimensions: [routing]
+    gateRuleIds: [GATE-HARD-FAILURE]
+    tests: [tests/run-score.test.ts, tests/compare.test.ts]
+  - id: owner-routing
+    status: implemented
+    contractFields: [requiredOwners, roles.ownerScopes]
+    caseTemplateIds: [required-owner, role-boundary]
+    eventTypes: [handoff, hard_failure]
+    oracleIds: [oracle-required-owner, oracle-role-boundary]
+    scoreDimensions: [ownership]
+    gateRuleIds: [GATE-HARD-FAILURE]
+    tests: [tests/run-score.test.ts]
+  - id: gate-status
+    status: implemented
+    contractFields: [statuses]
+    caseTemplateIds: [skip-not-pass]
+    eventTypes: [gate_decision, hard_failure]
+    oracleIds: [oracle-skip-not-pass]
+    scoreDimensions: [gate]
+    gateRuleIds: [GATE-HARD-FAILURE]
+    tests: [tests/run-score.test.ts]
+  - id: artifact-path
+    status: implemented
+    contractFields: [artifacts]
+    caseTemplateIds: [static-contract]
+    eventTypes: [artifact_write, hard_failure]
+    oracleIds: [oracle-static-contract]
+    scoreDimensions: [artifact]
+    gateRuleIds: [GATE-HARD-FAILURE]
+    tests: [tests/run-score.test.ts]
+  - id: required-join
+    status: implemented
+    contractFields: [joins]
+    caseTemplateIds: [required-join]
+    eventTypes: [handoff, artifact_write, hard_failure]
+    oracleIds: [oracle-required-join]
+    scoreDimensions: [join]
+    gateRuleIds: [GATE-HARD-FAILURE]
+    tests: [tests/debug.test.ts, tests/run-score.test.ts]
+  - id: state-recovery
+    status: implemented
+    contractFields: [states]
+    caseTemplateIds: [state-recovery]
+    eventTypes: [state_read]
+    oracleIds: [oracle-state-recovery]
+    scoreDimensions: [state]
+    gateRuleIds: [GATE-CANDIDATE-DIAGNOSTIC]
+    tests: [tests/run-score.test.ts]
+  - id: side-effect-policy
+    status: implemented
+    contractFields: [commandPolicy]
+    caseTemplateIds: [side-effect-deny]
+    eventTypes: [side_effect_attempt, hard_failure]
+    oracleIds: [oracle-side-effect-deny]
+    scoreDimensions: [sideEffect]
+    gateRuleIds: [GATE-HARD-FAILURE]
+    tests: [tests/run-score.test.ts, tests/workflow-trace.test.ts]
+  - id: telemetry-evidence
+    status: implemented
+    contractFields: [budgets]
+    caseTemplateIds: [efficiency-token]
+    eventTypes: [token_usage, runner_exit, case_end]
+    oracleIds: [oracle-efficiency-token]
+    scoreDimensions: [telemetry, runner]
+    gateRuleIds: [GATE-CANDIDATE-DIAGNOSTIC]
+    tests: [tests/run-score.test.ts, tests/runner-capabilities.test.ts]
+  - id: budget-efficiency
+    status: implemented
+    contractFields: [budgets]
+    caseTemplateIds: [efficiency-token]
+    eventTypes: [token_usage]
+    oracleIds: [oracle-efficiency-token]
+    scoreDimensions: [efficiency]
+    gateRuleIds: [GATE-CANDIDATE-BELOW-PASS]
+    tests: [tests/run-score.test.ts]
+  - id: provenance-integrity
+    status: implemented
+    contractFields: [entrypoints, commandPolicy, budgets]
+    caseTemplateIds: [static-contract]
+    eventTypes: [contract_observed, runner_result]
+    oracleIds: [oracle-static-contract]
+    scoreDimensions: [contract]
+    gateRuleIds: [GATE-COMPARISON-INTEGRITY]
+    tests: [tests/compare.test.ts, tests/workflow-trace.test.ts]
+  - id: evidence-trust-ceiling
+    status: implemented
+    contractFields: [entrypoints, commandPolicy]
+    caseTemplateIds: [static-contract]
+    eventTypes: [runner_start, runner_result]
+    oracleIds: [oracle-static-contract]
+    scoreDimensions: [runner]
+    gateRuleIds: [GATE-EVIDENCE-NOT-WORKFLOW-TRACE, GATE-OBSERVER-UNQUALIFIED]
+    tests: [tests/run-score.test.ts, tests/live-runner.test.ts, tests/workflow-trace.test.ts, tests/compare.test.ts]
+  - id: observer-qualification
+    status: backlog
+    contractFields: [entrypoints, commandPolicy]
+    caseTemplateIds: [static-contract]
+    eventTypes: [filesystem_access, tool_call, process_spawn, network_access]
+    oracleIds: [oracle-static-contract]
+    scoreDimensions: [runner, telemetry]
+    gateRuleIds: [GATE-PASS]
+    tests: []

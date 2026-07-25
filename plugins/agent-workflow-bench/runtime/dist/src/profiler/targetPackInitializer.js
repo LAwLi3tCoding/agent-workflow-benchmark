@@ -46,6 +46,9 @@ export async function inferTargetPackDraft(options) {
         commandPolicy: {
             allowedExecutables: ["node", "npm"],
             forbiddenArgs
+        },
+        contractReview: {
+            status: "draft"
         }
     };
     return {
@@ -245,6 +248,7 @@ function renderGapsMarkdown(targetPack) {
         "- Confirm forbidden routes and handoff boundaries; static inference leaves routing.forbidden empty.",
         "- Confirm artifacts/states are canonical paths, not examples or aliases.",
         "- Confirm budgets and commandPolicy before using this target for release gates.",
+        "- Produce a contract-validity artifact that binds the owner review to the final contractHash.",
         "- Move the reviewed draft to configs/targets/<target-id>.yaml and register it in configs/targets/registry.yaml."
     ];
     return `${gaps.join("\n")}\n`;

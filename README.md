@@ -135,13 +135,15 @@ Source-checkout users can replace `awb ...` with
 
 | Decision | Exit code | Meaning |
 | --- | ---: | --- |
-| `PASS` | `0` | Trusted live `workflow_trace` and no blocking regression |
-| `DIAGNOSTIC_ONLY` | `2` | Simulated, incomplete, or incomparable evidence |
+| `PASS` | `0` | Qualified independent live `workflow_trace` and no blocking regression |
+| `DIAGNOSTIC_ONLY` | `2` | Simulated, unqualified, incomplete, or incomparable evidence |
 | `BLOCK` | `1` | Hard failure, regression, invalid provenance, or tool failure |
 
-Hard failures always dominate score. Examples include forbidden production
-effects, owner bypass, false PASS, missing required joins, critical artifact
-loss, runner failure, and invalid provenance.
+Implemented hard failures always dominate score: forbidden routing, owner
+bypass, false PASS, missing required joins, artifact-path drift, unsafe
+production side effects, invalid provenance, and unregistered hard-failure
+codes. Runner failure and telemetry insufficiency are separate deterministic
+BLOCK/diagnostic conditions, not additional registry entries.
 
 ### Current runner evidence
 
@@ -187,6 +189,10 @@ The signature proves observer identity and post-signing integrity. It does not
 prove observer completeness or OS/network isolation. Qualify the observer
 before admitting its public key as a release trust root. See the
 [workflow-trace observer contract](docs/workflow-trace-observer-contract.md).
+The current Stage 1 admission path records `qualificationStatus: missing`, so a
+signed trace is still `DIAGNOSTIC_ONLY`; `GATE-PASS` is reserved for a later
+integrity-bound qualification artifact produced by the Stage 3 qualification
+workflow. Editing run metadata to self-assert `valid` is ignored.
 
 ## Common Workflows
 
@@ -249,8 +255,15 @@ awb init-target \
 ```
 
 Review the generated gap report, confirm owners, joins, routes, artifacts,
-states, budgets, and command policy, then register the reviewed target pack.
-Generated drafts are not trusted contracts until an owner confirms them.
+states, budgets, and command policy, then produce a `contract-validity`
+artifact bound to the final `contractHash`. Only a target pack whose
+`contractReview.status` is `reviewed` and whose artifact hash and contract hash
+validate can be registered. Generated drafts remain schema-valid but
+non-gateable.
+
+The current machine contract and validity boundaries are documented in
+[evaluation contract traceability](docs/evaluation-contract-traceability.md)
+and the [evaluation validity protocol](docs/evaluation-validity-protocol.md).
 
 ### Self-debug and mutation validation
 

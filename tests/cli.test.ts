@@ -229,6 +229,9 @@ describe("benchmark CLI", () => {
         id: "generated-agent",
         name: "Generated Agent",
         targetType: "directory",
+        contractReview: {
+          status: "draft"
+        },
         entrypoints: [{ id: "orchestrator-agent", kind: "file", path: "orchestrator-agent/CLAUDE.md" }],
         commandPolicy: {
           allowedExecutables: ["node", "npm"],
@@ -762,7 +765,7 @@ describe("benchmark CLI", () => {
       expect(`${result.stdout}\n${result.stderr}`).toContain("Gate mode blocked run");
       const suite = JSON.parse(await readFile(path.join(runOut, "suite-result.json"), "utf8"));
       expect(suite.releaseDecision).toBe("DIAGNOSTIC_ONLY");
-      expect(suite.releaseRuleId).toBe("REL-RUNNER-NOT-COMPARABLE");
+      expect(suite.releaseRuleId).toBe("REL-EVIDENCE-SIMULATED");
     } finally {
       await rm(runOut, { recursive: true, force: true });
     }

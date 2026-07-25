@@ -134,12 +134,14 @@ awb gate \
 
 | 判定 | 終了コード | 意味 |
 | --- | ---: | --- |
-| `PASS` | `0` | 信頼済み live `workflow_trace` で阻害回帰なし |
-| `DIAGNOSTIC_ONLY` | `2` | simulated、不完全、または比較不能な証拠 |
+| `PASS` | `0` | 資格認定済みの独立 live `workflow_trace` で阻害回帰なし |
+| `DIAGNOSTIC_ONLY` | `2` | simulated、未認定 Observer、不完全、または比較不能な証拠 |
 | `BLOCK` | `1` | Hard Failure、回帰、無効 provenance、Tool Failure |
 
-Hard Failure は常にスコアより優先されます。例は本番副作用、Owner bypass、
-false PASS、必須 Join 欠落、重要成果物欠落、runner failure、無効 provenance です。
+現在実装済みの Hard Failure は常にスコアより優先されます。禁止 routing、Owner
+bypass、false PASS、必須 Join 欠落、artifact path drift、危険な本番副作用、無効
+provenance、未登録 failure code が対象です。runner failure と telemetry 不足は別の
+決定論的 BLOCK/診断条件であり、追加の registry code ではありません。
 
 ### 現在の Runner 証拠
 
@@ -183,6 +185,10 @@ Case 欠落、必須証拠欠落、trust anchor 欠落は PASS できません�
 観測完全性や OS/Network isolation までは証明しません。公開鍵を release trust root
 に追加する前に observer を検証してください。仕様は
 [Workflow-Trace Observer Contract](docs/workflow-trace-observer-contract.md) を参照してください。
+現在の Stage 1 admission は `qualificationStatus: missing` を記録するため、署名と
+公開鍵の検証に成功しても `DIAGNOSTIC_ONLY` です。実際の `GATE-PASS` は Stage 3
+の integrity-bound qualification artifact が検証された後にのみ利用できます。
+編集可能な run metadata で `valid` を自己申告しても無視されます。
 
 ## よく使うワークフロー
 

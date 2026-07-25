@@ -12,6 +12,7 @@ export interface GateResult {
     | "GATE-CANDIDATE-BLOCK"
     | "GATE-INCOMPARABLE"
     | "GATE-EVIDENCE-NOT-WORKFLOW-TRACE"
+    | "GATE-OBSERVER-UNQUALIFIED"
     | "GATE-CANDIDATE-DIAGNOSTIC"
     | "GATE-CANDIDATE-BELOW-PASS"
     | "GATE-PASS";
@@ -99,6 +100,20 @@ export function evaluateGate(comparison: ComparisonContent, verification: Compar
       reasons: [
         `Baseline evidence: ${comparison.baseline.provenanceStatus}/${comparison.baseline.evidenceKind}/${comparison.baseline.observationLevel}.`,
         `Candidate evidence: ${comparison.candidate.provenanceStatus}/${comparison.candidate.evidenceKind}/${comparison.candidate.observationLevel}.`
+      ]
+    };
+  }
+  if (
+    comparison.baseline.observerQualificationStatus !== "valid" ||
+    comparison.candidate.observerQualificationStatus !== "valid"
+  ) {
+    return {
+      ...base,
+      decision: "DIAGNOSTIC_ONLY",
+      ruleId: "GATE-OBSERVER-UNQUALIFIED",
+      reasons: [
+        `Baseline observer qualification: ${comparison.baseline.observerQualificationStatus}.`,
+        `Candidate observer qualification: ${comparison.candidate.observerQualificationStatus}.`
       ]
     };
   }

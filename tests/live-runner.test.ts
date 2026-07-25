@@ -187,7 +187,7 @@ describe("live Codex runner", () => {
       await execa("npm", ["run", "benchmark", "--", "materialize", "--target", "minimal-directory-agent", "--suite", "smoke", "--out", casesOut], {
         cwd
       });
-      await execa(
+      const execution = await execa(
         "npm",
         [
           "run",
@@ -204,17 +204,21 @@ describe("live Codex runner", () => {
           "gpt-5.3-codex-spark",
           "--timeout-ms",
           "10000",
+          "--mode",
+          "gate",
           "--out",
           runOut
         ],
         {
           cwd,
-          env: { AWB_CODEX_EXECUTABLE: fakeCodex }
+          env: { AWB_CODEX_EXECUTABLE: fakeCodex },
+          reject: false
         }
       );
 
       const runtime = JSON.parse(await readFile(path.join(runOut, "runtime-manifest.json"), "utf8"));
       const provenance = JSON.parse(await readFile(path.join(runOut, "provenance.json"), "utf8"));
+      const suite = JSON.parse(await readFile(path.join(runOut, "suite-result.json"), "utf8"));
       const events = JSON.parse(
         await readFile(path.join(runOut, "events", "minimal-directory-agent-smoke-001-static-contract.json"), "utf8")
       );
@@ -223,6 +227,12 @@ describe("live Codex runner", () => {
       );
       await execa("npm", ["run", "benchmark", "--", "report", "--run", runOut, "--format", "md,json"], { cwd });
       const report = await readFile(path.join(runOut, "report.md"), "utf8");
+      expect(execution.exitCode).not.toBe(0);
+      expect(`${execution.stdout}\n${execution.stderr}`).toContain("Gate mode blocked run");
+      expect(suite).toMatchObject({
+        releaseDecision: "DIAGNOSTIC_ONLY",
+        releaseRuleId: "REL-EVIDENCE-CONTRACT-SUMMARY"
+      });
       expect(runtime.runner.executionMode).toBe("live");
       expect(runtime.liveTranscriptCount).toBe(1);
       expect(provenance.conditions.evidenceKind).toBe("live");

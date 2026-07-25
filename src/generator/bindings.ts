@@ -6,6 +6,7 @@ export interface CaseBindingDefaults {
   owner?: string;
   joinId?: string;
   artifactPath?: string;
+  statePath?: string;
 }
 
 export interface NormalizedCaseBindings {
@@ -13,6 +14,7 @@ export interface NormalizedCaseBindings {
   owner?: string;
   joinId?: string;
   artifactPath?: string;
+  statePath?: string;
 }
 
 export function normalizeCaseBindings(
@@ -25,6 +27,7 @@ export function normalizeCaseBindings(
   const owner = resolveOwnerBinding(contract, bindings?.owner ?? defaults.owner);
   const joinId = resolveJoinBinding(contract, bindings?.joinId ?? defaults.joinId);
   const artifactPath = resolveArtifactPathBinding(contract, bindings?.artifactPath ?? defaults.artifactPath);
+  const statePath = resolveStatePathBinding(contract, bindings?.statePath ?? defaults.statePath);
 
   if (primaryRole) {
     normalized.primaryRole = primaryRole;
@@ -37,6 +40,9 @@ export function normalizeCaseBindings(
   }
   if (artifactPath) {
     normalized.artifactPath = artifactPath;
+  }
+  if (statePath) {
+    normalized.statePath = statePath;
   }
 
   return normalized;
@@ -97,6 +103,28 @@ export function resolveArtifactPathBinding(contract: ContractModel, value: strin
     return byId.path;
   }
   const byUniqueBasename = evidencePaths.filter((evidence) => path.basename(evidence.path) === path.basename(evidenceValue));
+  return byUniqueBasename.length === 1 ? byUniqueBasename[0].path : undefined;
+}
+
+export function resolveStatePathBinding(
+  contract: ContractModel,
+  value: string | undefined
+): string | undefined {
+  if (!value) {
+    return undefined;
+  }
+  const stateValue = stripKnownPrefix(value, ["state", "path"]);
+  const byPath = contract.states.find((state) => state.path === stateValue);
+  if (byPath) {
+    return byPath.path;
+  }
+  const byId = contract.states.find((state) => state.id === stateValue);
+  if (byId) {
+    return byId.path;
+  }
+  const byUniqueBasename = contract.states.filter(
+    (state) => path.basename(state.path) === path.basename(stateValue)
+  );
   return byUniqueBasename.length === 1 ? byUniqueBasename[0].path : undefined;
 }
 

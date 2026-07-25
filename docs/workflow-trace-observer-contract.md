@@ -123,6 +123,12 @@ AWB binds the signed trace to `workflow-trace.json`, `runtime-manifest.json`,
 wrong key, missing case, changed case template, missing required evidence, or absent trust anchor
 cannot produce PASS.
 
+Signature admission is necessary but not sufficient. In Stage 1 the provenance observer carries
+`qualificationStatus: missing`; the suite and gate remain `DIAGNOSTIC_ONLY`. A future valid
+qualification artifact must be integrity-bound to observer id, version, key fingerprint, corpus,
+mutation set, and qualification policy before `GATE-PASS` becomes reachable. Comparison ignores
+self-asserted `valid` values in editable provenance or runtime metadata.
+
 ## Observer Qualification
 
 Before adding a public key to a release trust policy, validate the observer with:
@@ -137,3 +143,5 @@ Before adding a public key to a release trust policy, validate the observer with
 
 An observer that has not passed this qualification can still produce diagnostic evidence, but
 its key should not be configured as a CI release trust anchor.
+
+AWB never enrolls a public key into a trust root automatically.

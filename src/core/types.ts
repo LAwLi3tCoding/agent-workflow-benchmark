@@ -13,6 +13,29 @@ export interface TargetRole {
   ownerScopes: string[];
 }
 
+export type TargetContractReview =
+  | {
+      status: "draft";
+    }
+  | {
+      status: "reviewed";
+      reviewerId: string;
+      reviewedAt: string;
+      artifactPath: string;
+      artifactHash: string;
+    };
+
+export interface ContractValidityArtifact {
+  schemaVersion: "0.1.0";
+  artifactType: "contract-validity";
+  targetId: string;
+  contractHash: string;
+  decision: "approved";
+  reviewerId: string;
+  reviewedAt: string;
+  reviewedContractFields: string[];
+}
+
 export interface TargetPack {
   schemaVersion: string;
   id: string;
@@ -39,6 +62,7 @@ export interface TargetPack {
     allowedExecutables: string[];
     forbiddenArgs: string[];
   };
+  contractReview: TargetContractReview;
   configPath: string;
 }
 
@@ -253,6 +277,7 @@ export type EvaluationDimension =
   | "ownership"
   | "gate"
   | "artifact"
+  | "state"
   | "join"
   | "sideEffect"
   | "telemetry"
@@ -290,6 +315,7 @@ export interface AgentWorkflowRecommendation {
     | "ownership"
     | "gate"
     | "artifact"
+    | "state"
     | "join"
     | "side-effect"
     | "telemetry"

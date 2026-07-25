@@ -1,6 +1,7 @@
 import { createHash, createPublicKey, verify } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import type { CaseRun, RunnerCapability, RunEvent } from "../core/types.js";
+import { getImplementedEventIds } from "../evaluation/evaluationContract.js";
 import { hashFile, stableJson } from "../utils/hash.js";
 import { readJson } from "../utils/io.js";
 import { redactSensitiveText } from "../utils/redaction.js";
@@ -310,18 +311,5 @@ function publicKeyFingerprint(der: Buffer): string {
 }
 
 const runEventTypes = new Set<RunEvent["type"]>([
-  "case_start",
-  "contract_observed",
-  "handoff",
-  "gate_decision",
-  "artifact_write",
-  "state_read",
-  "side_effect_attempt",
-  "token_usage",
-  "runner_start",
-  "runner_transcript",
-  "runner_result",
-  "runner_exit",
-  "hard_failure",
-  "case_end"
+  ...(getImplementedEventIds() as RunEvent["type"][])
 ]);

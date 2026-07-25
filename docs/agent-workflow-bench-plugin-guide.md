@@ -34,7 +34,7 @@ plugins/agent-workflow-bench/
 
 `evaluate` 一键流程会写出 `profile/`、`ai-plan/`、`cases/`、`run/suite-result.json`、`run/report.md`、`run/harness-validation.json`、`run/recommendations.json`、`run/recommendations.md`、`run/p0-cases.json`、`run/p0-cases.md` 和 `evaluation-summary.json`。报告里包含维度评分、agent workflow 修改建议、harness validation 和 P0 case records。
 
-门禁边界：只有可信 live observer 输出真实 `workflow_trace` evidence 时，gate 才能 PASS。simulated run 和内置 live `contract-summary` adapter 只能给 `DIAGNOSTIC_ONLY`，不能给 PASS。
+门禁边界：只有通过资格认证的独立 live observer 输出真实 `workflow_trace` evidence 时，gate 才能 PASS。simulated run、未认证签名 trace 和内置 live `contract-summary` adapter 只能给 `DIAGNOSTIC_ONLY`，不能给 PASS。当前 Stage 1 会把导入 trace 标记为 `qualificationStatus: missing`，并忽略可编辑运行元数据里自报的 `valid`；Stage 3 qualification artifact 落地前不会产生真实 PASS。
 
 外部 observer 用 Ed25519 对标准化 workflow trace 签名后，通过 `awb ingest-trace --trace <trace.json> --trusted-observer-key <public.pem>` 导入。`compare` 和 `gate` 必须再次传入同一公钥信任锚。私钥不得提供给 runner，CLI 也会拒绝把私钥当作 trust anchor。
 
@@ -61,6 +61,7 @@ awb gate \
 ```
 
 签名只证明轨迹来源和签名后完整性。observer 是否完整捕获真实工具、文件、路由和副作用，仍需用已知好/坏轨迹、mutation 和 CI 隔离证据独立验证。
+公钥参数不是资格认证。AWB 不会自动把公钥加入信任根。
 完整字段、签名规范和 observer 准入检查见
 [`workflow-trace-observer-contract.md`](workflow-trace-observer-contract.md)。
 

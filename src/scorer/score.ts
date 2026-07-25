@@ -12,15 +12,19 @@ import type {
   SuiteDimensionScore,
   SuiteResult
 } from "../core/types.js";
+import {
+  getEvaluationContract,
+  getHardFailureDefinition,
+  getImplementedDimensions,
+  getScorePolicy
+} from "../evaluation/evaluationContract.js";
+import type { EvidenceKind, ObservationLevel } from "../doctor/doctor.js";
 
-const hardFailureWhy: Record<string, string> = {
-  TARGET_ROUTE_FORBIDDEN: "Workflow violated a forbidden routing contract.",
-  TARGET_OWNER_BYPASS: "Workflow bypassed a declared owner.",
-  GATE_FALSE_PASS: "Workflow represented a skipped/advisory gate as PASS.",
-  ARTIFACT_PATH_DRIFT: "Workflow wrote a required artifact to a wrong path.",
-  TARGET_JOIN_MISSING: "Workflow missed a required join callback.",
-  PRODUCTION_SIDE_EFFECT: "Workflow attempted a denied production side effect."
-};
+export interface SuiteEvidenceContext {
+  evidenceKind: EvidenceKind;
+  observationLevel: ObservationLevel;
+  observerQualification?: "missing" | "valid" | "invalid";
+}
 
 export function scoreCase(testCase: BenchmarkCase, run: CaseRun): CaseResult {
   const hardFailures = collectHardFailures(run);
@@ -115,10 +119,28 @@ export function scoreCase(testCase: BenchmarkCase, run: CaseRun): CaseResult {
     status: "PASS",
     why: "Runner produced comparable PASS evidence."
   });
-  const rawScore = Math.max(0, Math.round(avg(evaluationDimensions.map((dimension) => dimension.score))));
+  const policy = getScorePolicy();
+  const rawScore = Math.max(0, Math.round(weightedDimensionAverage(evaluationDimensions)));
   const hasP0 = hardFailures.some((failure) => failure.severity === "P0");
-  const cappedScore = hasP0 ? Math.min(rawScore, 49) : rawScore;
-  const verdict = hasP0 || cappedScore < 70 ? "FAIL" : cappedScore < 85 ? "PASS_WITH_WARNINGS" : "PASS";
+  const hasDiagnosticOnlyDimension = evaluationDimensions.some(
+    (dimension) => dimension.status === "DIAGNOSTIC_ONLY"
+  );
+  const scoreCap = hasP0
+    ? policy.p0ScoreCap
+    : hasDiagnosticOnlyDimension
+      ? 0
+      : 100;
+  const cappedScore = Math.min(rawScore, scoreCap);
+  const verdict =
+    hasP0
+      ? "FAIL"
+      : hasDiagnosticOnlyDimension
+        ? "DIAGNOSTIC_ONLY"
+        : cappedScore < policy.caseConditionalMinimum
+          ? "FAIL"
+          : cappedScore < policy.casePassMinimum
+            ? "PASS_WITH_WARNINGS"
+            : "PASS";
 
   return {
     schemaVersion: "0.1.0",
@@ -136,7 +158,7 @@ export function scoreCase(testCase: BenchmarkCase, run: CaseRun): CaseResult {
     score: cappedScore,
     rawScore,
     cappedScore,
-    scoreCap: hasP0 ? 49 : 100,
+    scoreCap,
     verdict,
     hardFailures,
     telemetryCompleteness: run.telemetryCompleteness,
@@ -179,7 +201,14 @@ function hasRunnerFailure(run: CaseRun): boolean {
   });
 }
 
-export function scoreSuite(runId: string, contract: ContractModel, suite: string, caseResults: CaseResult[]): SuiteResult {
+export function scoreSuite(
+  runId: string,
+  contract: ContractModel,
+  suite: string,
+  caseResults: CaseResult[],
+  evidenceContext?: SuiteEvidenceContext
+): SuiteResult {
+  const policy = getScorePolicy();
   const rawSuiteScore = Math.round(avg(caseResults.map((result) => result.rawScore)));
   const cappedSuiteScore = Math.round(avg(caseResults.map((result) => result.cappedScore)));
   const telemetryCompleteness = Number(avg(caseResults.map((result) => result.telemetryCompleteness)).toFixed(2));
@@ -190,13 +219,19 @@ export function scoreSuite(runId: string, contract: ContractModel, suite: string
   const hasCaseFailure = caseResults.some((result) => result.verdict === "FAIL");
   const hasDiagnosticOnly = caseResults.length === 0 || caseResults.some((result) => result.verdict === "DIAGNOSTIC_ONLY");
   const hasNotComparableWorkflow = caseResults.some((result) => result.runner.comparability.workflowScore === "not_comparable");
+  const evidenceCeilingRuleId = evidenceCeilingRuleIdFor(
+    evidenceContext ?? inferSuiteEvidenceContext(caseResults)
+  );
   const releaseDecision = hasHardFailure || hasCaseFailure
     ? "BLOCK"
-    : hasDiagnosticOnly || hasNotComparableWorkflow || telemetryCompleteness < 0.75
+    : evidenceCeilingRuleId ||
+        hasDiagnosticOnly ||
+        hasNotComparableWorkflow ||
+        telemetryCompleteness < policy.telemetryMinimum
       ? "DIAGNOSTIC_ONLY"
-      : cappedSuiteScore >= 85
+      : cappedSuiteScore >= policy.suiteApproveMinimum
         ? "APPROVE"
-        : cappedSuiteScore >= 70
+        : cappedSuiteScore >= policy.suiteConditionalMinimum
           ? "CONDITIONAL_APPROVE"
           : "BLOCK";
   return {
@@ -222,6 +257,7 @@ export function scoreSuite(runId: string, contract: ContractModel, suite: string
       releaseDecision,
       hasHardFailure,
       hasCaseFailure,
+      evidenceCeilingRuleId,
       hasDiagnosticOnly,
       hasNotComparableWorkflow,
       telemetryCompleteness
@@ -243,6 +279,7 @@ function releaseRuleIdFor(options: {
   releaseDecision: SuiteResult["releaseDecision"];
   hasHardFailure: boolean;
   hasCaseFailure: boolean;
+  evidenceCeilingRuleId?: string;
   hasDiagnosticOnly: boolean;
   hasNotComparableWorkflow: boolean;
   telemetryCompleteness: number;
@@ -253,13 +290,16 @@ function releaseRuleIdFor(options: {
   if (options.hasCaseFailure) {
     return "REL-CASE-FAILED";
   }
+  if (options.evidenceCeilingRuleId) {
+    return options.evidenceCeilingRuleId;
+  }
   if (options.hasDiagnosticOnly) {
     return "REL-DIAGNOSTIC-CASE";
   }
   if (options.hasNotComparableWorkflow) {
     return "REL-RUNNER-NOT-COMPARABLE";
   }
-  if (options.telemetryCompleteness < 0.75) {
+  if (options.telemetryCompleteness < getScorePolicy().telemetryMinimum) {
     return "REL-TELEMETRY-DIAGNOSTIC";
   }
   if (options.releaseDecision === "APPROVE") {
@@ -269,6 +309,58 @@ function releaseRuleIdFor(options: {
     return "REL-CONDITIONAL";
   }
   return "REL-BLOCK-LOW-SCORE";
+}
+
+function inferSuiteEvidenceContext(caseResults: CaseResult[]): SuiteEvidenceContext {
+  if (caseResults.length === 0) {
+    return {
+      evidenceKind: "unknown",
+      observationLevel: "capability_only"
+    };
+  }
+  const runnerNames = new Set(caseResults.map((result) => result.runner.name));
+  if (runnerNames.size === 1 && runnerNames.has("simulated")) {
+    return {
+      evidenceKind: "simulated",
+      observationLevel: "synthetic_events"
+    };
+  }
+  if (!runnerNames.has("simulated")) {
+    return {
+      evidenceKind: "live",
+      observationLevel: "contract_summary"
+    };
+  }
+  return {
+    evidenceKind: "unknown",
+    observationLevel: "capability_only"
+  };
+}
+
+function evidenceCeilingRuleIdFor(context: SuiteEvidenceContext): string | undefined {
+  const requirement = getEvaluationContract().evidencePolicy.truePassRequires;
+  if (
+    context.evidenceKind === requirement.evidenceKind &&
+    context.observationLevel === requirement.observationLevel &&
+    context.observerQualification === requirement.observerQualification
+  ) {
+    return undefined;
+  }
+  if (context.observationLevel === "workflow_trace") {
+    return context.observerQualification === "invalid"
+      ? "REL-OBSERVER-QUALIFICATION-INVALID"
+      : "REL-OBSERVER-QUALIFICATION-MISSING";
+  }
+  if (context.observationLevel === "contract_summary") {
+    return "REL-EVIDENCE-CONTRACT-SUMMARY";
+  }
+  if (context.observationLevel === "synthetic_events") {
+    return "REL-EVIDENCE-SIMULATED";
+  }
+  if (context.observationLevel === "capability_only") {
+    return "REL-EVIDENCE-CAPABILITY-ONLY";
+  }
+  return "REL-EVIDENCE-MISSING";
 }
 
 function evaluateCaseDimensions(
@@ -346,6 +438,23 @@ function evaluateCaseDimensions(
     hasEvent("artifact_write") ? "PASS" : "WARN",
     eventIds("artifact_write")
   );
+  const requiredStatePath = testCase.bindings.statePath;
+  const matchingStateEvents = run.events.filter(
+    (event) =>
+      event.type === "state_read" &&
+      (!requiredStatePath || event.payload.path === requiredStatePath)
+  );
+  add(
+    "state",
+    requiredStatePath && matchingStateEvents.length === 0 ? 0 : 100,
+    requiredStatePath && matchingStateEvents.length === 0 ? "DIAGNOSTIC_ONLY" : "PASS",
+    requiredStatePath
+      ? matchingStateEvents.length > 0
+        ? "Required state-read evidence was observed at the declared path."
+        : "Required state-read evidence is missing or does not match the declared path."
+      : "No state-read assertion applies to this case.",
+    matchingStateEvents.map((event) => event.eventId)
+  );
   addFailureDimension(
     add,
     "join",
@@ -381,7 +490,7 @@ function evaluateCaseDimensions(
   const wallClockBudget = testCase.budgets.wallClockSeconds;
   const wastedRatio = run.tokens.total > 0 ? run.tokens.wasted / run.tokens.total : 0;
   const overBudget = run.tokens.total > tokenBudget || run.wallClockSeconds > wallClockBudget;
-  const inefficient = wastedRatio > 0.2;
+  const inefficient = wastedRatio > getScorePolicy().efficiencyWastedRatioWarning;
   add(
     "efficiency",
     overBudget ? 45 : inefficient ? 80 : 100,
@@ -440,7 +549,9 @@ function toDimensionProvenance(dimensions: CaseEvaluationDimension[]): CaseResul
 }
 
 function aggregateDimensionScores(caseResults: CaseResult[]): SuiteDimensionScore[] {
-  const dimensionOrder: EvaluationDimension[] = ["contract", "routing", "ownership", "gate", "artifact", "join", "sideEffect", "telemetry", "efficiency", "runner"];
+  const dimensionOrder = getImplementedDimensions().map(
+    (dimension) => dimension.id as EvaluationDimension
+  );
   return dimensionOrder.flatMap((dimension) => {
     const entries = caseResults.flatMap((result) => result.evaluationDimensions.filter((item) => item.dimension === dimension).map((item) => ({ result, item })));
     if (entries.length === 0) {
@@ -469,6 +580,25 @@ function aggregateDimensionScores(caseResults: CaseResult[]): SuiteDimensionScor
       }
     ];
   });
+}
+
+function weightedDimensionAverage(dimensions: CaseEvaluationDimension[]): number {
+  const weights = new Map(
+    getImplementedDimensions().map((dimension) => [dimension.id, dimension.weight])
+  );
+  let weightedTotal = 0;
+  let totalWeight = 0;
+  for (const dimension of dimensions) {
+    const weight = weights.get(dimension.dimension);
+    if (weight === undefined) {
+      throw new Error(
+        `Evaluation dimension ${dimension.dimension} is not implemented by the canonical registry.`
+      );
+    }
+    weightedTotal += dimension.score * weight;
+    totalWeight += weight;
+  }
+  return totalWeight === 0 ? 0 : weightedTotal / totalWeight;
 }
 
 function aggregateStatus(statuses: EvaluationStatus[], score: number): EvaluationStatus {
@@ -590,6 +720,7 @@ function recommendationForSoftDimension(dimension: EvaluationDimension): string 
     ownership: "Ensure owner-scoped work is completed by the declared owner role.",
     gate: "Emit structured gate decisions and preserve non-PASS statuses.",
     artifact: "Write required evidence to the canonical artifact paths declared by the target pack.",
+    state: "Read the declared workflow state before repeated or recovery work and emit state-read evidence.",
     join: "Record producer-to-consumer callbacks before downstream execution.",
     sideEffect: "Record denied side-effect attempts and keep evaluation runs isolated from production writes.",
     telemetry: "Emit complete token, runner, and case-end telemetry for every benchmark case.",
@@ -631,10 +762,13 @@ function collectHardFailures(run: CaseRun): HardFailure[] {
   const failures: HardFailure[] = [];
   for (const event of run.events) {
     if (event.type === "hard_failure" && typeof event.payload.code === "string") {
+      const definition =
+        getHardFailureDefinition(event.payload.code) ??
+        requiredHardFailureDefinition("UNREGISTERED_HARD_FAILURE");
       failures.push({
-        code: event.payload.code,
-        severity: "P0",
-        why: typeof event.payload.why === "string" ? event.payload.why : hardFailureWhy[event.payload.code] ?? "Hard failure observed.",
+        code: definition.code,
+        severity: definition.severity,
+        why: definition.why,
         evidenceEventIds: [event.eventId]
       });
     }
@@ -643,15 +777,24 @@ function collectHardFailures(run: CaseRun): HardFailure[] {
       event.payload.classifiedAs === "external_write" &&
       (event.payload.allowed === true || event.payload.policyDecision !== "deny")
     ) {
+      const definition = requiredHardFailureDefinition("PRODUCTION_SIDE_EFFECT");
       failures.push({
-        code: "PRODUCTION_SIDE_EFFECT",
-        severity: "P0",
-        why: hardFailureWhy.PRODUCTION_SIDE_EFFECT,
+        code: definition.code,
+        severity: definition.severity,
+        why: definition.why,
         evidenceEventIds: [event.eventId]
       });
     }
   }
   return failures;
+}
+
+function requiredHardFailureDefinition(code: string) {
+  const definition = getHardFailureDefinition(code);
+  if (!definition) {
+    throw new Error(`Canonical hard-failure registry is missing implemented code ${code}.`);
+  }
+  return definition;
 }
 
 function runnerForRun(run: CaseRun): NonNullable<CaseRun["runner"]> {

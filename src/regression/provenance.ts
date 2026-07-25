@@ -39,6 +39,7 @@ export interface RunProvenance {
       id: string;
       version: string;
       keyFingerprint: string;
+      qualificationStatus: ObserverQualificationStatus;
     };
     executionMode: "live" | "simulated";
     evidenceKind: EvidenceKind;
@@ -61,6 +62,8 @@ export interface RunProvenance {
     artifacts: Array<{ ref: string; sha256: string }>;
   };
 }
+
+export type ObserverQualificationStatus = "missing" | "valid" | "invalid";
 
 export async function buildRunProvenance(options: {
   profile: ProfileResult;
@@ -101,7 +104,8 @@ export async function buildRunProvenance(options: {
           observer: {
             id: options.verifiedTrace.bundle.observer.id,
             version: options.verifiedTrace.bundle.observer.version,
-            keyFingerprint: options.verifiedTrace.keyFingerprint
+            keyFingerprint: options.verifiedTrace.keyFingerprint,
+            qualificationStatus: "missing" as const
           }
         }
       : {}),

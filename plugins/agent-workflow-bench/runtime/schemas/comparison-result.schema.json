@@ -62,9 +62,21 @@
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["code", "source", "why"],
+        "required": ["code", "severity", "source", "why"],
         "properties": {
-          "code": { "type": "string" },
+          "code": {
+            "enum": [
+              "TARGET_ROUTE_FORBIDDEN",
+              "TARGET_OWNER_BYPASS",
+              "GATE_FALSE_PASS",
+              "ARTIFACT_PATH_DRIFT",
+              "TARGET_JOIN_MISSING",
+              "PRODUCTION_SIDE_EFFECT",
+              "PROVENANCE_INVALID",
+              "UNREGISTERED_HARD_FAILURE"
+            ]
+          },
+          "severity": { "enum": ["P0", "P1"] },
           "source": { "enum": ["baseline", "candidate", "comparison"] },
           "caseId": { "type": "string" },
           "why": { "type": "string" }
@@ -112,7 +124,8 @@
         "score",
         "provenanceStatus",
         "evidenceKind",
-        "observationLevel"
+        "observationLevel",
+        "observerQualificationStatus"
       ],
       "properties": {
         "targetId": { "type": "string" },
@@ -122,7 +135,8 @@
         "score": { "type": "number" },
         "provenanceStatus": { "enum": ["VALID", "MISSING", "INVALID"] },
         "evidenceKind": { "enum": ["live", "simulated", "unknown"] },
-        "observationLevel": { "enum": ["workflow_trace", "contract_summary", "synthetic_events", "capability_only", "unknown"] }
+        "observationLevel": { "enum": ["workflow_trace", "contract_summary", "synthetic_events", "capability_only", "unknown"] },
+        "observerQualificationStatus": { "enum": ["missing", "valid", "invalid", "not_applicable"] }
       }
     }
   }

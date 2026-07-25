@@ -1,19 +1,11 @@
-import { resolveArtifactPathBinding, resolveJoinBinding, resolveOwnerBinding, resolveRoleBinding } from "./bindings.js";
+import { getImplementedCoverageTargets } from "../evaluation/evaluationContract.js";
+import { resolveArtifactPathBinding, resolveJoinBinding, resolveOwnerBinding, resolveRoleBinding, resolveStatePathBinding } from "./bindings.js";
 import { dedupeCaseIds } from "./caseIds.js";
-const coreDimensions = [
-    ["dimension:entrypoint", "Entrypoint and admission path"],
-    ["dimension:owner-routing", "Declared owner routing and handoff"],
-    ["dimension:gate-statuses", "Gate status semantics"],
-    ["dimension:artifacts", "Required artifact production"],
-    ["dimension:states", "State reads and recovery"],
-    ["dimension:side-effect-policy", "Side-effect and command policy"],
-    ["dimension:budget-efficiency", "Wall-clock and token budget behavior"]
-];
 export function deriveWorkflowCoverageTargets(contract) {
     const targets = [];
     const add = (target) => targets.push(target);
-    for (const [id, label] of coreDimensions) {
-        add({ id, category: "dimension", label, required: true });
+    for (const target of getImplementedCoverageTargets()) {
+        add({ id: target.id, category: "dimension", label: target.label, required: true });
     }
     if (contract.routing.forbidden.length > 0) {
         add({ id: "dimension:forbidden-routing", category: "dimension", label: "Forbidden route prevention", required: true });
@@ -98,6 +90,7 @@ export function validateAiCasePlan(plan, contract, options = {}) {
         validateOwnerBinding(invalidBindings, contract, testCase.id, testCase.bindings?.owner);
         validateJoinBinding(invalidBindings, contract, testCase.id, testCase.bindings?.joinId);
         validateArtifactBinding(invalidBindings, contract, testCase.id, testCase.bindings?.artifactPath);
+        validateStateBinding(invalidBindings, contract, testCase.id, testCase.bindings?.statePath);
     }
     const missing = targets.filter((target) => target.required && !covered.has(target.id)).map((target) => target.id);
     const warnings = buildWarnings(plan, targets.length, covered.size, missing.length, unknown.size);
@@ -140,6 +133,16 @@ function validateArtifactBinding(invalidBindings, contract, caseId, value) {
         });
     }
 }
+function validateStateBinding(invalidBindings, contract, caseId, value) {
+    if (value && !resolveStatePathBinding(contract, value)) {
+        invalidBindings.push({
+            caseId,
+            field: "statePath",
+            value,
+            why: "State path binding is not declared in ContractModel states."
+        });
+    }
+}
 function normalizeBindings(bindings, contract) {
     const output = { ...bindings };
     if (output.primaryRole) {
@@ -154,6 +157,9 @@ function normalizeBindings(bindings, contract) {
     if (output.artifactPath) {
         output.artifactPath = resolveArtifactPathBinding(contract, output.artifactPath) ?? output.artifactPath.trim();
     }
+    if (output.statePath) {
+        output.statePath = resolveStatePathBinding(contract, output.statePath) ?? output.statePath.trim();
+    }
     return output;
 }
 function inferBindingsFromCoverageTags(contract, coverageTags) {
@@ -163,6 +169,7 @@ function inferBindingsFromCoverageTags(contract, coverageTags) {
     const owner = unique(claims.owner.map((claim) => claim.value));
     const joinId = unique(claims.joinId.map((claim) => claim.value));
     const artifactPath = unique(claims.artifactPath.map((claim) => claim.value));
+    const statePath = unique(claims.statePath.map((claim) => claim.value));
     if (primaryRole) {
         inferred.primaryRole = primaryRole;
     }
@@ -174,6 +181,9 @@ function inferBindingsFromCoverageTags(contract, coverageTags) {
     }
     if (artifactPath) {
         inferred.artifactPath = artifactPath;
+    }
+    if (statePath) {
+        inferred.statePath = statePath;
     }
     return inferred;
 }
@@ -196,6 +206,9 @@ function validateBindingClaims(invalidBindings, contract, caseId, coverageTags, 
     }
     if (!validateClaimedBinding(invalidBindings, caseId, "artifactPath", bindings?.artifactPath, claims.artifactPath.map((claim) => claim.value))) {
         recordInvalid(claims.artifactPath.map((claim) => claim.tag));
+    }
+    if (!validateClaimedBinding(invalidBindings, caseId, "statePath", bindings?.statePath, claims.statePath.map((claim) => claim.value))) {
+        recordInvalid(claims.statePath.map((claim) => claim.tag));
     }
     return invalidClaimTags;
 }
@@ -238,7 +251,8 @@ function collectBindingClaims(contract, coverageTags) {
         primaryRole: [],
         owner: [],
         joinId: [],
-        artifactPath: []
+        artifactPath: [],
+        statePath: []
     };
     for (const tag of coverageTags) {
         if (tag.startsWith("role:")) {
@@ -259,10 +273,16 @@ function collectBindingClaims(contract, coverageTags) {
                 claims.joinId.push({ tag, value: join });
             }
         }
-        else if (tag.startsWith("artifact:") || tag.startsWith("state:")) {
+        else if (tag.startsWith("artifact:")) {
             const evidencePath = resolveArtifactPathBinding(contract, tag);
             if (evidencePath) {
                 claims.artifactPath.push({ tag, value: evidencePath });
+            }
+        }
+        else if (tag.startsWith("state:")) {
+            const statePath = resolveStatePathBinding(contract, tag);
+            if (statePath) {
+                claims.statePath.push({ tag, value: statePath });
             }
         }
     }

@@ -1,0 +1,21 @@
+{
+  "schemaVersion": "0.1.0",
+  "artifactType": "contract-validity",
+  "targetId": "dummy-cli-agent",
+  "contractHash": "sha256:647a56e12e5e958c155b13a0bfbffdab87629bffb741983cf2f6f08b3d8b7eac",
+  "decision": "approved",
+  "reviewerId": "generic-fixture-maintainer",
+  "reviewedAt": "2026-07-25T00:00:00.000Z",
+  "reviewedContractFields": [
+    "entrypoints",
+    "roles",
+    "statuses",
+    "requiredOwners",
+    "routing",
+    "joins",
+    "artifacts",
+    "states",
+    "budgets",
+    "commandPolicy"
+  ]
+}

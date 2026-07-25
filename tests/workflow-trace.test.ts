@@ -49,7 +49,7 @@ describe("attested workflow trace ingestion", () => {
     }
   });
 
-  test("admits a signed external observer trace and produces a real paired PASS", async () => {
+  test("keeps a signed but unqualified external observer trace diagnostic-only", async () => {
     const baselineOut = path.join(root, "baseline-run");
     const candidateOut = path.join(root, "candidate-run");
     await ingestTrace(baselineTracePath, publicKeyPath, baselineOut);
@@ -64,8 +64,13 @@ describe("attested workflow trace ingestion", () => {
     expect(baselineProvenance.conditions.observer).toMatchObject({
       id: "fixture-observer",
       version: "1.0.0",
-      keyFingerprint: expect.stringMatching(/^sha256:[a-f0-9]{64}$/u)
+      keyFingerprint: expect.stringMatching(/^sha256:[a-f0-9]{64}$/u),
+      qualificationStatus: "missing"
     });
+    expect(
+      JSON.parse(await readFile(path.join(baselineOut, "suite-result.json"), "utf8"))
+        .releaseDecision
+    ).toBe("DIAGNOSTIC_ONLY");
     expect(runtime.workflowTrace).toMatchObject({
       verified: true,
       ref: "workflow-trace.json",
@@ -112,10 +117,70 @@ describe("attested workflow trace ingestion", () => {
       ],
       { cwd, reject: false }
     );
-    expect(gate.exitCode).toBe(0);
+    expect(gate.exitCode).toBe(2);
     expect(JSON.parse(await readFile(path.join(gateOut, "gate-result.json"), "utf8"))).toMatchObject({
-      decision: "PASS",
-      ruleId: "GATE-PASS",
+      decision: "DIAGNOSTIC_ONLY",
+      ruleId: "GATE-OBSERVER-UNQUALIFIED",
+      comparisonIntegrity: "VALID"
+    });
+  }, 30_000);
+
+  test("rehashed run metadata cannot self-assert Observer qualification", async () => {
+    const baselineOut = path.join(root, "baseline-self-qualified");
+    const candidateOut = path.join(root, "candidate-self-qualified");
+    await ingestTrace(baselineTracePath, publicKeyPath, baselineOut);
+    await ingestTrace(candidateTracePath, publicKeyPath, candidateOut);
+    await selfAssertObserverQualification(baselineOut);
+    await selfAssertObserverQualification(candidateOut);
+
+    const comparisonOut = path.join(root, "comparison-self-qualified");
+    await execa(
+      "node",
+      [
+        "--import",
+        "tsx",
+        "src/cli/index.ts",
+        "compare",
+        "--baseline",
+        baselineOut,
+        "--candidate",
+        candidateOut,
+        "--trusted-observer-key",
+        publicKeyPath,
+        "--out",
+        comparisonOut
+      ],
+      { cwd }
+    );
+    const comparison = JSON.parse(
+      await readFile(path.join(comparisonOut, "comparison-result.json"), "utf8")
+    );
+    expect(comparison.baseline.observerQualificationStatus).toBe("missing");
+    expect(comparison.candidate.observerQualificationStatus).toBe("missing");
+
+    const gateOut = path.join(root, "gate-self-qualified");
+    const gate = await execa(
+      "node",
+      [
+        "--import",
+        "tsx",
+        "src/cli/index.ts",
+        "gate",
+        "--comparison",
+        path.join(comparisonOut, "comparison-result.json"),
+        "--trusted-observer-key",
+        publicKeyPath,
+        "--out",
+        gateOut
+      ],
+      { cwd, reject: false }
+    );
+    expect(gate.exitCode).toBe(2);
+    expect(
+      JSON.parse(await readFile(path.join(gateOut, "gate-result.json"), "utf8"))
+    ).toMatchObject({
+      decision: "DIAGNOSTIC_ONLY",
+      ruleId: "GATE-OBSERVER-UNQUALIFIED",
       comparisonIntegrity: "VALID"
     });
   }, 30_000);
@@ -315,6 +380,31 @@ async function ingestTrace(tracePath: string, keyPath: string, out: string, reje
   );
 }
 
+async function selfAssertObserverQualification(runDir: string): Promise<void> {
+  const suitePath = path.join(runDir, "suite-result.json");
+  const runtimePath = path.join(runDir, "runtime-manifest.json");
+  const provenancePath = path.join(runDir, "provenance.json");
+  const suite = JSON.parse(await readFile(suitePath, "utf8"));
+  const runtime = JSON.parse(await readFile(runtimePath, "utf8"));
+  const provenance = JSON.parse(await readFile(provenancePath, "utf8"));
+
+  suite.releaseDecision = "APPROVE";
+  runtime.workflowTrace.observer.qualificationStatus = "valid";
+  provenance.conditions.observer.qualificationStatus = "valid";
+  const { conditionsHash: _conditionsHash, ...conditionBase } = provenance.conditions;
+  provenance.conditions.conditionsHash = sha256Text(canonicalJson(conditionBase));
+
+  await writeFile(suitePath, `${JSON.stringify(suite, null, 2)}\n`);
+  await writeFile(runtimePath, `${JSON.stringify(runtime, null, 2)}\n`);
+  provenance.integrity.artifacts.find(
+    (artifact: { ref: string }) => artifact.ref === "suite-result.json"
+  ).sha256 = await sha256File(suitePath);
+  provenance.integrity.artifacts.find(
+    (artifact: { ref: string }) => artifact.ref === "runtime-manifest.json"
+  ).sha256 = await sha256File(runtimePath);
+  await writeFile(provenancePath, `${JSON.stringify(provenance, null, 2)}\n`);
+}
+
 function makeTracePayload(targetId: string, contractHash: string, cases: BenchmarkCase[], runLabel: string) {
   const runner = {
     name: "codex",
@@ -434,6 +524,10 @@ function publicKeyFingerprint(der: Buffer): string {
 
 async function sha256File(filePath: string): Promise<string> {
   return `sha256:${createHash("sha256").update(await readFile(filePath)).digest("hex")}`;
+}
+
+function sha256Text(value: string): string {
+  return `sha256:${createHash("sha256").update(value).digest("hex")}`;
 }
 
 function semanticCaseSetHash(cases: BenchmarkCase[]): string {

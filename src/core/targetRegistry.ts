@@ -4,6 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import YAML from "yaml";
 import type { TargetPack } from "./types.js";
+import { assertRegisteredTargetReview } from "./targetReview.js";
 
 const repoRoot = findBenchmarkRoot();
 
@@ -27,7 +28,9 @@ export async function loadTargetPack(targetId: string, options: { rootOverride?:
     : path.isAbsolute(raw.root)
       ? raw.root
       : path.resolve(repoRoot, raw.root);
-  return { ...raw, root, configPath };
+  const target = { ...raw, root, configPath };
+  await assertRegisteredTargetReview(target, repoRoot);
+  return target;
 }
 
 export async function listTargetIds(): Promise<string[]> {

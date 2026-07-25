@@ -12,7 +12,7 @@ awb compare --baseline <baseline-run> --candidate <candidate-run> --out reports/
 awb gate --comparison reports/comparisons/"$ARGUMENTS"/comparison-result.json --out reports/gates/"$ARGUMENTS"
 ```
 
-Gate exit codes are `0` for PASS, `2` for DIAGNOSTIC_ONLY, and `1` for BLOCK or tool/runtime failure. PASS requires trusted live `workflow_trace` evidence. Simulated runs and current live `contract-summary` adapters are diagnostic-only and cannot PASS the CI gate.
+Gate exit codes are `0` for PASS, `2` for DIAGNOSTIC_ONLY, and `1` for BLOCK or tool/runtime failure. PASS requires a qualified independent live `workflow_trace`. Simulated runs, current live `contract-summary` adapters, and the current signed-but-unqualified Stage 1 trace path are diagnostic-only and cannot PASS the CI gate.
 
 For a release-grade externally observed run, ingest the Ed25519-signed trace and pass the same public trust anchor to comparison and gate:
 
@@ -22,7 +22,7 @@ awb compare --baseline <baseline-run> --candidate <candidate-run> --trusted-obse
 awb gate --comparison <comparison-dir>/comparison-result.json --trusted-observer-key <public.pem> --out <gate-dir>
 ```
 
-Never make the observer private key available to the evaluated runner. The signature proves origin and post-signing integrity; validate observer completeness separately with controlled good/bad traces and mutations.
+Never make the observer private key available to the evaluated runner. The signature proves origin and post-signing integrity; it is not qualification. Validate observer completeness separately with controlled good/bad traces and mutations, and never auto-enroll its public key.
 
 Legacy compatible pipeline: `evaluate` for the complete flow, or `plan-cases` -> inspect `ai-case-plan-validation.json` -> `materialize --strategy ai` -> `run --execution live` when you need manual stage control.
 

@@ -131,12 +131,13 @@ scorer，但证据等级仍是 `DIAGNOSTIC_ONLY`。
 
 | 结论 | 退出码 | 含义 |
 | --- | ---: | --- |
-| `PASS` | `0` | 可信 live `workflow_trace`，且没有阻断性回归 |
-| `DIAGNOSTIC_ONLY` | `2` | simulated、证据不完整或不可比较 |
+| `PASS` | `0` | 已通过资格认证的独立 live `workflow_trace`，且没有阻断性回归 |
+| `DIAGNOSTIC_ONLY` | `2` | simulated、Observer 未认证、证据不完整或不可比较 |
 | `BLOCK` | `1` | Hard Failure、回归、无效 provenance 或工具失败 |
 
-Hard Failure 永远优先于分数，例如生产副作用、Owner 绕过、假 PASS、缺失必需 Join、
-关键制品丢失、runner 失败和无效 provenance。
+当前已实现的 Hard Failure 永远优先于分数：禁止路由、Owner 绕过、假 PASS、缺失必需
+Join、artifact path drift、不安全生产副作用、无效 provenance 和未注册失败码。runner
+失败与 telemetry 不足属于独立的确定性 BLOCK/诊断条件，不是额外的 registry code。
 
 ### 当前 Runner 证据等级
 
@@ -179,6 +180,10 @@ comparison snapshot 和 gate 重算。Trace 被修改、公钥错误、case 缺�
 签名只能证明 observer 身份和签名后的完整性，不能证明 observer 采集完备性或
 OS/网络隔离有效性。将公钥加入发布信任根前，必须先鉴定 observer。规范见
 [Workflow-Trace Observer Contract](docs/workflow-trace-observer-contract.md)。
+当前 Stage 1 导入路径会记录 `qualificationStatus: missing`，因此即使签名和公钥
+验证成功也只能得到 `DIAGNOSTIC_ONLY`；真实 `GATE-PASS` 保留给 Stage 3
+生成并验证完整性绑定 qualification artifact 之后的证据。手工把可编辑运行元数据
+改成 `valid` 不会生效。
 
 ## 常用工作流
 

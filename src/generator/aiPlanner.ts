@@ -57,7 +57,7 @@ export function buildAiCasePlanPrompt(contract: ContractModel, options: { maxCas
     "Do not start from a fixed template list. Use the ContractModel to infer risk areas, operations, oracle evidence, and failure modes.",
     "Keep cases executable by a benchmark runner: every case must have concrete operationSequence steps, oracleIds, expectedHardFailures, coverageTags, scoringRubric, and optional bindings.",
     "Case ids must be unique after kebab-case normalization; do not emit two ids that only differ by spaces, punctuation, or case.",
-    "Binding rules: use ContractModel role ids for primaryRole and owner; use requiredOwners only to map an owner scope to its declared role; use bare join ids for joinId; use declared artifact or state paths for artifactPath.",
+    "Binding rules: use ContractModel role ids for primaryRole and owner; use requiredOwners only to map an owner scope to its declared role; use bare join ids for joinId; use declared artifact paths for artifactPath and declared state paths for statePath.",
     "Coverage tags may use category prefixes such as role:, owner:, join:, route:, artifact:, state:, status:, and policy:, but bindings should be canonical values without those prefixes.",
     `Coverage mode: ${coverageMode}. Recommended case count for this target is ${recommendedCaseCount}; generate ${requestedCaseCount} cases in this planning pass and never exceed ${options.maxCases}.`,
     "",
@@ -101,7 +101,8 @@ export function buildAiCasePlanPrompt(contract: ContractModel, options: { maxCas
               primaryRole: "role id when relevant",
               owner: "declared role id when relevant; if reasoning from an owner scope, map through requiredOwners first",
               joinId: "bare join id when relevant, without join: prefix",
-              artifactPath: "declared artifact path when relevant, not an artifact coverage tag"
+              artifactPath: "declared artifact path when relevant, not an artifact coverage tag",
+              statePath: "declared state path when state recovery is under test"
             }
           }
         ]

@@ -1,6 +1,7 @@
 import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
-import { hashFile, sha256Text, stableJson } from "../utils/hash.js";
+import { buildContractModel } from "../core/contractModel.js";
+import { hashFile } from "../utils/hash.js";
 export async function profileTarget(target) {
     const scannedFiles = [];
     const missingFiles = [];
@@ -35,27 +36,7 @@ export async function profileTarget(target) {
         warnings.push("No required joins declared; required-join template will use notApplicable for stricter targets.");
     }
     const portableRoot = "target://root";
-    const contractBase = {
-        schemaVersion: "0.1.0",
-        targetId: target.id,
-        targetType: target.targetType,
-        root: portableRoot,
-        entrypoints: target.entrypoints,
-        roles: target.roles,
-        statuses: target.contracts.statuses,
-        requiredOwners: target.contracts.requiredOwners,
-        routing: target.contracts.routing,
-        joins: target.contracts.joins,
-        artifacts: target.contracts.artifacts,
-        states: target.contracts.states,
-        budgets: target.contracts.budgets,
-        commandPolicy: target.commandPolicy,
-        evidenceRefs: scannedFiles.map((file) => file.path)
-    };
-    const contract = {
-        ...contractBase,
-        contractHash: sha256Text(stableJson(contractBase))
-    };
+    const contract = buildContractModel(target);
     return {
         evidence: {
             targetId: target.id,

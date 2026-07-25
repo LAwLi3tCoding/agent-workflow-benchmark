@@ -36,13 +36,54 @@ describe("run and score", () => {
     const result = scoreCase(testCase, runCase(testCase, profile.contract, { id: "route-break", type: "route-break" }));
 
     expect(result.evaluationDimensions.map((item) => item.dimension)).toEqual(
-      expect.arrayContaining(["contract", "routing", "ownership", "gate", "artifact", "join", "sideEffect", "telemetry", "efficiency", "runner"])
+      expect.arrayContaining(["contract", "routing", "ownership", "gate", "artifact", "state", "join", "sideEffect", "telemetry", "efficiency", "runner"])
     );
     expect(result.evaluationDimensions.find((item) => item.dimension === "routing")).toMatchObject({
       status: "FAIL",
       relatedFailureCodes: ["TARGET_ROUTE_FORBIDDEN"]
     });
     expect(result.scoreProvenance.dimensionProvenance.length).toBeGreaterThan(3);
+  });
+
+  test("state-recovery scoring consumes matching state_read evidence and downgrades missing evidence", async () => {
+    const profile = await profileTarget(await loadTargetPack("minimal-directory-agent"));
+    const testCase = materializeSmokeSuite(profile.contract).cases.find(
+      (item) => item.templateId === "state-recovery"
+    )!;
+    const observedRun = runCase(testCase, profile.contract);
+    observedRun.runner = {
+      name: "codex",
+      comparability: {
+        workflowScore: "comparable",
+        efficiency: "comparable",
+        tokenCost: "comparable"
+      }
+    };
+    const observed = scoreCase(testCase, observedRun);
+    expect(observed.evaluationDimensions.find((item) => item.dimension === "state")).toMatchObject({
+      status: "PASS",
+      evidenceEventIds: [expect.any(String)]
+    });
+    expect(
+      scoreSuite("state-observed", profile.contract, "smoke", [observed], {
+        evidenceKind: "live",
+        observationLevel: "workflow_trace",
+        observerQualification: "valid"
+      }).releaseDecision
+    ).toBe("APPROVE");
+
+    const missingRun = structuredClone(observedRun);
+    missingRun.events = missingRun.events.filter((event) => event.type !== "state_read");
+    const missing = scoreCase(testCase, missingRun);
+    expect(missing.evaluationDimensions.find((item) => item.dimension === "state")).toMatchObject({
+      status: "DIAGNOSTIC_ONLY",
+      score: 0,
+      evidenceEventIds: []
+    });
+    expect(missing.verdict).toBe("DIAGNOSTIC_ONLY");
+    expect(scoreSuite("state-missing", profile.contract, "smoke", [missing]).releaseDecision).toBe(
+      "DIAGNOSTIC_ONLY"
+    );
   });
 
   test("nonzero live runner exit becomes diagnostic only", async () => {
@@ -168,7 +209,7 @@ describe("run and score", () => {
     expect(suite.p0CaseRecords[0]?.failureCode).toBe("TARGET_ROUTE_FORBIDDEN");
   });
 
-  test("directional-only live comparability does not force diagnostic release", async () => {
+  test("directional-only live contract-summary evidence remains diagnostic-only", async () => {
     const profile = await profileTarget(await loadTargetPack("minimal-directory-agent"));
     const testCase = materializeSmokeSuite(profile.contract).cases[0]!;
     const run = runCase(testCase, profile.contract);
@@ -184,8 +225,8 @@ describe("run and score", () => {
     const result = scoreCase(testCase, run);
     const suite = scoreSuite("directional-live-suite", profile.contract, "smoke", [result]);
 
-    expect(suite.releaseDecision).toBe("APPROVE");
-    expect(suite.releaseRuleId).toBe("REL-APPROVE");
+    expect(suite.releaseDecision).toBe("DIAGNOSTIC_ONLY");
+    expect(suite.releaseRuleId).toBe("REL-EVIDENCE-CONTRACT-SUMMARY");
   });
 
   test("conditional approval has a distinct release rule id", async () => {
@@ -198,7 +239,11 @@ describe("run and score", () => {
     result.score = 80;
     result.verdict = "PASS_WITH_WARNINGS";
 
-    const suite = scoreSuite("conditional-suite", profile.contract, "smoke", [result]);
+    const suite = scoreSuite("conditional-suite", profile.contract, "smoke", [result], {
+      evidenceKind: "live",
+      observationLevel: "workflow_trace",
+      observerQualification: "valid"
+    });
 
     expect(suite.releaseDecision).toBe("CONDITIONAL_APPROVE");
     expect(suite.releaseRuleId).toBe("REL-CONDITIONAL");

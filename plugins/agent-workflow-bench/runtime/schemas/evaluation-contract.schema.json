@@ -1,0 +1,190 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "evaluation-contract.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "contractId",
+    "models",
+    "evidencePolicy",
+    "scorePolicy",
+    "coverageTargets",
+    "events",
+    "oracles",
+    "hardFailures",
+    "dimensions",
+    "comparisonClassifications",
+    "gateRules",
+    "claims"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "0.1.0" },
+    "contractId": { "const": "agent-workflow-bench-evaluation-contract" },
+    "models": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["targetPack", "contractModel"],
+      "properties": {
+        "targetPack": { "$ref": "#/$defs/modelRef" },
+        "contractModel": {
+          "allOf": [
+            { "$ref": "#/$defs/modelRef" },
+            {
+              "required": ["formalSchemaStatus"],
+              "properties": {
+                "formalSchemaStatus": { "const": "backlog" }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "evidencePolicy": {
+      "type": "object",
+      "required": ["truePassRequires", "diagnosticOnlyObservationLevels"],
+      "properties": {
+        "truePassRequires": {
+          "type": "object",
+          "required": ["evidenceKind", "observationLevel", "observerQualification"],
+          "properties": {
+            "evidenceKind": { "const": "live" },
+            "observationLevel": { "const": "workflow_trace" },
+            "observerQualification": { "const": "valid" }
+          }
+        },
+        "diagnosticOnlyObservationLevels": {
+          "type": "array",
+          "contains": { "const": "contract_summary" }
+        }
+      }
+    },
+    "scorePolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "hardFailurePrecedence",
+        "p0ScoreCap",
+        "casePassMinimum",
+        "caseConditionalMinimum",
+        "suiteApproveMinimum",
+        "suiteConditionalMinimum",
+        "telemetryMinimum",
+        "efficiencyWastedRatioWarning"
+      ],
+      "properties": {
+        "hardFailurePrecedence": { "const": true },
+        "p0ScoreCap": { "type": "number", "minimum": 0, "maximum": 100 },
+        "casePassMinimum": { "type": "number", "minimum": 0, "maximum": 100 },
+        "caseConditionalMinimum": { "type": "number", "minimum": 0, "maximum": 100 },
+        "suiteApproveMinimum": { "type": "number", "minimum": 0, "maximum": 100 },
+        "suiteConditionalMinimum": { "type": "number", "minimum": 0, "maximum": 100 },
+        "telemetryMinimum": { "type": "number", "minimum": 0, "maximum": 1 },
+        "efficiencyWastedRatioWarning": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    },
+    "coverageTargets": { "$ref": "#/$defs/registry" },
+    "events": { "$ref": "#/$defs/registry" },
+    "oracles": {
+      "type": "array",
+      "items": {
+        "allOf": [
+          { "$ref": "#/$defs/registryItem" },
+          {
+            "required": ["templateId", "title", "expectedHardFailures"],
+            "properties": {
+              "templateId": { "type": "string", "minLength": 1 },
+              "title": { "type": "string", "minLength": 1 },
+              "expectedHardFailures": { "type": "array", "items": { "type": "string" } }
+            }
+          }
+        ]
+      }
+    },
+    "hardFailures": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["code", "severity", "dimension", "source", "status", "why"],
+        "properties": {
+          "code": { "type": "string", "minLength": 1 },
+          "severity": { "enum": ["P0", "P1"] },
+          "dimension": { "type": "string", "minLength": 1 },
+          "source": { "enum": ["event", "derived", "comparison"] },
+          "status": { "$ref": "#/$defs/status" },
+          "why": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "dimensions": {
+      "type": "array",
+      "items": {
+        "allOf": [
+          { "$ref": "#/$defs/registryItem" },
+          {
+            "required": ["weight"],
+            "properties": {
+              "weight": { "type": "number", "exclusiveMinimum": 0 }
+            }
+          }
+        ]
+      }
+    },
+    "comparisonClassifications": { "$ref": "#/$defs/registry" },
+    "gateRules": { "$ref": "#/$defs/registry" },
+    "claims": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "status",
+          "contractFields",
+          "caseTemplateIds",
+          "eventTypes",
+          "oracleIds",
+          "scoreDimensions",
+          "gateRuleIds",
+          "tests"
+        ],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "status": { "$ref": "#/$defs/status" },
+          "contractFields": { "$ref": "#/$defs/stringArray" },
+          "caseTemplateIds": { "$ref": "#/$defs/stringArray" },
+          "eventTypes": { "$ref": "#/$defs/stringArray" },
+          "oracleIds": { "$ref": "#/$defs/stringArray" },
+          "scoreDimensions": { "$ref": "#/$defs/stringArray" },
+          "gateRuleIds": { "$ref": "#/$defs/stringArray" },
+          "tests": { "$ref": "#/$defs/stringArray" }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "status": { "enum": ["implemented", "backlog"] },
+    "stringArray": { "type": "array", "items": { "type": "string" } },
+    "registry": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/registryItem" }
+    },
+    "registryItem": {
+      "type": "object",
+      "required": ["id", "status"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "label": { "type": "string" },
+        "status": { "$ref": "#/$defs/status" }
+      }
+    },
+    "modelRef": {
+      "type": "object",
+      "required": ["status", "definitionRef", "implementationRef"],
+      "properties": {
+        "status": { "const": "implemented" },
+        "definitionRef": { "type": "string", "minLength": 1 },
+        "implementationRef": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}
