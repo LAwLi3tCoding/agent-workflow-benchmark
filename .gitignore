@@ -2,9 +2,9 @@ node_modules/
 dist/
 coverage/
 
-!plugins/agent-workflow-benchmark/runtime/
-!plugins/agent-workflow-benchmark/runtime/**
-plugins/agent-workflow-benchmark/runtime/node_modules/
+!plugins/agent-workflow-bench/runtime/
+!plugins/agent-workflow-bench/runtime/**
+plugins/agent-workflow-bench/runtime/node_modules/
 
 .benchmark-debug/
 .omc/

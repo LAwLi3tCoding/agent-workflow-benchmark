@@ -10,14 +10,14 @@ const scannedRoots = [
   "configs",
   "fixtures",
   "tests",
-  "plugins/agent-workflow-benchmark/runtime/configs",
-  "plugins/agent-workflow-benchmark/skills",
+  "plugins/agent-workflow-bench/runtime/configs",
+  "plugins/agent-workflow-bench/skills",
   "README.md",
   "README.zh-CN.md",
   "README.ja.md",
-  "docs/agent-workflow-benchmark-human-guide.md",
+  "docs/agent-workflow-bench-human-guide.md",
   "docs/ai-workflow-evaluation-methodology.md",
-  "docs/agent-workflow-benchmark-plugin-guide.md"
+  "docs/agent-workflow-bench-plugin-guide.md"
 ];
 
 const sourceFacingPrivacyRoots = [
@@ -29,10 +29,10 @@ const sourceFacingPrivacyRoots = [
   "fixtures",
   ".agents/plugins/marketplace.json",
   ".claude-plugin/marketplace.json",
-  "plugins/agent-workflow-benchmark/.codex-plugin",
-  "plugins/agent-workflow-benchmark/.claude-plugin",
-  "plugins/agent-workflow-benchmark/skills",
-  "plugins/agent-workflow-benchmark/commands"
+  "plugins/agent-workflow-bench/.codex-plugin",
+  "plugins/agent-workflow-bench/.claude-plugin",
+  "plugins/agent-workflow-bench/skills",
+  "plugins/agent-workflow-bench/commands"
 ];
 
 const prohibitedTargetTerms = [

@@ -3,7 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const pluginRoot = path.join(repoRoot, "plugins", "agent-workflow-benchmark");
+const pluginRoot = path.join(repoRoot, "plugins", "agent-workflow-bench");
 const runtimeRoot = path.join(pluginRoot, "runtime");
 
 const copyEntries = ["dist", "configs", "schemas", "fixtures", "package.json", "package-lock.json"];

@@ -1,0 +1,33 @@
+{
+  "name": "agent-workflow-bench",
+  "version": "0.1.0+codex.20260706202456",
+  "description": "CI-grade regression testing for coding-agent workflows through Codex, Claude Code, and local runner evidence.",
+  "author": {
+    "name": "Project contributors"
+  },
+  "license": "MIT",
+  "keywords": [
+    "agent",
+    "benchmark",
+    "workflow",
+    "codex",
+    "claude"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Agent Workflow Bench",
+    "shortDescription": "CI-grade regression testing for coding-agent workflows.",
+    "longDescription": "Profiles a target agent workflow, uses the runtime LLM to understand it and generate benchmark cases, materializes executable cases, runs Codex/Claude-capable benchmark flows, compares matched baseline and candidate evidence, gates PASS/DIAGNOSTIC_ONLY/BLOCK outcomes, and produces explainable reports plus self-debug reverse validation.",
+    "developerName": "Project contributors",
+    "category": "Productivity",
+    "capabilities": [
+      "Read",
+      "Write"
+    ],
+    "defaultPrompt": [
+      "Benchmark this agent workflow with AI-generated cases.",
+      "Run Agent Workflow Bench on this coding-agent workflow.",
+      "Diagnose benchmark blind spots with mutations."
+    ]
+  }
+}

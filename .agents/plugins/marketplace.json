@@ -1,14 +1,14 @@
 {
-  "name": "agent-workflow-benchmark",
+  "name": "agent-workflow-bench",
   "interface": {
     "displayName": "Agent Workflow Bench"
   },
   "plugins": [
     {
-      "name": "agent-workflow-benchmark",
+      "name": "agent-workflow-bench",
       "source": {
         "source": "local",
-        "path": "./plugins/agent-workflow-benchmark"
+        "path": "./plugins/agent-workflow-bench"
       },
       "policy": {
         "installation": "AVAILABLE",

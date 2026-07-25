@@ -2,6 +2,7 @@ import { execa } from "execa";
 import type { BenchmarkCase, MutationInput, ProfileResult, RunnerCapability } from "../core/types.js";
 import { PRODUCT_NAME } from "../core/product.js";
 import { evidenceBoundary, type EvidenceKind, type ObservationLevel } from "../doctor/doctor.js";
+import type { VerifiedWorkflowTrace } from "../observer/workflowTrace.js";
 import { hashFile, sha256Text, stableJson } from "../utils/hash.js";
 
 export interface RunProvenance {
@@ -33,6 +34,11 @@ export interface RunProvenance {
       adapterVersion: string;
       version?: string;
       capabilitiesHash: string;
+    };
+    observer?: {
+      id: string;
+      version: string;
+      keyFingerprint: string;
     };
     executionMode: "live" | "simulated";
     evidenceKind: EvidenceKind;
@@ -67,14 +73,16 @@ export async function buildRunProvenance(options: {
   artifacts: Array<{ ref: string; path: string }>;
   targetRoot: string;
   dryRun?: boolean;
+  verifiedTrace?: VerifiedWorkflowTrace;
 }): Promise<RunProvenance> {
   const effectiveRunner = effectiveRunnerIdentity(options.runner, options.executionMode);
-  const boundary =
-    options.dryRun
+  const boundary = options.verifiedTrace
+    ? { evidenceKind: "live" as const, observationLevel: "workflow_trace" as const }
+    : options.dryRun
       ? { evidenceKind: "unknown" as const, observationLevel: "capability_only" as const }
       : options.executionMode === "simulated"
-      ? { evidenceKind: "simulated" as const, observationLevel: "synthetic_events" as const }
-      : evidenceBoundary(options.runner);
+        ? { evidenceKind: "simulated" as const, observationLevel: "synthetic_events" as const }
+        : evidenceBoundary(options.runner);
   const environment = {
     runtime: "node" as const,
     runtimeVersion: process.version,
@@ -88,12 +96,33 @@ export async function buildRunProvenance(options: {
     budgetHash: sha256Text(stableJson({ contract: options.profile.contract.budgets, cases: options.cases.map((item) => item.budgets) })),
     commandPolicyHash: sha256Text(stableJson(options.profile.contract.commandPolicy)),
     runner: effectiveRunner,
+    ...(options.verifiedTrace
+      ? {
+          observer: {
+            id: options.verifiedTrace.bundle.observer.id,
+            version: options.verifiedTrace.bundle.observer.version,
+            keyFingerprint: options.verifiedTrace.keyFingerprint
+          }
+        }
+      : {}),
     executionMode: options.executionMode,
     evidenceKind: boundary.evidenceKind,
     observationLevel: boundary.observationLevel,
-    isolation: options.dryRun ? "unknown" : isolationFor(options.executionMode, options.runner.name),
-    permissionMode: options.dryRun ? "unknown" : permissionModeFor(options.executionMode, options.runner.name),
-    ...(options.model ? { model: options.model } : {}),
+    isolation: options.verifiedTrace
+      ? options.verifiedTrace.bundle.subject.isolation
+      : options.dryRun
+        ? "unknown"
+        : isolationFor(options.executionMode, options.runner.name),
+    permissionMode: options.verifiedTrace
+      ? options.verifiedTrace.bundle.subject.permissionMode
+      : options.dryRun
+        ? "unknown"
+        : permissionModeFor(options.executionMode, options.runner.name),
+    ...(options.verifiedTrace?.bundle.subject.model
+      ? { model: options.verifiedTrace.bundle.subject.model }
+      : options.model
+        ? { model: options.model }
+        : {}),
     environment,
     environmentHash: sha256Text(stableJson(environment))
   };

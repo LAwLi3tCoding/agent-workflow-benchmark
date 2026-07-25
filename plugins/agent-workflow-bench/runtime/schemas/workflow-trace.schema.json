@@ -1,0 +1,123 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "workflow-trace.schema.json",
+  "type": "object",
+  "required": ["schemaVersion", "observer", "subject", "cases", "attestation"],
+  "properties": {
+    "schemaVersion": { "const": "0.1.0" },
+    "observer": {
+      "type": "object",
+      "required": ["id", "version", "keyFingerprint"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "version": { "type": "string", "minLength": 1 },
+        "keyFingerprint": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" }
+      }
+    },
+    "subject": {
+      "type": "object",
+      "required": [
+        "targetId",
+        "contractHash",
+        "suite",
+        "caseSetHash",
+        "runner",
+        "isolation",
+        "permissionMode"
+      ],
+      "properties": {
+        "targetId": { "type": "string", "minLength": 1 },
+        "contractHash": { "type": "string", "minLength": 1 },
+        "suite": { "type": "string", "minLength": 1 },
+        "caseSetHash": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+        "runner": {
+          "type": "object",
+          "required": ["name", "adapterVersion", "capabilitiesHash"],
+          "properties": {
+            "name": { "enum": ["codex", "claude", "opencode"] },
+            "adapterVersion": { "type": "string", "minLength": 1 },
+            "version": { "type": "string" },
+            "capabilitiesHash": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" }
+          }
+        },
+        "isolation": { "enum": ["read_only_sandbox", "working_directory_only"] },
+        "permissionMode": { "enum": ["read_only_no_approval", "runner_default"] },
+        "model": { "type": "string" }
+      }
+    },
+    "cases": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "caseId",
+          "templateId",
+          "runId",
+          "events",
+          "wallClockSeconds",
+          "tokens",
+          "telemetryCompleteness"
+        ],
+        "properties": {
+          "caseId": { "type": "string", "minLength": 1 },
+          "templateId": { "type": "string", "minLength": 1 },
+          "runId": { "type": "string", "minLength": 1 },
+          "events": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "required": ["eventId", "timestamp", "type", "actor", "payload"],
+              "properties": {
+                "eventId": { "type": "string", "minLength": 1 },
+                "timestamp": { "type": "string" },
+                "type": {
+                  "enum": [
+                    "case_start",
+                    "contract_observed",
+                    "handoff",
+                    "gate_decision",
+                    "artifact_write",
+                    "state_read",
+                    "side_effect_attempt",
+                    "token_usage",
+                    "runner_start",
+                    "runner_transcript",
+                    "runner_result",
+                    "runner_exit",
+                    "hard_failure",
+                    "case_end"
+                  ]
+                },
+                "actor": { "type": "string", "minLength": 1 },
+                "payload": { "type": "object" }
+              }
+            }
+          },
+          "wallClockSeconds": { "type": "number", "minimum": 0 },
+          "tokens": {
+            "type": "object",
+            "required": ["input", "output", "total", "wasted", "costEstimateConfidence"],
+            "properties": {
+              "input": { "type": "number", "minimum": 0 },
+              "output": { "type": "number", "minimum": 0 },
+              "total": { "type": "number", "minimum": 0 },
+              "wasted": { "type": "number", "minimum": 0 },
+              "costEstimateConfidence": { "enum": ["high", "medium", "low", "unavailable"] }
+            }
+          },
+          "telemetryCompleteness": { "type": "number", "minimum": 0, "maximum": 1 }
+        }
+      }
+    },
+    "attestation": {
+      "type": "object",
+      "required": ["algorithm", "signature"],
+      "properties": {
+        "algorithm": { "const": "ed25519" },
+        "signature": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

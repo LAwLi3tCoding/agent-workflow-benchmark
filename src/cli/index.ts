@@ -1,6 +1,6 @@
 import { Command } from "commander";
 import { Ajv2020, type ValidateFunction } from "ajv/dist/2020.js";
-import { access, appendFile, readdir, readFile } from "node:fs/promises";
+import { access, appendFile, copyFile, readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import YAML from "yaml";
 import type {
@@ -14,6 +14,7 @@ import type {
   MaterializedSuite,
   MutationInput,
   ProfileResult,
+  RunnerCapability,
   SuiteResult
 } from "../core/types.js";
 import { getBenchmarkRoot, listTargetIds, loadTargetPack } from "../core/targetRegistry.js";
@@ -31,7 +32,8 @@ import { renderMarkdownReport } from "../report/report.js";
 import { ensureDir, readJson, readYaml, writeJson, writeYaml } from "../utils/io.js";
 import { AWB_VERSION, CLI_NAME, PRODUCT_NAME, PRODUCT_TAGLINE } from "../core/product.js";
 import { diagnoseWorkflow, renderDoctorReport } from "../doctor/doctor.js";
-import { buildRunProvenance, publicRunnerCapability } from "../regression/provenance.js";
+import { buildRunProvenance, publicRunnerCapability, semanticCaseSetHash } from "../regression/provenance.js";
+import { verifyWorkflowTraceBundle } from "../observer/workflowTrace.js";
 import {
   createComparisonBundle,
   renderComparisonReport,
@@ -343,6 +345,108 @@ program
   );
 
 program
+  .command("ingest-trace")
+  .description("Verify and score an externally observed, signed workflow trace")
+  .option("--target <id>")
+  .option("--target-root <path>", "override the registered target root for this isolated checkout")
+  .option("--suite <name>", "suite name", "smoke")
+  .option("--case <path>")
+  .option("--cases-dir <dir>")
+  .requiredOption("--trace <path>", "signed workflow-trace JSON bundle")
+  .requiredOption("--trusted-observer-key <path>", "trusted Ed25519 observer public key")
+  .requiredOption("--out <dir>")
+  .action(
+    async (options: {
+      target?: string;
+      targetRoot?: string;
+      suite: string;
+      case?: string;
+      casesDir?: string;
+      trace: string;
+      trustedObserverKey: string;
+      out: string;
+    }) => {
+      const { target, profile, contract, cases } = await resolveRunInputs(options);
+      const tracePath = await resolveExistingPath(options.trace);
+      const trustedObserverKeyPath = await resolveExistingPath(options.trustedObserverKey);
+      const verifiedTrace = await verifyWorkflowTraceBundle(tracePath, trustedObserverKeyPath, {
+        targetId: contract.targetId,
+        contractHash: contract.contractHash,
+        suite: options.suite,
+        caseSetHash: semanticCaseSetHash(cases),
+        caseIds: cases.map((testCase) => testCase.id),
+        cases: cases.map((testCase) => ({ id: testCase.id, templateId: testCase.templateId }))
+      });
+      const runnerCapability = workflowTraceRunnerCapability(verifiedTrace.bundle.subject.runner);
+      const runByCaseId = new Map(verifiedTrace.runs.map((run) => [run.caseId, run]));
+      const caseResults: CaseResult[] = [];
+      await ensureDir(options.out);
+      for (const testCase of cases) {
+        const run = runByCaseId.get(testCase.id);
+        if (!run) {
+          throw new Error(`Verified workflow trace is missing case ${testCase.id}.`);
+        }
+        const result = scoreCase(testCase, run);
+        caseResults.push(result);
+        await writeJson(path.join(options.out, "events", `${testCase.id}.json`), run.events);
+        await writeJson(path.join(options.out, "case-results", `${testCase.id}.json`), result);
+      }
+
+      const suiteResult = scoreSuite(path.basename(options.out), contract, options.suite, caseResults);
+      await writeJson(path.join(options.out, "suite-result.json"), suiteResult);
+      await writeRecommendationArtifacts(options.out, suiteResult);
+      await writeP0CaseArtifacts(options.out, suiteResult);
+      await writeReport(path.join(options.out, "report.md"), suiteResult);
+
+      const traceArtifactPath = path.join(options.out, "workflow-trace.json");
+      await copyFile(tracePath, traceArtifactPath);
+      const runtimeManifestPath = path.join(options.out, "runtime-manifest.json");
+      await writeJson(runtimeManifestPath, {
+        runner: {
+          ...publicRunnerCapability(runnerCapability),
+          executionMode: "live"
+        },
+        mode: "diagnostic",
+        dryRun: false,
+        contractHash: contract.contractHash,
+        caseCount: cases.length,
+        liveTranscriptCount: 0,
+        caseSource: options.casesDir ? "cases://provided" : options.case ? "case://provided" : "target://materialized",
+        workflowTrace: {
+          verified: true,
+          ref: "workflow-trace.json",
+          sha256: verifiedTrace.traceHash,
+          caseCount: verifiedTrace.runs.length,
+          eventCount: verifiedTrace.eventCount,
+          observer: {
+            id: verifiedTrace.bundle.observer.id,
+            version: verifiedTrace.bundle.observer.version,
+            keyFingerprint: verifiedTrace.keyFingerprint
+          }
+        }
+      });
+      await writeJson(
+        path.join(options.out, "provenance.json"),
+        await buildRunProvenance({
+          profile,
+          cases,
+          suite: options.suite,
+          runner: runnerCapability,
+          executionMode: "live",
+          verifiedTrace,
+          artifacts: [
+            { ref: "suite-result.json", path: path.join(options.out, "suite-result.json") },
+            { ref: "runtime-manifest.json", path: runtimeManifestPath },
+            { ref: "workflow-trace.json", path: traceArtifactPath }
+          ],
+          targetRoot: target.root
+        })
+      );
+      console.log(`attested workflow trace ingested: ${options.out}`);
+    }
+  );
+
+program
   .command("evaluate")
   .requiredOption("--target <id>")
   .option("--target-root <path>", "override the registered target root for this isolated checkout")
@@ -532,9 +636,14 @@ program
   .description("Compare matched baseline and candidate run artifacts")
   .requiredOption("--baseline <dir>", "baseline run or evaluation directory")
   .requiredOption("--candidate <dir>", "candidate run or evaluation directory")
+  .option("--trusted-observer-key <path>", "trusted Ed25519 observer public key for workflow_trace evidence")
   .requiredOption("--out <dir>")
-  .action(async (options: { baseline: string; candidate: string; out: string }) => {
-    const result = await createComparisonBundle(options.baseline, options.candidate, options.out);
+  .action(async (options: { baseline: string; candidate: string; trustedObserverKey?: string; out: string }) => {
+    const result = await createComparisonBundle(options.baseline, options.candidate, options.out, {
+      trustedObserverKeyPath: options.trustedObserverKey
+        ? await resolveExistingPath(options.trustedObserverKey)
+        : undefined
+    });
     await writeJson(path.join(options.out, "comparison-result.json"), result);
     await writeReportFile(path.join(options.out, "comparison-report.md"), renderComparisonReport(result));
     console.log(`comparison written: ${options.out}`);
@@ -544,10 +653,15 @@ program
   .command("gate")
   .description("Apply the deterministic CI gate to a paired comparison")
   .requiredOption("--comparison <path>", "comparison-result.json")
+  .option("--trusted-observer-key <path>", "trusted Ed25519 observer public key for workflow_trace evidence")
   .requiredOption("--out <dir>")
-  .action(async (options: { comparison: string; out: string }) => {
+  .action(async (options: { comparison: string; trustedObserverKey?: string; out: string }) => {
     const comparison = await readJson<ComparisonResult>(options.comparison);
-    const verification = await verifyComparisonBundle(options.comparison, comparison);
+    const verification = await verifyComparisonBundle(options.comparison, comparison, {
+      trustedObserverKeyPath: options.trustedObserverKey
+        ? await resolveExistingPath(options.trustedObserverKey)
+        : undefined
+    });
     const result = evaluateGate(comparison, verification);
     await writeJson(path.join(options.out, "gate-result.json"), result);
     await writeReportFile(path.join(options.out, "gate-report.md"), renderGateReport(result));
@@ -871,6 +985,32 @@ function normalizeRunnerName(value: string): "codex" | "claude" | "opencode" | "
     return value;
   }
   throw new Error(`Unsupported runner: ${value}`);
+}
+
+function workflowTraceRunnerCapability(
+  runner: {
+    name: Exclude<RunnerCapability["name"], "simulated">;
+    adapterVersion: string;
+    version?: string;
+    capabilitiesHash: string;
+  }
+): RunnerCapability {
+  return {
+    schemaVersion: "0.1.0",
+    name: runner.name,
+    supported: true,
+    ...(runner.version ? { version: runner.version } : {}),
+    adapterVersion: runner.adapterVersion,
+    executionMode: "live",
+    supportsEntrypointKinds: ["file", "cli"],
+    tokenSourceDetail: { source: "native", confidence: "high" },
+    comparability: {
+      workflowScore: "comparable",
+      efficiency: "comparable",
+      tokenCost: "comparable"
+    },
+    capabilitiesHash: runner.capabilitiesHash
+  };
 }
 
 function normalizeAiPlannerRunner(value: string): AiPlannerRunner {

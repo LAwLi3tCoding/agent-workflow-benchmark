@@ -5,7 +5,7 @@ import path from "node:path";
 import { execa } from "execa";
 import { Ajv2020 } from "ajv/dist/2020.js";
 
-const pluginRoot = path.join(process.cwd(), "plugins", "agent-workflow-benchmark");
+const pluginRoot = path.join(process.cwd(), "plugins", "agent-workflow-bench");
 
 async function expectValidPluginRuntimeSchema(pluginPath: string, schemaPath: string, value: unknown): Promise<void> {
   const ajv = new Ajv2020({ strict: false });
@@ -16,7 +16,7 @@ async function expectValidPluginRuntimeSchema(pluginPath: string, schemaPath: st
 
 async function copyPluginInstall(): Promise<{ root: string; pluginPath: string }> {
   const root = await mkdtemp(path.join(tmpdir(), "awb-plugin-install-"));
-  const pluginPath = path.join(root, "agent-workflow-benchmark");
+  const pluginPath = path.join(root, "agent-workflow-bench");
   await cp(pluginRoot, pluginPath, {
     recursive: true,
     filter: (source) => !source.includes(`${path.sep}runtime${path.sep}node_modules`)
@@ -25,11 +25,12 @@ async function copyPluginInstall(): Promise<{ root: string; pluginPath: string }
   return { root, pluginPath };
 }
 
-describe("agent workflow benchmark plugin package", () => {
+describe("agent workflow bench plugin package", () => {
   test("ships a Codex plugin manifest and shared skill", async () => {
     const manifest = JSON.parse(await readFile(path.join(pluginRoot, ".codex-plugin", "plugin.json"), "utf8"));
 
-    expect(manifest.name).toBe("agent-workflow-benchmark");
+    expect(manifest.name).toBe("agent-workflow-bench");
+    expect(manifest.license).toBe("MIT");
     expect(manifest.skills).toBe("./skills/");
     expect(manifest.interface.displayName).toBe("Agent Workflow Bench");
     expect(
@@ -40,21 +41,23 @@ describe("agent workflow benchmark plugin package", () => {
         ...(manifest.interface.defaultPrompt ?? [])
       ].join("\n")
     ).toMatch(/CI.*regression|regression.*CI/u);
-    await expect(stat(path.join(pluginRoot, "skills", "agent-workflow-benchmark", "SKILL.md"))).resolves.toBeTruthy();
+    await expect(stat(path.join(pluginRoot, "skills", "agent-workflow-bench", "SKILL.md"))).resolves.toBeTruthy();
   });
 
   test("ships a Claude Code plugin manifest, slash command, and executable wrapper", async () => {
     const manifest = JSON.parse(await readFile(path.join(pluginRoot, ".claude-plugin", "plugin.json"), "utf8"));
 
-    expect(manifest.name).toBe("agent-workflow-benchmark");
+    expect(manifest.name).toBe("agent-workflow-bench");
+    expect(manifest.license).toBe("MIT");
     expect(manifest.version).toMatch(/^0\.1\.0/);
-    await expect(stat(path.join(pluginRoot, "commands", "agent-workflow-benchmark.md"))).resolves.toBeTruthy();
+    await expect(stat(path.join(pluginRoot, "commands", "agent-workflow-bench.md"))).resolves.toBeTruthy();
     await access(path.join(pluginRoot, "bin", "awb"));
-    const command = await readFile(path.join(pluginRoot, "commands", "agent-workflow-benchmark.md"), "utf8");
+    const command = await readFile(path.join(pluginRoot, "commands", "agent-workflow-bench.md"), "utf8");
     expect(command).toContain("doctor");
     expect(command).toContain("plan-cases");
     expect(command).toContain("materialize --strategy ai");
     expect(command).toContain("run --execution live");
+    expect(command).toContain("ingest-trace");
     expect(command).toContain("compare");
     expect(command).toContain("gate");
   });
@@ -69,10 +72,12 @@ describe("agent workflow benchmark plugin package", () => {
     await expect(stat(path.join(runtimeRoot, "schemas", "case.schema.json"))).resolves.toBeTruthy();
     await expect(stat(path.join(runtimeRoot, "schemas", "doctor-result.schema.json"))).resolves.toBeTruthy();
     await expect(stat(path.join(runtimeRoot, "schemas", "provenance.schema.json"))).resolves.toBeTruthy();
+    await expect(stat(path.join(runtimeRoot, "schemas", "workflow-trace.schema.json"))).resolves.toBeTruthy();
     await expect(stat(path.join(runtimeRoot, "schemas", "comparison-result.schema.json"))).resolves.toBeTruthy();
     await expect(stat(path.join(runtimeRoot, "schemas", "gate-result.schema.json"))).resolves.toBeTruthy();
     await expect(stat(path.join(runtimeRoot, "fixtures", "mutations", "core.yaml"))).resolves.toBeTruthy();
     await expect(stat(path.join(runtimeRoot, "fixtures", "regression", "scenarios.yaml"))).resolves.toBeTruthy();
+    await expect(stat(path.join(runtimeRoot, "dist", "src", "observer", "workflowTrace.js"))).resolves.toBeTruthy();
 
     const wrapper = await readFile(path.join(pluginRoot, "bin", "awb"), "utf8");
     expect(wrapper).toContain("RUNTIME_DIR");
@@ -201,20 +206,20 @@ describe("agent workflow benchmark plugin package", () => {
 
   test("ships a repo-local Codex marketplace entry", async () => {
     const marketplace = JSON.parse(await readFile(path.join(process.cwd(), ".agents", "plugins", "marketplace.json"), "utf8"));
-    const entry = marketplace.plugins.find((plugin: { name: string }) => plugin.name === "agent-workflow-benchmark");
+    const entry = marketplace.plugins.find((plugin: { name: string }) => plugin.name === "agent-workflow-bench");
 
-    expect(marketplace.name).toBe("agent-workflow-benchmark");
-    expect(entry.source.path).toBe("./plugins/agent-workflow-benchmark");
+    expect(marketplace.name).toBe("agent-workflow-bench");
+    expect(entry.source.path).toBe("./plugins/agent-workflow-bench");
     expect(entry.policy.installation).toBe("AVAILABLE");
     expect(entry.policy.authentication).toBe("ON_INSTALL");
   });
 
   test("ships a Claude Code marketplace entry for no-source installation", async () => {
     const marketplace = JSON.parse(await readFile(path.join(process.cwd(), ".claude-plugin", "marketplace.json"), "utf8"));
-    const entry = marketplace.plugins.find((plugin: { name: string }) => plugin.name === "agent-workflow-benchmark");
+    const entry = marketplace.plugins.find((plugin: { name: string }) => plugin.name === "agent-workflow-bench");
 
-    expect(marketplace.name).toBe("agent-workflow-benchmark");
-    expect(entry.source).toBe("./plugins/agent-workflow-benchmark");
+    expect(marketplace.name).toBe("agent-workflow-bench");
+    expect(entry.source).toBe("./plugins/agent-workflow-bench");
     expect(entry.version).toBe("0.1.0+codex.20260706202456");
     expect(entry.description).toContain("AI-generated cases");
   });

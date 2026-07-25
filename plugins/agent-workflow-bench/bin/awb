@@ -1,0 +1,43 @@
+#!/usr/bin/env sh
+set -eu
+
+SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+PLUGIN_ROOT=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
+RUNTIME_DIR="$PLUGIN_ROOT/runtime"
+
+if [ -n "${AWB_PROJECT_ROOT:-}" ]; then
+  exec npm --prefix "$AWB_PROJECT_ROOT" run benchmark -- "$@"
+fi
+
+if [ -f "$RUNTIME_DIR/dist/src/cli/index.js" ] && [ -f "$RUNTIME_DIR/package.json" ]; then
+  if ! command -v node >/dev/null 2>&1; then
+    echo "agent-workflow-bench requires Node.js to run the plugin runtime." >&2
+    exit 1
+  fi
+  if [ ! -d "$RUNTIME_DIR/node_modules" ]; then
+    if ! command -v npm >/dev/null 2>&1; then
+      echo "agent-workflow-bench requires npm to install plugin runtime dependencies on first use." >&2
+      exit 1
+    fi
+    if [ -f "$RUNTIME_DIR/package-lock.json" ]; then
+      npm --prefix "$RUNTIME_DIR" ci --omit=dev --silent
+    else
+      npm --prefix "$RUNTIME_DIR" install --omit=dev --silent
+    fi
+  fi
+  exec node "$RUNTIME_DIR/dist/src/cli/index.js" "$@"
+fi
+
+REPO_CANDIDATE=$(CDPATH= cd -- "$SCRIPT_DIR/../../.." && pwd)
+if [ -f "$REPO_CANDIDATE/package.json" ] && [ -f "$REPO_CANDIDATE/src/cli/index.ts" ]; then
+  exec npm --prefix "$REPO_CANDIDATE" run benchmark -- "$@"
+fi
+
+PWD_CANDIDATE="$(pwd)"
+if [ -f "$PWD_CANDIDATE/package.json" ] && [ -f "$PWD_CANDIDATE/src/cli/index.ts" ]; then
+  exec npm --prefix "$PWD_CANDIDATE" run benchmark -- "$@"
+fi
+
+echo "No runnable Agent Workflow Bench runtime found." >&2
+echo "Run from a source checkout with AWB_PROJECT_ROOT set, or rebuild the plugin with npm run plugin:build." >&2
+exit 1

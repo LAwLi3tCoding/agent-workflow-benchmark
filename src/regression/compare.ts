@@ -1,6 +1,7 @@
 import { access, copyFile, mkdir, rm } from "node:fs/promises";
 import path from "node:path";
 import type { HardFailure, MutationInput, RunnerCapability, SuiteResult } from "../core/types.js";
+import { verifyWorkflowTraceBundle, type VerifiedWorkflowTrace } from "../observer/workflowTrace.js";
 import { PRODUCT_NAME } from "../core/product.js";
 import { hashFile, sha256Text, stableJson } from "../utils/hash.js";
 import { readJson } from "../utils/io.js";
@@ -24,6 +25,7 @@ export type ComparisonReason =
   | "COMMAND_POLICY_MISMATCH"
   | "ENVIRONMENT_MISMATCH"
   | "MODEL_MISMATCH"
+  | "OBSERVER_MISMATCH"
   | "CONDITIONS_MISMATCH";
 
 export interface ComparisonCaseDelta {
@@ -118,11 +120,31 @@ interface RuntimeManifest {
   skippedCaseCount?: number;
   liveTranscriptCount?: number;
   mutation?: MutationInput;
+  workflowTrace?: {
+    verified: boolean;
+    ref: string;
+    sha256: string;
+    caseCount: number;
+    eventCount: number;
+    observer: {
+      id: string;
+      version: string;
+      keyFingerprint: string;
+    };
+  };
 }
 
-export async function compareRunArtifacts(baselineInput: string, candidateInput: string): Promise<ComparisonContent> {
-  const baseline = await loadRun(baselineInput);
-  const candidate = await loadRun(candidateInput);
+export interface ObserverTrustOptions {
+  trustedObserverKeyPath?: string;
+}
+
+export async function compareRunArtifacts(
+  baselineInput: string,
+  candidateInput: string,
+  options: ObserverTrustOptions = {}
+): Promise<ComparisonContent> {
+  const baseline = await loadRun(baselineInput, options);
+  const candidate = await loadRun(candidateInput, options);
   const reasons = comparisonReasons(baseline, candidate);
   const invalidProvenanceFailures = provenanceFailures(baseline, candidate);
   const candidateHardFailures = collectCandidateHardFailures(candidate.suite);
@@ -152,8 +174,20 @@ export async function compareRunArtifacts(baselineInput: string, candidateInput:
     summary,
     hardFailures,
     evidenceRefs: {
-      baseline: baseline.provenance ? ["baseline:suite-result.json", "baseline:provenance.json"] : ["baseline:suite-result.json"],
-      candidate: candidate.provenance ? ["candidate:suite-result.json", "candidate:provenance.json"] : ["candidate:suite-result.json"]
+      baseline: baseline.provenance
+        ? [
+            "baseline:suite-result.json",
+            "baseline:provenance.json",
+            ...(baseline.provenance.conditions.observationLevel === "workflow_trace" ? ["baseline:workflow-trace.json"] : [])
+          ]
+        : ["baseline:suite-result.json"],
+      candidate: candidate.provenance
+        ? [
+            "candidate:suite-result.json",
+            "candidate:provenance.json",
+            ...(candidate.provenance.conditions.observationLevel === "workflow_trace" ? ["candidate:workflow-trace.json"] : [])
+          ]
+        : ["candidate:suite-result.json"]
     }
   };
 }
@@ -161,7 +195,8 @@ export async function compareRunArtifacts(baselineInput: string, candidateInput:
 export async function createComparisonBundle(
   baselineInput: string,
   candidateInput: string,
-  outputDir: string
+  outputDir: string,
+  options: ObserverTrustOptions = {}
 ): Promise<ComparisonResult> {
   const evidenceRoot = path.join(outputDir, "evidence");
   const baselineRef = "evidence/baseline";
@@ -169,7 +204,11 @@ export async function createComparisonBundle(
   await rm(evidenceRoot, { recursive: true, force: true });
   const baselineArtifacts = await snapshotRunArtifacts(baselineInput, path.join(outputDir, baselineRef), baselineRef);
   const candidateArtifacts = await snapshotRunArtifacts(candidateInput, path.join(outputDir, candidateRef), candidateRef);
-  const content = await compareRunArtifacts(path.join(outputDir, baselineRef), path.join(outputDir, candidateRef));
+  const content = await compareRunArtifacts(
+    path.join(outputDir, baselineRef),
+    path.join(outputDir, candidateRef),
+    options
+  );
   return {
     ...content,
     integrity: {
@@ -189,7 +228,8 @@ export async function createComparisonBundle(
 
 export async function verifyComparisonBundle(
   comparisonPath: string,
-  comparison: ComparisonResult
+  comparison: ComparisonResult,
+  options: ObserverTrustOptions = {}
 ): Promise<ComparisonVerification> {
   const reasons: string[] = [];
   const outputDir = path.dirname(comparisonPath);
@@ -241,7 +281,8 @@ export async function verifyComparisonBundle(
     try {
       const recomputed = await compareRunArtifacts(
         path.join(outputDir, integrity.baselineRef),
-        path.join(outputDir, integrity.candidateRef)
+        path.join(outputDir, integrity.candidateRef),
+        options
       );
       if (stableJson(recomputed) !== stableJson(content)) {
         reasons.push("Comparison content does not match the bundled baseline/candidate evidence.");
@@ -293,7 +334,7 @@ async function snapshotRunArtifacts(input: string, destination: string, refPrefi
   const runDir = await resolveRunDir(input);
   await mkdir(destination, { recursive: true });
   const copied: string[] = [];
-  for (const ref of ["suite-result.json", "provenance.json", "runtime-manifest.json"]) {
+  for (const ref of ["suite-result.json", "provenance.json", "runtime-manifest.json", "workflow-trace.json"]) {
     try {
       await copyFile(path.join(runDir, ref), path.join(destination, ref));
       copied.push(path.posix.join(refPrefix, ref));
@@ -306,7 +347,7 @@ async function snapshotRunArtifacts(input: string, destination: string, refPrefi
   return copied;
 }
 
-async function loadRun(input: string): Promise<LoadedRun> {
+async function loadRun(input: string, options: ObserverTrustOptions): Promise<LoadedRun> {
   const runDir = await resolveRunDir(input);
   const suitePath = path.join(runDir, "suite-result.json");
   const suite = await readJson<SuiteResult>(suitePath);
@@ -320,7 +361,7 @@ async function loadRun(input: string): Promise<LoadedRun> {
     }
     return { suite, provenanceStatus: "INVALID", provenanceWhy: "provenance.json is not valid JSON." };
   }
-  const invalidWhy = await validateProvenance(runDir, suitePath, suite, provenance);
+  const invalidWhy = await validateProvenance(runDir, suitePath, suite, provenance, options);
   return invalidWhy
     ? { suite, provenance, provenanceStatus: "INVALID", provenanceWhy: invalidWhy }
     : { suite, provenance, provenanceStatus: "VALID" };
@@ -343,7 +384,8 @@ async function validateProvenance(
   runDir: string,
   suitePath: string,
   suite: SuiteResult,
-  provenance: RunProvenance
+  provenance: RunProvenance,
+  options: ObserverTrustOptions
 ): Promise<string | undefined> {
   if (
     !provenance ||
@@ -365,7 +407,18 @@ async function validateProvenance(
   if (provenance.integrity.status !== "VERIFIED_AT_WRITE") {
     return "Provenance integrity status is invalid.";
   }
-  const requiredRefs = ["suite-result.json", "runtime-manifest.json"];
+  const requiresWorkflowTrace = provenance.conditions.observationLevel === "workflow_trace";
+  if (requiresWorkflowTrace && !options.trustedObserverKeyPath) {
+    return "workflow_trace provenance requires an external trusted observer public key.";
+  }
+  if (!requiresWorkflowTrace && provenance.conditions.observer) {
+    return "Observer provenance is only valid for workflow_trace evidence.";
+  }
+  const requiredRefs = [
+    "suite-result.json",
+    "runtime-manifest.json",
+    ...(requiresWorkflowTrace ? ["workflow-trace.json"] : [])
+  ];
   for (const ref of requiredRefs) {
     if (!provenance.integrity.artifacts.some((artifact) => artifact.ref === ref)) {
       return `Required provenance artifact ${ref} is missing.`;
@@ -393,7 +446,33 @@ async function validateProvenance(
   } catch {
     return "runtime-manifest.json is not valid JSON.";
   }
-  const runtimeMismatch = validateRuntimeManifest(runtimeManifest, suite, provenance);
+  let verifiedTrace: VerifiedWorkflowTrace | undefined;
+  if (requiresWorkflowTrace) {
+    try {
+      const runner = provenance.conditions.runner;
+      if (runner.name === "simulated") {
+        return "Simulated runner provenance cannot claim workflow_trace evidence.";
+      }
+      verifiedTrace = await verifyWorkflowTraceBundle(
+        path.join(runDir, "workflow-trace.json"),
+        options.trustedObserverKeyPath!,
+        {
+          targetId: provenance.subject.targetId,
+          contractHash: provenance.subject.contractHash,
+          suite: provenance.conditions.suite,
+          caseSetHash: provenance.conditions.caseSetHash,
+          caseIds: suite.caseResults.map((item) => item.caseId),
+          runner: {
+            ...runner,
+            name: runner.name as Exclude<RunnerCapability["name"], "simulated">
+          }
+        }
+      );
+    } catch (error) {
+      return error instanceof Error ? error.message : "Workflow trace attestation could not be verified.";
+    }
+  }
+  const runtimeMismatch = validateRuntimeManifest(runtimeManifest, suite, provenance, verifiedTrace);
   if (runtimeMismatch) {
     return runtimeMismatch;
   }
@@ -403,7 +482,8 @@ async function validateProvenance(
 function validateRuntimeManifest(
   runtime: RuntimeManifest,
   suite: SuiteResult,
-  provenance: RunProvenance
+  provenance: RunProvenance,
+  verifiedTrace?: VerifiedWorkflowTrace
 ): string | undefined {
   if (
     !runtime ||
@@ -454,7 +534,14 @@ function validateRuntimeManifest(
   }
 
   const expectedBoundary =
-    runtime.dryRun
+    verifiedTrace
+      ? {
+          evidenceKind: "live" as const,
+          observationLevel: "workflow_trace" as const,
+          isolation: verifiedTrace.bundle.subject.isolation,
+          permissionMode: verifiedTrace.bundle.subject.permissionMode
+        }
+      : runtime.dryRun
       ? {
           evidenceKind: "unknown" as const,
           observationLevel: "capability_only" as const,
@@ -497,6 +584,30 @@ function validateRuntimeManifest(
     return "Runtime evidence boundary does not match provenance.";
   }
 
+  if (verifiedTrace) {
+    const observer = provenance.conditions.observer;
+    const runtimeTrace = runtime.workflowTrace;
+    if (
+      !observer ||
+      !runtimeTrace ||
+      runtimeTrace.verified !== true ||
+      runtimeTrace.ref !== "workflow-trace.json" ||
+      runtimeTrace.sha256 !== verifiedTrace.traceHash ||
+      runtimeTrace.caseCount !== verifiedTrace.runs.length ||
+      runtimeTrace.eventCount !== verifiedTrace.eventCount ||
+      runtimeTrace.observer.id !== verifiedTrace.bundle.observer.id ||
+      runtimeTrace.observer.version !== verifiedTrace.bundle.observer.version ||
+      runtimeTrace.observer.keyFingerprint !== verifiedTrace.keyFingerprint ||
+      observer.id !== verifiedTrace.bundle.observer.id ||
+      observer.version !== verifiedTrace.bundle.observer.version ||
+      observer.keyFingerprint !== verifiedTrace.keyFingerprint
+    ) {
+      return "Runtime workflow trace facts do not match the trusted observer attestation.";
+    }
+  } else if (runtime.workflowTrace !== undefined) {
+    return "Runtime manifest cannot declare workflow trace facts without trusted attestation.";
+  }
+
   if (runtime.dryRun) {
     if (
       runtime.caseCount !== 0 ||
@@ -509,6 +620,10 @@ function validateRuntimeManifest(
   } else if (runtime.runner.executionMode === "simulated") {
     if (runtime.liveTranscriptCount !== 0) {
       return "Simulated runtime cannot contain live transcripts.";
+    }
+  } else if (verifiedTrace) {
+    if (!runtime.runner.supported || runtime.liveTranscriptCount !== 0) {
+      return "Attested workflow trace runtime counts are invalid.";
     }
   } else if (
     !runtime.runner.supported ||
@@ -565,6 +680,7 @@ function comparisonReasons(baseline: LoadedRun, candidate: LoadedRun): Compariso
   if (left.conditions.commandPolicyHash !== right.conditions.commandPolicyHash) reasons.push("COMMAND_POLICY_MISMATCH");
   if (left.conditions.environmentHash !== right.conditions.environmentHash) reasons.push("ENVIRONMENT_MISMATCH");
   if (left.conditions.model !== right.conditions.model) reasons.push("MODEL_MISMATCH");
+  if (stableJson(left.conditions.observer) !== stableJson(right.conditions.observer)) reasons.push("OBSERVER_MISMATCH");
   if (left.conditions.conditionsHash !== right.conditions.conditionsHash && reasons.length === 0) reasons.push("CONDITIONS_MISMATCH");
   return reasons;
 }
