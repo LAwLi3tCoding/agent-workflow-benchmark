@@ -156,27 +156,33 @@ hard-failure codes. P0 failures block; P1 failures cap a case below PASS.
 
 ### Signed workflow-trace admission
 
-An independent observer can produce release-grade evidence by signing the
-complete normalized trace with Ed25519. AWB receives only the signed trace and
-a separately configured public key:
+The reference Observer runs the evaluated Runner behind a deny-default macOS Seatbelt boundary with a scrubbed environment. It allows workspace writes and the exact Runner executable, denies signing-key reads, network, and unobserved nested executables, and requires active canaries for all three to fail with `EPERM`. HOME/TMPDIR writes remain observable, and the signed trace output must be outside every Runner workspace.
+It then collects, redacts, and Ed25519-signs filesystem, tool, process, network-policy, artifact, state, side-effect, and token evidence. Qualification also makes the controlled Runner attempt direct network and nested-tool bypasses. Qualify it with a separate authority before release gating:
 
 ```bash
+awb observer observe --request observer-request.json --observer-private-key /secure/observer-private.pem --out observer-output/workflow-trace.json
+awb observer qualify --target my-workflow --suite full --observer-id my-observer --observer-version 1.0.0 --observer-private-key /secure/observer-private.pem --qualification-authority-private-key /secure/qualification-authority-private.pem --out observer-output/qualification
+
 awb ingest-trace \
   --cases-dir cases/generated/my-workflow \
   --suite full \
   --trace observer-output/workflow-trace.json \
   --trusted-observer-key ci/observer-public.pem \
+  --observer-qualification observer-output/qualification/observer-qualification.json \
+  --trusted-qualification-key ci/qualification-authority-public.pem \
   --out reports/observed/baseline
 
 awb compare \
   --baseline reports/observed/baseline \
   --candidate reports/observed/candidate \
   --trusted-observer-key ci/observer-public.pem \
+  --trusted-qualification-key ci/qualification-authority-public.pem \
   --out reports/observed/comparison
 
 awb gate \
   --comparison reports/observed/comparison/comparison-result.json \
   --trusted-observer-key ci/observer-public.pem \
+  --trusted-qualification-key ci/qualification-authority-public.pem \
   --out reports/observed/gate
 ```
 
@@ -185,14 +191,18 @@ runtime manifest, comparison snapshot, and gate recomputation. A changed trace,
 wrong key, missing case, missing required evidence, or absent trust anchor
 cannot produce PASS.
 
-The signature proves observer identity and post-signing integrity. It does not
-prove observer completeness or OS/network isolation. Qualify the observer
-before admitting its public key as a release trust root. See the
-[workflow-trace observer contract](docs/workflow-trace-observer-contract.md).
-The current Stage 1 admission path records `qualificationStatus: missing`, so a
-signed trace is still `DIAGNOSTIC_ONLY`; `GATE-PASS` is reserved for a later
-integrity-bound qualification artifact produced by the Stage 3 qualification
-workflow. Editing run metadata to self-assert `valid` is ignored.
+The trace signature proves Observer identity and post-signing integrity. The
+authority signature proves that the exact Observer id, version, key,
+content-addressed implementation closure, evidence capabilities, contract, case set, evaluation
+contract, trace Schema, and qualification suite passed the frozen checks. The
+Observer and qualification authority must use distinct key pairs. Both public trust anchors are
+always supplied explicitly; AWB never enrolls either key. A signed trace without
+a valid qualification artifact remains `DIAGNOSTIC_ONLY`, and editing run
+metadata to self-assert `valid` is ignored. The private keys must stay outside
+the Runner, repository, generated artifacts, and logs. See the
+[workflow-trace Observer contract](docs/workflow-trace-observer-contract.md).
+
+The bundled reference boundary is Darwin-only and requires `/usr/bin/sandbox-exec`. Unsupported isolation fails closed, produces no valid qualification artifact, and cannot exceed `DIAGNOSTIC_ONLY`.
 
 ## Common Workflows
 

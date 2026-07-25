@@ -23,17 +23,23 @@ awb compare --baseline <baseline-run> --candidate <candidate-run> --out <compari
 awb gate --comparison <comparison-dir>/comparison-result.json --out <gate-dir>
 ```
 
-Gate exit codes are `0` for PASS, `2` for `DIAGNOSTIC_ONLY`, and `1` for BLOCK or tool/runtime failure. PASS requires a qualified independent live `workflow_trace`. Simulated runs, current live `contract-summary` adapters, and signed traces without a valid Observer qualification artifact are diagnostic-only and cannot PASS the CI gate. The current Stage 1 trace admission records `qualificationStatus: missing`, and comparison ignores self-asserted `valid` metadata, so no signed trace is yet release-gateable.
+Gate exit codes are `0` for PASS, `2` for `DIAGNOSTIC_ONLY`, and `1` for BLOCK or tool/runtime failure. PASS requires a qualified independent live `workflow_trace`. Simulated runs, current live `contract-summary` adapters, and signed traces without a valid Observer qualification artifact are diagnostic-only. Comparison ignores self-asserted `valid` metadata unless the authority-signed artifact verifies.
 
-For an independently observed live run, admit the signed trace with an external Ed25519 public-key trust anchor:
+Qualify the reference Observer without changing any trust root:
 
 ```bash
-awb ingest-trace --cases-dir <cases-dir> --suite <suite> --trace <workflow-trace.json> --trusted-observer-key <public.pem> --out <run-dir>
-awb compare --baseline <baseline-run> --candidate <candidate-run> --trusted-observer-key <public.pem> --out <comparison-dir>
-awb gate --comparison <comparison-dir>/comparison-result.json --trusted-observer-key <public.pem> --out <gate-dir>
+awb observer qualify --target <target-id> --suite <suite> --observer-id <observer-id> --observer-version <version> --observer-private-key </secure/observer-private.pem> --qualification-authority-private-key </secure/authority-private.pem> --out <qualification-dir>
 ```
 
-The private signing key must remain outside the evaluated runner. A valid signature proves trace origin and post-signing integrity, not observer completeness or qualification; validate the observer separately with known good/bad trajectories and mutations before treating its public key as a release trust root. AWB never enrolls that key automatically.
+For an independently observed live run, admit the signed trace with explicit Observer and qualification-authority Ed25519 public-key trust anchors:
+
+```bash
+awb ingest-trace --cases-dir <cases-dir> --suite <suite> --trace <workflow-trace.json> --trusted-observer-key <public.pem> --observer-qualification <qualification-dir>/observer-qualification.json --trusted-qualification-key <authority-public.pem> --out <run-dir>
+awb compare --baseline <baseline-run> --candidate <candidate-run> --trusted-observer-key <public.pem> --trusted-qualification-key <authority-public.pem> --out <comparison-dir>
+awb gate --comparison <comparison-dir>/comparison-result.json --trusted-observer-key <public.pem> --trusted-qualification-key <authority-public.pem> --out <gate-dir>
+```
+
+Both private signing keys must remain outside the evaluated Runner, repository, artifacts, and logs, and the Observer and qualification authority must use different key pairs. The bundled reference Observer currently requires Darwin plus `/usr/bin/sandbox-exec`; it fails closed elsewhere. Its deny-default boundary actively proves signing-key reads, direct network, and nested process execution are denied with `EPERM`; Runner HOME/TMPDIR changes stay observable, and the signed trace output must be outside every Runner workspace. The qualification suite binds known-good/P0/blind-spot/repeat evidence to the exact Observer implementation, Contract, case set, canonical evaluation-contract content, and Schemas. AWB never enrolls either key automatically.
 
 For a complete local evaluation workflow, the legacy one-shot command remains supported:
 

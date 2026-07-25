@@ -38,7 +38,21 @@ import { ensureDir, readJson, readYaml, writeJson, writeYaml } from "../utils/io
 import { AWB_VERSION, CLI_NAME, PRODUCT_NAME, PRODUCT_TAGLINE } from "../core/product.js";
 import { diagnoseWorkflow, renderDoctorReport } from "../doctor/doctor.js";
 import { buildRunProvenance, publicRunnerCapability, semanticCaseSetHash } from "../regression/provenance.js";
-import { verifyWorkflowTraceBundle } from "../observer/workflowTrace.js";
+import {
+  verifyWorkflowTraceBundle,
+  type VerifiedWorkflowTrace
+} from "../observer/workflowTrace.js";
+import {
+  assertQualifiedWorkflowTraceEvidence,
+  runReferenceObserverQualification,
+  verifyObserverQualificationArtifact,
+  type VerifiedObserverQualification
+} from "../observer/qualification.js";
+import {
+  observeWithReferenceObserver,
+  type ReferenceObservationRequest,
+  type ReferenceObserverEvidenceCapability
+} from "../observer/referenceObserver.js";
 import {
   createComparisonBundle,
   renderComparisonReport,
@@ -86,6 +100,89 @@ program.command("validate-schema").action(async () => {
   console.log("schemas valid");
   console.log("runner configs valid");
 });
+
+const observer = program.command("observer");
+
+observer
+  .command("observe")
+  .description(
+    "Run the reference Observer around a child Runner and emit an Ed25519-signed workflow trace"
+  )
+  .requiredOption("--request <path>", "reference Observer request JSON")
+  .requiredOption(
+    "--observer-private-key <path>",
+    "Ed25519 signing key kept outside the Runner environment"
+  )
+  .requiredOption("--out <path>", "workflow-trace.json output path")
+  .action(
+    async (options: {
+      request: string;
+      observerPrivateKey: string;
+      out: string;
+    }) => {
+      const request = await readJson<ReferenceObservationRequest>(
+        await resolveExistingPath(options.request)
+      );
+      await observeWithReferenceObserver({
+        request,
+        privateKeyPath: await resolveExistingPath(
+          options.observerPrivateKey
+        ),
+        outputPath: path.resolve(options.out)
+      });
+      console.log(`reference Observer trace written: ${options.out}`);
+    }
+  );
+
+observer
+  .command("qualify")
+  .description(
+    "Qualify the reference Observer without modifying any public-key trust root"
+  )
+  .requiredOption("--target <id>")
+  .option(
+    "--target-root <path>",
+    "override the registered target root for this isolated checkout"
+  )
+  .option("--suite <name>", "suite name", "smoke")
+  .requiredOption("--observer-id <id>")
+  .requiredOption("--observer-version <version>")
+  .requiredOption("--observer-private-key <path>")
+  .requiredOption("--qualification-authority-private-key <path>")
+  .requiredOption("--out <dir>")
+  .action(
+    async (options: {
+      target: string;
+      targetRoot?: string;
+      suite: string;
+      observerId: string;
+      observerVersion: string;
+      observerPrivateKey: string;
+      qualificationAuthorityPrivateKey: string;
+      out: string;
+    }) => {
+      const { contract, cases } = await resolveRunInputs(options);
+      const result = await runReferenceObserverQualification({
+        contract,
+        cases,
+        observerId: options.observerId,
+        observerVersion: options.observerVersion,
+        observerPrivateKeyPath: await resolveExistingPath(
+          options.observerPrivateKey
+        ),
+        qualificationAuthorityPrivateKeyPath: await resolveExistingPath(
+          options.qualificationAuthorityPrivateKey
+        ),
+        outputDir: path.resolve(options.out)
+      });
+      console.log(
+        `Observer qualification ${result.report.decision}: ${options.out}`
+      );
+      if (result.report.decision !== "valid") {
+        process.exitCode = 1;
+      }
+    }
+  );
 
 program
   .command("init-target")
@@ -394,6 +491,14 @@ program
   .option("--cases-dir <dir>")
   .requiredOption("--trace <path>", "signed workflow-trace JSON bundle")
   .requiredOption("--trusted-observer-key <path>", "trusted Ed25519 observer public key")
+  .option(
+    "--observer-qualification <path>",
+    "authority-signed Observer qualification artifact"
+  )
+  .option(
+    "--trusted-qualification-key <path>",
+    "trusted Ed25519 qualification authority public key"
+  )
   .requiredOption("--out <dir>")
   .action(
     async (options: {
@@ -404,6 +509,8 @@ program
       casesDir?: string;
       trace: string;
       trustedObserverKey: string;
+      observerQualification?: string;
+      trustedQualificationKey?: string;
       out: string;
     }) => {
       const { target, profile, contract, cases } = await resolveRunInputs(options);
@@ -417,6 +524,12 @@ program
         caseIds: cases.map((testCase) => testCase.id),
         cases: cases.map((testCase) => ({ id: testCase.id, templateId: testCase.templateId }))
       });
+      const verifiedQualification = await resolveObserverQualification(
+        options,
+        verifiedTrace,
+        contract.contractHash,
+        semanticCaseSetHash(cases)
+      );
       const runnerCapability = workflowTraceRunnerCapability(verifiedTrace.bundle.subject.runner);
       const runByCaseId = new Map(verifiedTrace.runs.map((run) => [run.caseId, run]));
       const caseResults: CaseResult[] = [];
@@ -440,7 +553,7 @@ program
         {
           evidenceKind: "live",
           observationLevel: "workflow_trace",
-          observerQualification: "missing"
+          observerQualification: verifiedQualification ? "valid" : "missing"
         }
       );
       await writeJson(path.join(options.out, "suite-result.json"), suiteResult);
@@ -450,6 +563,15 @@ program
 
       const traceArtifactPath = path.join(options.out, "workflow-trace.json");
       await copyFile(tracePath, traceArtifactPath);
+      const qualificationArtifactPath = verifiedQualification
+        ? path.join(options.out, "observer-qualification.json")
+        : undefined;
+      if (verifiedQualification && qualificationArtifactPath) {
+        await copyFile(
+          await resolveExistingPath(options.observerQualification!),
+          qualificationArtifactPath
+        );
+      }
       const runtimeManifestPath = path.join(options.out, "runtime-manifest.json");
       await writeJson(runtimeManifestPath, {
         runner: {
@@ -472,7 +594,16 @@ program
             id: verifiedTrace.bundle.observer.id,
             version: verifiedTrace.bundle.observer.version,
             keyFingerprint: verifiedTrace.keyFingerprint,
-            qualificationStatus: "missing"
+            qualificationStatus: verifiedQualification ? "valid" : "missing",
+            ...(verifiedQualification
+              ? {
+                  qualificationRef: "observer-qualification.json",
+                  qualificationArtifactHash:
+                    verifiedQualification.artifactHash,
+                  qualificationAuthorityFingerprint:
+                    verifiedQualification.authorityFingerprint
+                }
+              : {})
           }
         }
       });
@@ -485,10 +616,19 @@ program
           runner: runnerCapability,
           executionMode: "live",
           verifiedTrace,
+          verifiedQualification,
           artifacts: [
             { ref: "suite-result.json", path: path.join(options.out, "suite-result.json") },
             { ref: "runtime-manifest.json", path: runtimeManifestPath },
-            { ref: "workflow-trace.json", path: traceArtifactPath }
+            { ref: "workflow-trace.json", path: traceArtifactPath },
+            ...(qualificationArtifactPath
+              ? [
+                  {
+                    ref: "observer-qualification.json",
+                    path: qualificationArtifactPath
+                  }
+                ]
+              : [])
           ],
           targetRoot: target.root
         })
@@ -694,11 +834,24 @@ program
   .requiredOption("--baseline <dir>", "baseline run or evaluation directory")
   .requiredOption("--candidate <dir>", "candidate run or evaluation directory")
   .option("--trusted-observer-key <path>", "trusted Ed25519 observer public key for workflow_trace evidence")
+  .option(
+    "--trusted-qualification-key <path>",
+    "trusted Ed25519 qualification authority public key"
+  )
   .requiredOption("--out <dir>")
-  .action(async (options: { baseline: string; candidate: string; trustedObserverKey?: string; out: string }) => {
+  .action(async (options: {
+    baseline: string;
+    candidate: string;
+    trustedObserverKey?: string;
+    trustedQualificationKey?: string;
+    out: string;
+  }) => {
     const result = await createComparisonBundle(options.baseline, options.candidate, options.out, {
       trustedObserverKeyPath: options.trustedObserverKey
         ? await resolveExistingPath(options.trustedObserverKey)
+        : undefined,
+      trustedQualificationKeyPath: options.trustedQualificationKey
+        ? await resolveExistingPath(options.trustedQualificationKey)
         : undefined
     });
     await writeJson(path.join(options.out, "comparison-result.json"), result);
@@ -711,12 +864,24 @@ program
   .description("Apply evidence-first CI policy; unqualified evidence remains diagnostic")
   .requiredOption("--comparison <path>", "comparison-result.json")
   .option("--trusted-observer-key <path>", "trusted Ed25519 observer public key for workflow_trace evidence")
+  .option(
+    "--trusted-qualification-key <path>",
+    "trusted Ed25519 qualification authority public key"
+  )
   .requiredOption("--out <dir>")
-  .action(async (options: { comparison: string; trustedObserverKey?: string; out: string }) => {
+  .action(async (options: {
+    comparison: string;
+    trustedObserverKey?: string;
+    trustedQualificationKey?: string;
+    out: string;
+  }) => {
     const comparison = await readJson<ComparisonResult>(options.comparison);
     const verification = await verifyComparisonBundle(options.comparison, comparison, {
       trustedObserverKeyPath: options.trustedObserverKey
         ? await resolveExistingPath(options.trustedObserverKey)
+        : undefined,
+      trustedQualificationKeyPath: options.trustedQualificationKey
+        ? await resolveExistingPath(options.trustedQualificationKey)
         : undefined
     });
     const result = evaluateGate(comparison, verification);
@@ -1291,6 +1456,66 @@ function parsePositiveInt(value: string, label: string): number {
   return parsed;
 }
 
+async function resolveObserverQualification(
+  options: {
+    observerQualification?: string;
+    trustedQualificationKey?: string;
+  },
+  verifiedTrace: VerifiedWorkflowTrace,
+  contractHash: string,
+  caseSetHash: string
+): Promise<VerifiedObserverQualification | undefined> {
+  if (
+    Boolean(options.observerQualification) !==
+    Boolean(options.trustedQualificationKey)
+  ) {
+    throw new Error(
+      "--observer-qualification and --trusted-qualification-key must be provided together."
+    );
+  }
+  if (
+    !options.observerQualification ||
+    !options.trustedQualificationKey
+  ) {
+    return undefined;
+  }
+  const implementationHash =
+    verifiedTrace.bundle.observer.implementationHash;
+  const evidenceCapabilities =
+    verifiedTrace.bundle.observer.evidenceCapabilities;
+  if (
+    !implementationHash ||
+    !Array.isArray(evidenceCapabilities) ||
+    evidenceCapabilities.length === 0
+  ) {
+    throw new Error(
+      "Qualified workflow trace is missing Observer implementation or evidence capability bindings."
+    );
+  }
+  const verifiedQualification =
+    await verifyObserverQualificationArtifact(
+      await resolveExistingPath(options.observerQualification),
+      await resolveExistingPath(options.trustedQualificationKey),
+      {
+        observer: {
+          id: verifiedTrace.bundle.observer.id,
+          version: verifiedTrace.bundle.observer.version,
+          keyFingerprint: verifiedTrace.keyFingerprint,
+          implementationHash,
+          evidenceCapabilities:
+            evidenceCapabilities as ReferenceObserverEvidenceCapability[]
+        },
+        contractHash,
+        caseSetHash
+      }
+    );
+  assertQualifiedWorkflowTraceEvidence(
+    verifiedTrace,
+    verifiedQualification.artifact.observer
+  );
+  return verifiedQualification;
+}
+
 async function validateSchemasAndTargets(): Promise<void> {
   const ajv = new Ajv2020({ strict: false });
   const benchmarkRoot = getBenchmarkRoot();
@@ -1304,6 +1529,7 @@ async function validateSchemasAndTargets(): Promise<void> {
   let validateGoldCorpusBase: ValidateFunction | undefined;
   let validateGoldCorpusTrajectories: ValidateFunction | undefined;
   let validateGoldCorpusLabels: ValidateFunction | undefined;
+  let validateObserverQualification: ValidateFunction | undefined;
   for (const file of schemaFiles) {
     const schema = JSON.parse(await readFile(path.join(schemaDir, file), "utf8")) as object;
     const validate = ajv.compile(schema);
@@ -1331,6 +1557,9 @@ async function validateSchemasAndTargets(): Promise<void> {
     if (file === "gold-corpus-labels.schema.json") {
       validateGoldCorpusLabels = validate;
     }
+    if (file === "observer-qualification.schema.json") {
+      validateObserverQualification = validate;
+    }
   }
   if (!validateTarget) {
     throw new Error("target-pack.schema.json missing");
@@ -1343,6 +1572,9 @@ async function validateSchemasAndTargets(): Promise<void> {
   }
   if (!validateContractValidity) {
     throw new Error("contract-validity.schema.json missing");
+  }
+  if (!validateObserverQualification) {
+    throw new Error("observer-qualification.schema.json missing");
   }
   if (
     !validateGoldCorpus ||

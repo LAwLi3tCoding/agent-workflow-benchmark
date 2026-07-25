@@ -1,0 +1,199 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "observer-qualification.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "artifactType",
+    "qualificationId",
+    "qualifiedAt",
+    "expiresAt",
+    "observer",
+    "subject",
+    "results",
+    "checks",
+    "integrity",
+    "attestation"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "0.1.0" },
+    "artifactType": { "const": "observer-qualification" },
+    "qualificationId": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    },
+    "qualifiedAt": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{3})?Z$"
+    },
+    "expiresAt": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{3})?Z$"
+    },
+    "observer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "version",
+        "keyFingerprint",
+        "implementationHash",
+        "evidenceCapabilities"
+      ],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "version": { "type": "string", "minLength": 1 },
+        "keyFingerprint": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "implementationHash": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "evidenceCapabilities": {
+          "type": "array",
+          "minItems": 8,
+          "maxItems": 8,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "filesystem",
+              "tool",
+              "process",
+              "network",
+              "artifact",
+              "state",
+              "side_effect",
+              "token"
+            ]
+          }
+        }
+      }
+    },
+    "subject": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "contractHash",
+        "caseSetHash",
+        "evaluationContractHash",
+        "workflowTraceSchemaHash",
+        "qualificationSuiteHash"
+      ],
+      "properties": {
+        "contractHash": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "caseSetHash": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "evaluationContractHash": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "workflowTraceSchemaHash": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "qualificationSuiteHash": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        }
+      }
+    },
+    "results": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "decision",
+        "p0DetectionRate",
+        "falsePassCount",
+        "knownGoodPassed",
+        "repeatCount",
+        "repeatAgreement",
+        "privateKeyVisibleToRunner"
+      ],
+      "properties": {
+        "decision": { "enum": ["valid", "invalid"] },
+        "p0DetectionRate": { "type": "number", "minimum": 0, "maximum": 1 },
+        "falsePassCount": { "type": "integer", "minimum": 0 },
+        "knownGoodPassed": { "type": "boolean" },
+        "repeatCount": { "type": "integer", "minimum": 1 },
+        "repeatAgreement": { "type": "number", "minimum": 0, "maximum": 1 },
+        "privateKeyVisibleToRunner": { "type": "boolean" }
+      }
+    },
+    "checks": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "kind",
+          "expectedDecision",
+          "actualDecision",
+          "status",
+          "evidenceHash",
+          "why"
+        ],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "kind": {
+            "enum": [
+              "known_good",
+              "p0_mutation",
+              "event_omission",
+              "event_order",
+              "runner_forgery",
+              "wrong_key",
+              "private_key_leak",
+              "network_blind_spot",
+              "tool_blind_spot",
+              "repeat"
+            ]
+          },
+          "failureCode": { "type": "string", "minLength": 1 },
+          "expectedDecision": { "enum": ["PASS", "BLOCK"] },
+          "actualDecision": { "enum": ["PASS", "BLOCK"] },
+          "status": { "enum": ["PASS", "FAIL"] },
+          "evidenceHash": {
+            "type": "string",
+            "pattern": "^sha256:[a-f0-9]{64}$"
+          },
+          "why": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "integrity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "contentHash"],
+      "properties": {
+        "status": { "const": "VERIFIED_AT_WRITE" },
+        "contentHash": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        }
+      }
+    },
+    "attestation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["algorithm", "authorityFingerprint", "signature"],
+      "properties": {
+        "algorithm": { "const": "ed25519" },
+        "authorityFingerprint": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "signature": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

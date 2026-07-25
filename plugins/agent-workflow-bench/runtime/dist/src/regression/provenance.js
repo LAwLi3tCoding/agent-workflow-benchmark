@@ -30,7 +30,16 @@ export async function buildRunProvenance(options) {
                     id: options.verifiedTrace.bundle.observer.id,
                     version: options.verifiedTrace.bundle.observer.version,
                     keyFingerprint: options.verifiedTrace.keyFingerprint,
-                    qualificationStatus: "missing"
+                    qualificationStatus: options.verifiedQualification
+                        ? "valid"
+                        : "missing",
+                    ...(options.verifiedQualification
+                        ? {
+                            qualificationRef: "observer-qualification.json",
+                            qualificationArtifactHash: options.verifiedQualification.artifactHash,
+                            qualificationAuthorityFingerprint: options.verifiedQualification.authorityFingerprint
+                        }
+                        : {})
                 }
             }
             : {}),

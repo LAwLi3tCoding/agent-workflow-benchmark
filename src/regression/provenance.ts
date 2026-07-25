@@ -3,6 +3,7 @@ import type { BenchmarkCase, MutationInput, ProfileResult, RunnerCapability } fr
 import { PRODUCT_NAME } from "../core/product.js";
 import { evidenceBoundary, type EvidenceKind, type ObservationLevel } from "../doctor/doctor.js";
 import type { VerifiedWorkflowTrace } from "../observer/workflowTrace.js";
+import type { VerifiedObserverQualification } from "../observer/qualification.js";
 import { hashFile, sha256Text, stableJson } from "../utils/hash.js";
 
 export interface RunProvenance {
@@ -40,6 +41,9 @@ export interface RunProvenance {
       version: string;
       keyFingerprint: string;
       qualificationStatus: ObserverQualificationStatus;
+      qualificationRef?: "observer-qualification.json";
+      qualificationArtifactHash?: string;
+      qualificationAuthorityFingerprint?: string;
     };
     executionMode: "live" | "simulated";
     evidenceKind: EvidenceKind;
@@ -77,6 +81,7 @@ export async function buildRunProvenance(options: {
   targetRoot: string;
   dryRun?: boolean;
   verifiedTrace?: VerifiedWorkflowTrace;
+  verifiedQualification?: VerifiedObserverQualification;
 }): Promise<RunProvenance> {
   const effectiveRunner = effectiveRunnerIdentity(options.runner, options.executionMode);
   const boundary = options.verifiedTrace
@@ -105,7 +110,19 @@ export async function buildRunProvenance(options: {
             id: options.verifiedTrace.bundle.observer.id,
             version: options.verifiedTrace.bundle.observer.version,
             keyFingerprint: options.verifiedTrace.keyFingerprint,
-            qualificationStatus: "missing" as const
+            qualificationStatus: options.verifiedQualification
+              ? ("valid" as const)
+              : ("missing" as const),
+            ...(options.verifiedQualification
+              ? {
+                  qualificationRef:
+                    "observer-qualification.json" as const,
+                  qualificationArtifactHash:
+                    options.verifiedQualification.artifactHash,
+                  qualificationAuthorityFingerprint:
+                    options.verifiedQualification.authorityFingerprint
+                }
+              : {})
           }
         }
       : {}),

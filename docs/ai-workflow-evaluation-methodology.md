@@ -73,17 +73,21 @@ awb ingest-trace \
   --suite smoke \
   --trace observer-output/workflow-trace.json \
   --trusted-observer-key ci/trusted-observer-public.pem \
+  --observer-qualification observer-output/observer-qualification.json \
+  --trusted-qualification-key ci/qualification-authority-public.pem \
   --out reports/runs/<target-id>-observed
 
 awb compare \
   --baseline reports/runs/<target-id>-baseline \
   --candidate reports/runs/<target-id>-candidate \
   --trusted-observer-key ci/trusted-observer-public.pem \
+  --trusted-qualification-key ci/qualification-authority-public.pem \
   --out reports/comparisons/<target-id>
 
 awb gate \
   --comparison reports/comparisons/<target-id>/comparison-result.json \
   --trusted-observer-key ci/trusted-observer-public.pem \
+  --trusted-qualification-key ci/qualification-authority-public.pem \
   --out reports/gates/<target-id>
 ```
 
@@ -108,9 +112,16 @@ runtime action or that OS/network isolation was effective. A production observer
 be validated independently with controlled good/bad trajectories, mutation tests, and CI
 isolation evidence before its public key is admitted as a release trust root.
 
-Stage 1 deliberately records admitted traces with `qualificationStatus: missing`. They are useful
-for integrity diagnostics but cannot PASS. The qualification command and integrity-bound artifact
-are Stage 3 work, not a capability inferred from possession of a public key.
+`awb observer qualify` runs the frozen known-good, P0, omission, ordering,
+forgery, wrong-key, key-leak, tool/network blind-spot, and repeat checks. The
+bundled Darwin reference implementation applies a deny-default Seatbelt
+boundary and actively proves signing-key reads, direct network, and nested
+processes are denied with `EPERM`; static capability markers are rejected. Its
+integrity-bound artifact is signed by a distinct qualification authority.
+The artifact also binds the canonical evaluation-contract content hash.
+Possession of an Observer public key alone never implies qualification; signed
+traces without a valid artifact remain diagnostic-only. AWB does not mutate any
+trust store.
 
 ## Scoring Answer
 

@@ -86,12 +86,21 @@ function validateObservedCase(observed, contractHash, runnerName) {
     }
     assertTokens(observed.caseId, observed.tokens);
     const eventIds = new Set();
+    let previousTimestamp = Number.NEGATIVE_INFINITY;
     for (const event of observed.events) {
         assertEvent(observed.caseId, event);
         if (eventIds.has(event.eventId)) {
             throw new Error(`Workflow trace contains duplicate eventId ${event.eventId}.`);
         }
         eventIds.add(event.eventId);
+        const eventTime = Date.parse(event.timestamp);
+        if (eventTime <= previousTimestamp) {
+            throw new Error(`Workflow trace case ${observed.caseId} violates required event ordering.`);
+        }
+        previousTimestamp = eventTime;
+        if (observerOwnedEventTypes.has(event.type) && event.actor !== "observer") {
+            throw new Error(`Workflow trace case ${observed.caseId} contains runner-forged Observer evidence.`);
+        }
     }
     for (const requiredType of [
         "case_start",
@@ -102,8 +111,12 @@ function validateObservedCase(observed, contractHash, runnerName) {
         "token_usage",
         "case_end"
     ]) {
-        if (!observed.events.some((event) => event.type === requiredType)) {
+        const count = observed.events.filter((event) => event.type === requiredType).length;
+        if (count === 0) {
             throw new Error(`Workflow trace case ${observed.caseId} is missing required ${requiredType} evidence.`);
+        }
+        if (count !== 1) {
+            throw new Error(`Workflow trace case ${observed.caseId} contains duplicate ${requiredType} lifecycle evidence.`);
         }
     }
     const caseStart = observed.events.find((event) => event.type === "case_start");
@@ -118,6 +131,7 @@ function validateObservedCase(observed, contractHash, runnerName) {
     if (tokenUsage.payload.total !== observed.tokens.total) {
         throw new Error(`Workflow trace token evidence does not match case ${observed.caseId}.`);
     }
+    assertLifecycleOrder(observed);
     assertTemplateEvidence(observed);
     return {
         runId: observed.runId,
@@ -145,6 +159,14 @@ function assertBundleShape(bundle) {
         typeof bundle.observer.version !== "string" ||
         !bundle.observer.version ||
         typeof bundle.observer.keyFingerprint !== "string" ||
+        (bundle.observer.implementationHash !== undefined &&
+            (typeof bundle.observer.implementationHash !== "string" ||
+                !/^sha256:[a-f0-9]{64}$/u.test(bundle.observer.implementationHash))) ||
+        (bundle.observer.evidenceCapabilities !== undefined &&
+            (!Array.isArray(bundle.observer.evidenceCapabilities) ||
+                bundle.observer.evidenceCapabilities.some((item) => typeof item !== "string" || !item) ||
+                new Set(bundle.observer.evidenceCapabilities).size !==
+                    bundle.observer.evidenceCapabilities.length)) ||
         !bundle.subject ||
         typeof bundle.subject.targetId !== "string" ||
         typeof bundle.subject.contractHash !== "string" ||
@@ -161,6 +183,33 @@ function assertBundleShape(bundle) {
         bundle.attestation.algorithm !== "ed25519" ||
         typeof bundle.attestation.signature !== "string") {
         throw new Error("Workflow trace bundle is missing required fields.");
+    }
+}
+function assertLifecycleOrder(observed) {
+    const indexes = new Map();
+    observed.events.forEach((event, index) => {
+        if (!indexes.has(event.type)) {
+            indexes.set(event.type, index);
+        }
+    });
+    const requiredOrder = [
+        "case_start",
+        "contract_observed",
+        "runner_start",
+        "runner_result",
+        "runner_exit",
+        "token_usage",
+        "case_end"
+    ];
+    for (let index = 1; index < requiredOrder.length; index += 1) {
+        if (indexes.get(requiredOrder[index - 1]) >=
+            indexes.get(requiredOrder[index])) {
+            throw new Error(`Workflow trace case ${observed.caseId} violates required event ordering.`);
+        }
+    }
+    if (indexes.get("case_start") !== 0 ||
+        indexes.get("case_end") !== observed.events.length - 1) {
+        throw new Error(`Workflow trace case ${observed.caseId} violates required lifecycle boundaries.`);
     }
 }
 function assertEvent(caseId, event) {
@@ -209,4 +258,22 @@ function publicKeyFingerprint(der) {
 }
 const runEventTypes = new Set([
     ...getImplementedEventIds()
+]);
+const observerOwnedEventTypes = new Set([
+    "case_start",
+    "contract_observed",
+    "runner_start",
+    "runner_result",
+    "runner_exit",
+    "token_usage",
+    "case_end",
+    "filesystem_access",
+    "tool_call",
+    "process_spawn",
+    "network_access",
+    "artifact_write",
+    "state_read",
+    "side_effect_attempt",
+    "runner_transcript",
+    "hard_failure"
 ]);

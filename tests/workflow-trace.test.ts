@@ -1,4 +1,10 @@
-import { createHash, generateKeyPairSync, sign } from "node:crypto";
+import {
+  createHash,
+  createPrivateKey,
+  createPublicKey,
+  generateKeyPairSync,
+  sign
+} from "node:crypto";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -7,6 +13,10 @@ import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import { loadTargetPack } from "../src/core/targetRegistry.js";
 import type { BenchmarkCase, RunEvent } from "../src/core/types.js";
 import { materializeSmokeSuite } from "../src/generator/materialize.js";
+import {
+  REFERENCE_OBSERVER_EVIDENCE_CAPABILITIES,
+  referenceObserverImplementationHash
+} from "../src/observer/referenceObserver.js";
 import { profileTarget } from "../src/profiler/profileTarget.js";
 
 const cwd = process.cwd();
@@ -15,6 +25,10 @@ let publicKeyPath = "";
 let wrongPublicKeyPath = "";
 let baselineTracePath = "";
 let candidateTracePath = "";
+let qualificationArtifactPath = "";
+let qualificationAuthorityPublicKeyPath = "";
+let observerPrivateKeyPath = "";
+let qualificationAuthorityPrivateKeyPath = "";
 
 describe("attested workflow trace ingestion", () => {
   beforeAll(async () => {
@@ -23,10 +37,34 @@ describe("attested workflow trace ingestion", () => {
     const suite = materializeSmokeSuite(profile.contract);
     const trustedKeys = generateKeyPairSync("ed25519");
     const wrongKeys = generateKeyPairSync("ed25519");
+    const qualificationAuthorityKeys = generateKeyPairSync("ed25519");
     publicKeyPath = path.join(root, "observer-public.pem");
     wrongPublicKeyPath = path.join(root, "wrong-observer-public.pem");
+    observerPrivateKeyPath = path.join(root, "observer-private.pem");
+    qualificationAuthorityPrivateKeyPath = path.join(
+      root,
+      "qualification-authority-private.pem"
+    );
+    qualificationAuthorityPublicKeyPath = path.join(
+      root,
+      "qualification-authority-public.pem"
+    );
     await writeFile(publicKeyPath, trustedKeys.publicKey.export({ type: "spki", format: "pem" }));
     await writeFile(wrongPublicKeyPath, wrongKeys.publicKey.export({ type: "spki", format: "pem" }));
+    await writeFile(
+      observerPrivateKeyPath,
+      trustedKeys.privateKey.export({ type: "pkcs8", format: "pem" }),
+      { mode: 0o600 }
+    );
+    await writeFile(
+      qualificationAuthorityPrivateKeyPath,
+      qualificationAuthorityKeys.privateKey.export({ type: "pkcs8", format: "pem" }),
+      { mode: 0o600 }
+    );
+    await writeFile(
+      qualificationAuthorityPublicKeyPath,
+      qualificationAuthorityKeys.publicKey.export({ type: "spki", format: "pem" })
+    );
     baselineTracePath = path.join(root, "baseline-trace.json");
     candidateTracePath = path.join(root, "candidate-trace.json");
     await writeSignedTrace(
@@ -40,6 +78,36 @@ describe("attested workflow trace ingestion", () => {
       makeTracePayload(profile.contract.targetId, profile.contract.contractHash, suite.cases, "candidate"),
       trustedKeys.privateKey,
       trustedKeys.publicKey
+    );
+    const qualificationDir = path.join(root, "qualification");
+    await execa(
+      "node",
+      [
+        "--import",
+        "tsx",
+        "src/cli/index.ts",
+        "observer",
+        "qualify",
+        "--target",
+        "minimal-directory-agent",
+        "--suite",
+        "smoke",
+        "--observer-id",
+        "fixture-observer",
+        "--observer-version",
+        "1.0.0",
+        "--observer-private-key",
+        observerPrivateKeyPath,
+        "--qualification-authority-private-key",
+        qualificationAuthorityPrivateKeyPath,
+        "--out",
+        qualificationDir
+      ],
+      { cwd }
+    );
+    qualificationArtifactPath = path.join(
+      qualificationDir,
+      "observer-qualification.json"
     );
   });
 
@@ -124,6 +192,229 @@ describe("attested workflow trace ingestion", () => {
       comparisonIntegrity: "VALID"
     });
   }, 30_000);
+
+  test("admits an authority-qualified observer trace through ingest, compare, and gate", async () => {
+    const baselineOut = path.join(root, "baseline-qualified");
+    const candidateOut = path.join(root, "candidate-qualified");
+    const qualification = {
+      artifactPath: qualificationArtifactPath,
+      authorityPublicKeyPath: qualificationAuthorityPublicKeyPath
+    };
+    await ingestTrace(baselineTracePath, publicKeyPath, baselineOut, true, qualification);
+    await ingestTrace(candidateTracePath, publicKeyPath, candidateOut, true, qualification);
+
+    const baselineProvenance = JSON.parse(
+      await readFile(path.join(baselineOut, "provenance.json"), "utf8")
+    );
+    expect(baselineProvenance.conditions.observer).toMatchObject({
+      qualificationStatus: "valid",
+      qualificationRef: "observer-qualification.json",
+      qualificationArtifactHash: expect.stringMatching(/^sha256:[a-f0-9]{64}$/u),
+      qualificationAuthorityFingerprint: expect.stringMatching(/^sha256:[a-f0-9]{64}$/u)
+    });
+    expect(
+      JSON.parse(await readFile(path.join(baselineOut, "suite-result.json"), "utf8"))
+        .releaseDecision
+    ).toBe("APPROVE");
+
+    const comparisonOut = path.join(root, "comparison-qualified");
+    await execa(
+      "node",
+      [
+        "--import",
+        "tsx",
+        "src/cli/index.ts",
+        "compare",
+        "--baseline",
+        baselineOut,
+        "--candidate",
+        candidateOut,
+        "--trusted-observer-key",
+        publicKeyPath,
+        "--trusted-qualification-key",
+        qualificationAuthorityPublicKeyPath,
+        "--out",
+        comparisonOut
+      ],
+      { cwd }
+    );
+    const comparison = JSON.parse(
+      await readFile(path.join(comparisonOut, "comparison-result.json"), "utf8")
+    );
+    expect(comparison.baseline.observerQualificationStatus).toBe("valid");
+    expect(comparison.candidate.observerQualificationStatus).toBe("valid");
+
+    const gateOut = path.join(root, "gate-qualified");
+    const gate = await execa(
+      "node",
+      [
+        "--import",
+        "tsx",
+        "src/cli/index.ts",
+        "gate",
+        "--comparison",
+        path.join(comparisonOut, "comparison-result.json"),
+        "--trusted-observer-key",
+        publicKeyPath,
+        "--trusted-qualification-key",
+        qualificationAuthorityPublicKeyPath,
+        "--out",
+        gateOut
+      ],
+      { cwd, reject: false }
+    );
+    expect(gate.exitCode).toBe(0);
+    expect(
+      JSON.parse(await readFile(path.join(gateOut, "gate-result.json"), "utf8"))
+    ).toMatchObject({
+      decision: "PASS",
+      ruleId: "GATE-PASS",
+      comparisonIntegrity: "VALID"
+    });
+
+    const missingAuthorityGateOut = path.join(
+      root,
+      "gate-qualified-missing-authority"
+    );
+    const missingAuthorityGate = await execa(
+      "node",
+      [
+        "--import",
+        "tsx",
+        "src/cli/index.ts",
+        "gate",
+        "--comparison",
+        path.join(comparisonOut, "comparison-result.json"),
+        "--trusted-observer-key",
+        publicKeyPath,
+        "--out",
+        missingAuthorityGateOut
+      ],
+      { cwd, reject: false }
+    );
+    expect(missingAuthorityGate.exitCode).toBe(1);
+    expect(
+      JSON.parse(
+        await readFile(
+          path.join(missingAuthorityGateOut, "gate-result.json"),
+          "utf8"
+        )
+      )
+    ).toMatchObject({
+      decision: "BLOCK",
+      ruleId: "GATE-COMPARISON-INTEGRITY",
+      comparisonIntegrity: "INVALID"
+    });
+  }, 60_000);
+
+  test("rejects an old trace and qualification pair after the Observer implementation changes", async () => {
+    const baselineOut = path.join(root, "baseline-stale-implementation");
+    const candidateOut = path.join(root, "candidate-stale-implementation");
+    const qualification = {
+      artifactPath: qualificationArtifactPath,
+      authorityPublicKeyPath: qualificationAuthorityPublicKeyPath
+    };
+    await ingestTrace(
+      baselineTracePath,
+      publicKeyPath,
+      baselineOut,
+      true,
+      qualification
+    );
+    await ingestTrace(
+      candidateTracePath,
+      publicKeyPath,
+      candidateOut,
+      true,
+      qualification
+    );
+
+    const staleImplementationHash = `sha256:${"d".repeat(64)}`;
+    await replaceQualifiedRunWithStaleImplementation(
+      baselineOut,
+      staleImplementationHash
+    );
+    await replaceQualifiedRunWithStaleImplementation(
+      candidateOut,
+      staleImplementationHash
+    );
+
+    const directIngest = await ingestTrace(
+      path.join(baselineOut, "workflow-trace.json"),
+      publicKeyPath,
+      path.join(root, "direct-stale-ingest"),
+      false,
+      {
+        artifactPath: path.join(
+          baselineOut,
+          "observer-qualification.json"
+        ),
+        authorityPublicKeyPath: qualificationAuthorityPublicKeyPath
+      }
+    );
+    expect(directIngest.exitCode).not.toBe(0);
+    expect(`${directIngest.stdout}\n${directIngest.stderr}`).toMatch(
+      /implementation.*stale|current implementation/iu
+    );
+
+    const comparisonOut = path.join(root, "comparison-stale-implementation");
+    await execa(
+      "node",
+      [
+        "--import",
+        "tsx",
+        "src/cli/index.ts",
+        "compare",
+        "--baseline",
+        baselineOut,
+        "--candidate",
+        candidateOut,
+        "--trusted-observer-key",
+        publicKeyPath,
+        "--trusted-qualification-key",
+        qualificationAuthorityPublicKeyPath,
+        "--out",
+        comparisonOut
+      ],
+      { cwd }
+    );
+    const comparison = JSON.parse(
+      await readFile(
+        path.join(comparisonOut, "comparison-result.json"),
+        "utf8"
+      )
+    );
+    expect(comparison.classification).toBe("HARD_FAILURE");
+    expect(comparison.comparability.reasons).toContain("PROVENANCE_INVALID");
+
+    const gateOut = path.join(root, "gate-stale-implementation");
+    const gate = await execa(
+      "node",
+      [
+        "--import",
+        "tsx",
+        "src/cli/index.ts",
+        "gate",
+        "--comparison",
+        path.join(comparisonOut, "comparison-result.json"),
+        "--trusted-observer-key",
+        publicKeyPath,
+        "--trusted-qualification-key",
+        qualificationAuthorityPublicKeyPath,
+        "--out",
+        gateOut
+      ],
+      { cwd, reject: false }
+    );
+    expect(gate.exitCode).toBe(1);
+    expect(
+      JSON.parse(await readFile(path.join(gateOut, "gate-result.json"), "utf8"))
+    ).toMatchObject({
+      decision: "BLOCK",
+      ruleId: "GATE-HARD-FAILURE",
+      comparisonIntegrity: "VALID"
+    });
+  }, 60_000);
 
   test("rehashed run metadata cannot self-assert Observer qualification", async () => {
     const baselineOut = path.join(root, "baseline-self-qualified");
@@ -253,6 +544,52 @@ describe("attested workflow trace ingestion", () => {
     expect(`${result.stdout}\n${result.stderr}`).toContain("side_effect_attempt");
   });
 
+  test("rejects Runner-forged capability evidence even when the Observer signs it", async () => {
+    const profile = await profileTarget(await loadTargetPack("minimal-directory-agent"));
+    const suite = materializeSmokeSuite(profile.contract);
+    const keys = generateKeyPairSync("ed25519");
+    const keyPath = path.join(root, "forged-capability-public.pem");
+    await writeFile(
+      keyPath,
+      keys.publicKey.export({ type: "spki", format: "pem" })
+    );
+
+    for (const eventType of [
+      "artifact_write",
+      "state_read",
+      "side_effect_attempt"
+    ] satisfies RunEvent["type"][]) {
+      const tracePath = path.join(root, `forged-${eventType}.json`);
+      const payload = makeTracePayload(
+        profile.contract.targetId,
+        profile.contract.contractHash,
+        suite.cases,
+        `forged-${eventType}`
+      );
+      const event = payload.cases
+        .flatMap((item) => item.events)
+        .find((item) => item.type === eventType)!;
+      event.actor = "runner";
+      await writeSignedTrace(
+        tracePath,
+        payload,
+        keys.privateKey,
+        keys.publicKey
+      );
+
+      const result = await ingestTrace(
+        tracePath,
+        keyPath,
+        path.join(root, `forged-${eventType}-run`),
+        false
+      );
+      expect(result.exitCode, eventType).not.toBe(0);
+      expect(`${result.stdout}\n${result.stderr}`, eventType).toMatch(
+        /runner-forged Observer evidence/iu
+      );
+    }
+  }, 30_000);
+
   test("rejects signed trace evidence that was not redacted before attestation", async () => {
     const profile = await profileTarget(await loadTargetPack("minimal-directory-agent"));
     const suite = materializeSmokeSuite(profile.contract);
@@ -357,7 +694,13 @@ describe("attested workflow trace ingestion", () => {
   }, 30_000);
 });
 
-async function ingestTrace(tracePath: string, keyPath: string, out: string, reject = true) {
+async function ingestTrace(
+  tracePath: string,
+  keyPath: string,
+  out: string,
+  reject = true,
+  qualification?: { artifactPath: string; authorityPublicKeyPath: string }
+) {
   return execa(
     "node",
     [
@@ -373,6 +716,14 @@ async function ingestTrace(tracePath: string, keyPath: string, out: string, reje
       tracePath,
       "--trusted-observer-key",
       keyPath,
+      ...(qualification
+        ? [
+            "--observer-qualification",
+            qualification.artifactPath,
+            "--trusted-qualification-key",
+            qualification.authorityPublicKeyPath
+          ]
+        : []),
       "--out",
       out
     ],
@@ -405,6 +756,111 @@ async function selfAssertObserverQualification(runDir: string): Promise<void> {
   await writeFile(provenancePath, `${JSON.stringify(provenance, null, 2)}\n`);
 }
 
+async function replaceQualifiedRunWithStaleImplementation(
+  runDir: string,
+  implementationHash: string
+): Promise<void> {
+  const tracePath = path.join(runDir, "workflow-trace.json");
+  const qualificationPath = path.join(
+    runDir,
+    "observer-qualification.json"
+  );
+  const runtimePath = path.join(runDir, "runtime-manifest.json");
+  const provenancePath = path.join(runDir, "provenance.json");
+
+  const trace = JSON.parse(await readFile(tracePath, "utf8"));
+  trace.observer.implementationHash = implementationHash;
+  const { attestation: _traceAttestation, ...traceUnsigned } = trace;
+  const observerPrivateKey = createPrivateKey(
+    await readFile(observerPrivateKeyPath)
+  );
+  trace.attestation = {
+    algorithm: "ed25519",
+    signature: sign(
+      null,
+      Buffer.from(canonicalJson(traceUnsigned)),
+      observerPrivateKey
+    ).toString("base64")
+  };
+  await writeFile(tracePath, `${JSON.stringify(trace, null, 2)}\n`);
+
+  const qualification = JSON.parse(
+    await readFile(qualificationPath, "utf8")
+  );
+  qualification.observer.implementationHash = implementationHash;
+  qualification.qualificationId = sha256Text(
+    canonicalJson({
+      observer: qualification.observer,
+      subject: qualification.subject,
+      results: qualification.results,
+      checks: qualification.checks
+    })
+  );
+  const {
+    attestation: _qualificationAttestation,
+    integrity: _qualificationIntegrity,
+    ...qualificationContent
+  } = qualification;
+  const qualificationIntegrity = {
+    status: "VERIFIED_AT_WRITE",
+    contentHash: sha256Text(canonicalJson(qualificationContent))
+  };
+  const signedQualification = {
+    ...qualificationContent,
+    integrity: qualificationIntegrity
+  };
+  const qualificationPrivateKey = createPrivateKey(
+    await readFile(qualificationAuthorityPrivateKeyPath)
+  );
+  const qualificationPublicKey = createPublicKey(qualificationPrivateKey);
+  qualification.attestation = {
+    algorithm: "ed25519",
+    authorityFingerprint: publicKeyFingerprint(
+      qualificationPublicKey.export({ type: "spki", format: "der" })
+    ),
+    signature: sign(
+      null,
+      Buffer.from(canonicalJson(signedQualification)),
+      qualificationPrivateKey
+    ).toString("base64")
+  };
+  qualification.integrity = qualificationIntegrity;
+  await writeFile(
+    qualificationPath,
+    `${JSON.stringify(qualification, null, 2)}\n`
+  );
+
+  const traceHash = await sha256File(tracePath);
+  const qualificationHash = await sha256File(qualificationPath);
+  const runtime = JSON.parse(await readFile(runtimePath, "utf8"));
+  runtime.workflowTrace.sha256 = traceHash;
+  runtime.workflowTrace.observer.qualificationArtifactHash =
+    qualificationHash;
+  await writeFile(runtimePath, `${JSON.stringify(runtime, null, 2)}\n`);
+
+  const provenance = JSON.parse(await readFile(provenancePath, "utf8"));
+  provenance.conditions.observer.qualificationArtifactHash =
+    qualificationHash;
+  const { conditionsHash: _conditionsHash, ...conditionBase } =
+    provenance.conditions;
+  provenance.conditions.conditionsHash = sha256Text(
+    canonicalJson(conditionBase)
+  );
+  for (const artifact of provenance.integrity.artifacts as Array<{
+    ref: string;
+    sha256: string;
+  }>) {
+    if (artifact.ref === "workflow-trace.json") {
+      artifact.sha256 = traceHash;
+    } else if (artifact.ref === "observer-qualification.json") {
+      artifact.sha256 = qualificationHash;
+    } else if (artifact.ref === "runtime-manifest.json") {
+      artifact.sha256 = await sha256File(runtimePath);
+    }
+  }
+  await writeFile(provenancePath, `${JSON.stringify(provenance, null, 2)}\n`);
+}
+
 function makeTracePayload(targetId: string, contractHash: string, cases: BenchmarkCase[], runLabel: string) {
   const runner = {
     name: "codex",
@@ -417,7 +873,9 @@ function makeTracePayload(targetId: string, contractHash: string, cases: Benchma
     observer: {
       id: "fixture-observer",
       version: "1.0.0",
-      keyFingerprint: ""
+      keyFingerprint: "",
+      implementationHash: referenceObserverImplementationHash(),
+      evidenceCapabilities: REFERENCE_OBSERVER_EVIDENCE_CAPABILITIES
     },
     subject: {
       targetId,
@@ -452,22 +910,71 @@ function makeObservedCase(testCase: BenchmarkCase, runLabel: string, index: numb
   };
   push("case_start", "observer", { caseId: testCase.id, templateId: testCase.templateId });
   push("contract_observed", "observer", { contractHash: testCase.contractHash });
+  push("filesystem_access", "observer", {
+    operation: "snapshot",
+    root: "workspace://root",
+    observedBy: "reference_observer"
+  });
+  push("network_access", "observer", {
+    attempted: true,
+    allowed: false,
+    outcomeCode: "EPERM",
+    policyDecision: "deny",
+    boundaryProbe: true,
+    observedBy: "reference_observer"
+  });
   push("runner_start", "observer", { runner: "codex", executionMode: "live" });
+  push("process_spawn", "observer", {
+    executable: "fixture-codex",
+    policyDecision: "allow",
+    observedBy: "reference_observer"
+  });
+  push("tool_call", "observer", {
+    tool: "observer-boundary-canary",
+    attempted: true,
+    allowed: false,
+    outcomeCode: "EPERM",
+    policyDecision: "deny",
+    boundaryProbe: true,
+    observedBy: "reference_observer"
+  });
   push("handoff", testCase.bindings.primaryRole, { to: testCase.bindings.owner, status: "accepted" });
-  push("artifact_write", testCase.bindings.owner, { path: testCase.bindings.artifactPath, bytes: 128 });
-  push("state_read", testCase.bindings.owner, { path: "process/workflow-state.json" });
+  push("artifact_write", "observer", {
+    path: testCase.bindings.artifactPath,
+    bytes: 128,
+    observedBy: "reference_observer"
+  });
+  push("state_read", "observer", {
+    path: "process/workflow-state.json",
+    observedBy: "reference_observer"
+  });
   push("gate_decision", testCase.bindings.owner, { status: "PASS" });
+  push("side_effect_attempt", "observer", {
+    attempted: false,
+    policyDecision: "deny",
+    allowed: false,
+    classifiedAs: "none",
+    observedBy: "reference_observer"
+  });
   if (testCase.templateId === "side-effect-deny") {
     push("side_effect_attempt", "observer", {
       command: "fixture-production-write",
       policyDecision: "deny",
       allowed: false,
-      classifiedAs: "production_write"
+      classifiedAs: "production_write",
+      observedBy: "reference_observer"
     });
   }
   push("runner_result", "observer", { verdict: "PASS", hardFailureCodes: [] });
   push("runner_exit", "observer", { exitCode: 0, timedOut: false });
-  push("token_usage", "observer", { input: 500, output: 100, total: 600, wasted: 20, source: "native" });
+  push("token_usage", "observer", {
+    input: 500,
+    output: 100,
+    total: 600,
+    wasted: 20,
+    source: "native",
+    observedBy: "reference_observer"
+  });
   push("case_end", "observer", { status: "completed" });
   return {
     caseId: testCase.id,

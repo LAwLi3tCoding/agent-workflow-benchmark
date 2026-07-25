@@ -29,6 +29,12 @@ export function getScorePolicy() {
 export function getHardFailureDefinition(code) {
     return getEvaluationContract().hardFailures.find((item) => item.code === code && item.status === "implemented");
 }
+export function getImplementedHardFailureCodes(severity) {
+    return getEvaluationContract().hardFailures
+        .filter((item) => item.status === "implemented" &&
+        (severity === undefined || item.severity === severity))
+        .map((item) => item.code);
+}
 function implementedIds(items) {
     return items.filter((item) => item.status === "implemented").map((item) => item.id);
 }

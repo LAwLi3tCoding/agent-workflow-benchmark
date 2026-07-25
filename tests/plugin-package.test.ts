@@ -1,9 +1,15 @@
 import { describe, expect, test } from "vitest";
-import { access, cp, mkdtemp, readFile, rm, stat } from "node:fs/promises";
+import { access, cp, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { generateKeyPairSync } from "node:crypto";
 import { execa } from "execa";
 import { Ajv2020 } from "ajv/dist/2020.js";
+import {
+  hashFile,
+  sha256Text,
+  stableJson
+} from "../src/utils/hash.js";
 
 const pluginRoot = path.join(process.cwd(), "plugins", "agent-workflow-bench");
 
@@ -58,6 +64,8 @@ describe("agent workflow bench plugin package", () => {
     expect(command).toContain("materialize --strategy ai");
     expect(command).toContain("run --execution live");
     expect(command).toContain("ingest-trace");
+    expect(command).toContain("observer qualify");
+    expect(command).toContain("--trusted-qualification-key");
     expect(command).toContain("compare");
     expect(command).toContain("gate");
   });
@@ -73,6 +81,7 @@ describe("agent workflow bench plugin package", () => {
     await expect(stat(path.join(runtimeRoot, "schemas", "doctor-result.schema.json"))).resolves.toBeTruthy();
     await expect(stat(path.join(runtimeRoot, "schemas", "provenance.schema.json"))).resolves.toBeTruthy();
     await expect(stat(path.join(runtimeRoot, "schemas", "workflow-trace.schema.json"))).resolves.toBeTruthy();
+    await expect(stat(path.join(runtimeRoot, "schemas", "observer-qualification.schema.json"))).resolves.toBeTruthy();
     await expect(stat(path.join(runtimeRoot, "schemas", "comparison-result.schema.json"))).resolves.toBeTruthy();
     await expect(stat(path.join(runtimeRoot, "schemas", "gate-result.schema.json"))).resolves.toBeTruthy();
     await expect(stat(path.join(runtimeRoot, "schemas", "gold-corpus.schema.json"))).resolves.toBeTruthy();
@@ -83,6 +92,8 @@ describe("agent workflow bench plugin package", () => {
     ).resolves.toBeTruthy();
     await expect(stat(path.join(runtimeRoot, "fixtures", "regression", "scenarios.yaml"))).resolves.toBeTruthy();
     await expect(stat(path.join(runtimeRoot, "dist", "src", "observer", "workflowTrace.js"))).resolves.toBeTruthy();
+    await expect(stat(path.join(runtimeRoot, "dist", "src", "observer", "referenceObserver.js"))).resolves.toBeTruthy();
+    await expect(stat(path.join(runtimeRoot, "dist", "src", "observer", "qualification.js"))).resolves.toBeTruthy();
 
     const wrapper = await readFile(path.join(pluginRoot, "bin", "awb"), "utf8");
     expect(wrapper).toContain("RUNTIME_DIR");
@@ -114,6 +125,88 @@ describe("agent workflow bench plugin package", () => {
         }
       );
       expect(corpus.stdout).toContain("36 trajectories");
+
+      const observerKeys = generateKeyPairSync("ed25519");
+      const authorityKeys = generateKeyPairSync("ed25519");
+      const observerPrivateKey = path.join(outsideCwd, "observer-private.pem");
+      const authorityPrivateKey = path.join(outsideCwd, "authority-private.pem");
+      const qualificationOut = path.join(outsideCwd, "observer-qualification");
+      await writeFile(
+        observerPrivateKey,
+        observerKeys.privateKey.export({ type: "pkcs8", format: "pem" }),
+        { mode: 0o600 }
+      );
+      await writeFile(
+        authorityPrivateKey,
+        authorityKeys.privateKey.export({ type: "pkcs8", format: "pem" }),
+        { mode: 0o600 }
+      );
+      const qualification = await execa(
+        path.join(install.pluginPath, "bin", "awb"),
+        [
+          "observer",
+          "qualify",
+          "--target",
+          "minimal-directory-agent",
+          "--suite",
+          "smoke",
+          "--observer-id",
+          "plugin-reference-observer",
+          "--observer-version",
+          "1.0.0",
+          "--observer-private-key",
+          observerPrivateKey,
+          "--qualification-authority-private-key",
+          authorityPrivateKey,
+          "--out",
+          qualificationOut
+        ],
+        {
+          cwd: outsideCwd,
+          env: { ...process.env, AWB_PROJECT_ROOT: "" }
+        }
+      );
+      expect(qualification.stdout).toContain("Observer qualification valid");
+      const artifact = JSON.parse(
+        await readFile(
+          path.join(qualificationOut, "observer-qualification.json"),
+          "utf8"
+        )
+      );
+      const runtimeSourceRoot = path.join(
+        install.pluginPath,
+        "runtime",
+        "dist",
+        "src"
+      );
+      const implementationComponents = [
+        ["observer/referenceObserver", "observer/referenceObserver.js"],
+        ["observer/workflowTrace", "observer/workflowTrace.js"],
+        ["observer/qualification", "observer/qualification.js"],
+        ["evaluation/evaluationContract", "evaluation/evaluationContract.js"],
+        ["utils/hash", "utils/hash.js"],
+        ["utils/redaction", "utils/redaction.js"]
+      ] as const;
+      expect(artifact.observer.implementationHash).toBe(
+        sha256Text(
+          stableJson({
+            protocol: "awb-reference-observer-content/1",
+            components: await Promise.all(
+              implementationComponents.map(async ([id, relativePath]) => ({
+                id,
+                sha256: await hashFile(
+                  path.join(runtimeSourceRoot, relativePath)
+                )
+              }))
+            )
+          })
+        )
+      );
+      await expectValidPluginRuntimeSchema(
+        install.pluginPath,
+        "schemas/observer-qualification.schema.json",
+        artifact
+      );
     } finally {
       await rm(outsideCwd, { recursive: true, force: true });
       await rm(install.root, { recursive: true, force: true });

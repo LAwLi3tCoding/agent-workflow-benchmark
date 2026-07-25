@@ -196,9 +196,9 @@ MVP 先做 10 类通用 smoke 模板。每个新的 agent workflow 都用自己�
 推荐准入流程：
 
 1. `awb doctor --target <target-id> --runner <runner> --out <doctor-dir>`：profile target、检查 runner 能力并说明 evidence 上限。
-2. matched baseline / candidate run：使用同一 target、suite、runner mode 和 contract hash。普通 `run --execution live` 仍是 `contract_summary`；独立 observer 轨迹使用 `awb ingest-trace --trace <trace.json> --trusted-observer-key <public.pem>`。
-3. `awb compare --baseline <baseline-run> --candidate <candidate-run> --trusted-observer-key <public.pem> --out <comparison-dir>`：比较回归、证据缺口和 hard failure。只有 `workflow_trace` 证据需要公钥参数。
-4. `awb gate --comparison <comparison-dir>/comparison-result.json --trusted-observer-key <public.pem> --out <gate-dir>`：输出 CI gate 结论，并重新验证 observer 签名。
+2. matched baseline / candidate run：使用同一 target、suite、runner mode 和 contract hash。普通 `run --execution live` 仍是 `contract_summary`；独立 Observer 先通过 `awb observer qualify` 生成资格制品，再由 `ingest-trace` 同时校验轨迹与资格制品。
+3. `awb compare --baseline <baseline-run> --candidate <candidate-run> --trusted-observer-key <public.pem> --trusted-qualification-key <authority-public.pem> --out <comparison-dir>`：比较回归、证据缺口和 hard failure。
+4. `awb gate --comparison <comparison-dir>/comparison-result.json --trusted-observer-key <public.pem> --trusted-qualification-key <authority-public.pem> --out <gate-dir>`：输出 CI gate 结论，并重新验证两个签名信任链。
 
 `compare` 产物包含 baseline/candidate 的最小证据快照及完整性哈希。`gate` 在判定前会重新校验快照并重新计算 comparison；被编辑的 comparison JSON 或证据文件会直接阻断。
 
@@ -210,7 +210,12 @@ Gate exit code 固定为：
 | `DIAGNOSTIC_ONLY` | 2 | 证据不足、Observer 未认证、runner 不可比，或只使用 simulated / current `contract-summary` adapter |
 | `BLOCK` | 1 | 触发 P0/hard failure、关键回归，或工具/runtime 失败 |
 
-只有经过独立资格认证的 live observer 输出真实 `workflow_trace` evidence 时，gate 才能 PASS。observer 必须用 Ed25519 对完整 trace 签名，`ingest-trace`、`compare` 和 `gate` 使用独立保存的公钥作为信任锚；私钥不能提供给 runner，也不能作为 CLI 的 trust anchor。当前 Stage 1 尚未实现 qualification artifact 的生成/校验，因此导入 trace 的 `qualificationStatus` 固定为 `missing`，可编辑运行元数据里自报的 `valid` 会被忽略，即使签名有效也只能 `DIAGNOSTIC_ONLY`。simulated run 和内置 live `contract-summary` adapter 同样不能给 CI 准入 PASS。
+只有经过独立资格认证的 live Observer 输出真实 `workflow_trace` evidence 时，gate 才能 PASS。Observer 与资格授权方分别用 Ed25519 签名轨迹和资格制品；`ingest-trace`、`compare` 和 `gate` 必须显式接收两个公钥。私钥不能提供给 Runner、仓库、制品或日志，也不能作为 CLI trust anchor。没有有效资格制品时 `qualificationStatus` 保持 `missing`；可编辑元数据里自报的 `valid` 会被忽略。simulated run 和内置 live `contract-summary` adapter 同样不能给 CI 准入 PASS。
+
+内置 reference Observer 当前依赖 Darwin 的
+`/usr/bin/sandbox-exec`。它在 deny-default Seatbelt 中实际执行私钥读取、
+直连网络和嵌套子进程 canary，并要求全部返回 `EPERM`；静态策略声明不算
+观测证据。隔离后端不可用或两类签名复用同一密钥时，资格认证直接失败。
 
 签名证明 observer 身份和轨迹在签名后未被修改，不证明 observer 本身没有漏观测。将某个 observer 公钥加入 CI 之前，仍需用已知好/坏轨迹、mutation 和隔离检查验证 observer 实现。
 

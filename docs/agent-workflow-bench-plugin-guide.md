@@ -34,9 +34,15 @@ plugins/agent-workflow-bench/
 
 `evaluate` 一键流程会写出 `profile/`、`ai-plan/`、`cases/`、`run/suite-result.json`、`run/report.md`、`run/harness-validation.json`、`run/recommendations.json`、`run/recommendations.md`、`run/p0-cases.json`、`run/p0-cases.md` 和 `evaluation-summary.json`。报告里包含维度评分、agent workflow 修改建议、harness validation 和 P0 case records。
 
-门禁边界：只有通过资格认证的独立 live observer 输出真实 `workflow_trace` evidence 时，gate 才能 PASS。simulated run、未认证签名 trace 和内置 live `contract-summary` adapter 只能给 `DIAGNOSTIC_ONLY`，不能给 PASS。当前 Stage 1 会把导入 trace 标记为 `qualificationStatus: missing`，并忽略可编辑运行元数据里自报的 `valid`；Stage 3 qualification artifact 落地前不会产生真实 PASS。
+门禁边界：只有通过资格认证的独立 live Observer 输出真实 `workflow_trace` evidence 时，gate 才能 PASS。simulated run、未认证签名 trace 和内置 live `contract-summary` adapter 只能给 `DIAGNOSTIC_ONLY`。`awb observer qualify` 会运行 known-good、全部 P0、事件遗漏/乱序、伪造、错误公钥、私钥泄漏、网络/工具盲区和重复运行检查，并输出由独立资格授权方签名的完整性制品；没有该制品时 `qualificationStatus` 保持 `missing`。
 
-外部 observer 用 Ed25519 对标准化 workflow trace 签名后，通过 `awb ingest-trace --trace <trace.json> --trusted-observer-key <public.pem>` 导入。`compare` 和 `gate` 必须再次传入同一公钥信任锚。私钥不得提供给 runner，CLI 也会拒绝把私钥当作 trust anchor。
+外部 Observer 用 Ed25519 对标准化 workflow trace 签名后，通过 `awb ingest-trace --trace <trace.json> --trusted-observer-key <public.pem> --observer-qualification <artifact.json> --trusted-qualification-key <authority-public.pem>` 导入。`compare` 和 `gate` 必须再次传入 Observer 与资格授权方两个公钥信任锚。私钥不得提供给 Runner，CLI 也会拒绝把私钥当作 trust anchor。
+
+内置 reference Observer 当前只支持 Darwin，并要求
+`/usr/bin/sandbox-exec`。它使用 deny-default Seatbelt 边界，实际尝试读取
+Observer 私钥、直连网络和启动未声明子进程，三项都必须得到 `EPERM`；
+静态“未尝试”标记不能通过资格认证。非 Darwin、隔离后端缺失、canary
+成功或 Observer/资格授权方复用同一密钥时都会 fail closed。
 
 `compare` 会把 baseline/candidate 的 suite、provenance、runtime manifest 和 workflow trace 快照写入 comparison 目录并记录完整性哈希。`gate` 会重新验证 observer 签名、快照、runtime 执行事实和 provenance，并重新计算 comparison；手工修改 comparison JSON、证据文件或仅重算可编辑哈希都会得到 `BLOCK`，不能伪造 live PASS。
 
@@ -46,17 +52,21 @@ awb ingest-trace \
   --suite smoke \
   --trace observer-output/workflow-trace.json \
   --trusted-observer-key ci/trusted-observer-public.pem \
+  --observer-qualification observer-output/observer-qualification.json \
+  --trusted-qualification-key ci/qualification-authority-public.pem \
   --out reports/runs/<target-id>-observed
 
 awb compare \
   --baseline reports/runs/<target-id>-baseline \
   --candidate reports/runs/<target-id>-candidate \
   --trusted-observer-key ci/trusted-observer-public.pem \
+  --trusted-qualification-key ci/qualification-authority-public.pem \
   --out reports/comparisons/<target-id>
 
 awb gate \
   --comparison reports/comparisons/<target-id>/comparison-result.json \
   --trusted-observer-key ci/trusted-observer-public.pem \
+  --trusted-qualification-key ci/qualification-authority-public.pem \
   --out reports/gates/<target-id>
 ```
 

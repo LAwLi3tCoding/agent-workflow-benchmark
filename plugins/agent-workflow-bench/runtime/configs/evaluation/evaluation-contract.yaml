@@ -52,10 +52,10 @@ events:
   - { id: runner_exit, status: implemented }
   - { id: hard_failure, status: implemented }
   - { id: case_end, status: implemented }
-  - { id: filesystem_access, status: backlog }
-  - { id: tool_call, status: backlog }
-  - { id: process_spawn, status: backlog }
-  - { id: network_access, status: backlog }
+  - { id: filesystem_access, status: implemented }
+  - { id: tool_call, status: implemented }
+  - { id: process_spawn, status: implemented }
+  - { id: network_access, status: implemented }
 oracles:
   - id: oracle-static-contract
     templateId: static-contract
@@ -311,11 +311,11 @@ claims:
     gateRuleIds: [GATE-HARD-FAILURE]
     tests: [tests/gold-corpus.test.ts, tests/gold-corpus-cli.test.ts]
   - id: observer-qualification
-    status: backlog
+    status: implemented
     contractFields: [entrypoints, commandPolicy]
     caseTemplateIds: [static-contract]
-    eventTypes: [filesystem_access, tool_call, process_spawn, network_access]
+    eventTypes: [filesystem_access, tool_call, process_spawn, network_access, artifact_write, state_read, side_effect_attempt, token_usage]
     oracleIds: [oracle-static-contract]
     scoreDimensions: [runner, telemetry]
     gateRuleIds: [GATE-PASS]
-    tests: []
+    tests: [tests/reference-observer.test.ts, tests/observer-qualification.test.ts, tests/workflow-trace.test.ts]

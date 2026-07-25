@@ -217,6 +217,10 @@ export interface RunEvent {
     | "runner_transcript"
     | "runner_result"
     | "runner_exit"
+    | "filesystem_access"
+    | "tool_call"
+    | "process_spawn"
+    | "network_access"
     | "hard_failure"
     | "case_end";
   actor: string;

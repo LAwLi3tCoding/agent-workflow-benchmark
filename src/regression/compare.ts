@@ -2,6 +2,12 @@ import { access, copyFile, mkdir, rm } from "node:fs/promises";
 import path from "node:path";
 import type { HardFailure, MutationInput, RunnerCapability, SuiteResult } from "../core/types.js";
 import { verifyWorkflowTraceBundle, type VerifiedWorkflowTrace } from "../observer/workflowTrace.js";
+import {
+  assertQualifiedWorkflowTraceEvidence,
+  verifyObserverQualificationArtifact,
+  type VerifiedObserverQualification
+} from "../observer/qualification.js";
+import type { ReferenceObserverEvidenceCapability } from "../observer/referenceObserver.js";
 import { PRODUCT_NAME } from "../core/product.js";
 import { hashFile, sha256Text, stableJson } from "../utils/hash.js";
 import { readJson } from "../utils/io.js";
@@ -138,12 +144,16 @@ interface RuntimeManifest {
       qualificationStatus: NonNullable<
         RunProvenance["conditions"]["observer"]
       >["qualificationStatus"];
+      qualificationRef?: "observer-qualification.json";
+      qualificationArtifactHash?: string;
+      qualificationAuthorityFingerprint?: string;
     };
   };
 }
 
 export interface ObserverTrustOptions {
   trustedObserverKeyPath?: string;
+  trustedQualificationKeyPath?: string;
 }
 
 export async function compareRunArtifacts(
@@ -186,14 +196,33 @@ export async function compareRunArtifacts(
         ? [
             "baseline:suite-result.json",
             "baseline:provenance.json",
-            ...(baseline.provenance.conditions.observationLevel === "workflow_trace" ? ["baseline:workflow-trace.json"] : [])
+            ...(baseline.provenance.conditions.observationLevel === "workflow_trace"
+              ? [
+                  "baseline:workflow-trace.json",
+                  ...(hasQualificationBinding(
+                    baseline.provenance.conditions.observer
+                  )
+                    ? ["baseline:observer-qualification.json"]
+                    : [])
+                ]
+              : [])
           ]
         : ["baseline:suite-result.json"],
       candidate: candidate.provenance
         ? [
             "candidate:suite-result.json",
             "candidate:provenance.json",
-            ...(candidate.provenance.conditions.observationLevel === "workflow_trace" ? ["candidate:workflow-trace.json"] : [])
+            ...(candidate.provenance.conditions.observationLevel ===
+            "workflow_trace"
+              ? [
+                  "candidate:workflow-trace.json",
+                  ...(hasQualificationBinding(
+                    candidate.provenance.conditions.observer
+                  )
+                    ? ["candidate:observer-qualification.json"]
+                    : [])
+                ]
+              : [])
           ]
         : ["candidate:suite-result.json"]
     }
@@ -342,7 +371,13 @@ async function snapshotRunArtifacts(input: string, destination: string, refPrefi
   const runDir = await resolveRunDir(input);
   await mkdir(destination, { recursive: true });
   const copied: string[] = [];
-  for (const ref of ["suite-result.json", "provenance.json", "runtime-manifest.json", "workflow-trace.json"]) {
+  for (const ref of [
+    "suite-result.json",
+    "provenance.json",
+    "runtime-manifest.json",
+    "workflow-trace.json",
+    "observer-qualification.json"
+  ]) {
     try {
       await copyFile(path.join(runDir, ref), path.join(destination, ref));
       copied.push(path.posix.join(refPrefix, ref));
@@ -416,16 +451,45 @@ async function validateProvenance(
     return "Provenance integrity status is invalid.";
   }
   const requiresWorkflowTrace = provenance.conditions.observationLevel === "workflow_trace";
+  const provenanceObserver = provenance.conditions.observer;
+  const hasAnyQualificationBinding = Boolean(
+    provenanceObserver?.qualificationRef ||
+      provenanceObserver?.qualificationArtifactHash ||
+      provenanceObserver?.qualificationAuthorityFingerprint
+  );
+  const hasCompleteQualificationBinding = Boolean(
+    provenanceObserver?.qualificationRef ===
+      "observer-qualification.json" &&
+      provenanceObserver.qualificationArtifactHash &&
+      provenanceObserver.qualificationAuthorityFingerprint
+  );
+  const requiresQualification =
+    requiresWorkflowTrace &&
+    provenanceObserver?.qualificationStatus === "valid" &&
+    hasCompleteQualificationBinding;
   if (requiresWorkflowTrace && !options.trustedObserverKeyPath) {
     return "workflow_trace provenance requires an external trusted observer public key.";
+  }
+  if (requiresQualification && !options.trustedQualificationKeyPath) {
+    return "Qualified workflow_trace provenance requires an external qualification authority public key.";
   }
   if (!requiresWorkflowTrace && provenance.conditions.observer) {
     return "Observer provenance is only valid for workflow_trace evidence.";
   }
+  if (
+    requiresWorkflowTrace &&
+    (!provenanceObserver ||
+      (hasAnyQualificationBinding && !hasCompleteQualificationBinding) ||
+      (provenanceObserver.qualificationStatus !== "valid" &&
+        hasAnyQualificationBinding))
+  ) {
+    return "Observer qualification provenance fields are inconsistent.";
+  }
   const requiredRefs = [
     "suite-result.json",
     "runtime-manifest.json",
-    ...(requiresWorkflowTrace ? ["workflow-trace.json"] : [])
+    ...(requiresWorkflowTrace ? ["workflow-trace.json"] : []),
+    ...(requiresQualification ? ["observer-qualification.json"] : [])
   ];
   for (const ref of requiredRefs) {
     if (!provenance.integrity.artifacts.some((artifact) => artifact.ref === ref)) {
@@ -480,7 +544,62 @@ async function validateProvenance(
       return error instanceof Error ? error.message : "Workflow trace attestation could not be verified.";
     }
   }
-  const runtimeMismatch = validateRuntimeManifest(runtimeManifest, suite, provenance, verifiedTrace);
+  let verifiedQualification: VerifiedObserverQualification | undefined;
+  if (requiresQualification && verifiedTrace) {
+    try {
+      const implementationHash =
+        verifiedTrace.bundle.observer.implementationHash;
+      const evidenceCapabilities =
+        verifiedTrace.bundle.observer.evidenceCapabilities;
+      if (
+        !implementationHash ||
+        !Array.isArray(evidenceCapabilities) ||
+        evidenceCapabilities.length === 0
+      ) {
+        return "Qualified workflow trace is missing Observer implementation or evidence capability bindings.";
+      }
+      verifiedQualification =
+        await verifyObserverQualificationArtifact(
+          path.join(runDir, "observer-qualification.json"),
+          options.trustedQualificationKeyPath!,
+          {
+            observer: {
+              id: verifiedTrace.bundle.observer.id,
+              version: verifiedTrace.bundle.observer.version,
+              keyFingerprint: verifiedTrace.keyFingerprint,
+              implementationHash,
+              evidenceCapabilities:
+                evidenceCapabilities as ReferenceObserverEvidenceCapability[]
+            },
+            contractHash: provenance.subject.contractHash,
+            caseSetHash: provenance.conditions.caseSetHash
+          }
+        );
+      assertQualifiedWorkflowTraceEvidence(
+        verifiedTrace,
+        verifiedQualification.artifact.observer
+      );
+      if (
+        provenanceObserver!.qualificationArtifactHash !==
+          verifiedQualification.artifactHash ||
+        provenanceObserver!.qualificationAuthorityFingerprint !==
+          verifiedQualification.authorityFingerprint
+      ) {
+        return "Observer qualification provenance does not match the trusted artifact.";
+      }
+    } catch (error) {
+      return error instanceof Error
+        ? error.message
+        : "Observer qualification could not be verified.";
+    }
+  }
+  const runtimeMismatch = validateRuntimeManifest(
+    runtimeManifest,
+    suite,
+    provenance,
+    verifiedTrace,
+    verifiedQualification
+  );
   if (runtimeMismatch) {
     return runtimeMismatch;
   }
@@ -491,7 +610,8 @@ function validateRuntimeManifest(
   runtime: RuntimeManifest,
   suite: SuiteResult,
   provenance: RunProvenance,
-  verifiedTrace?: VerifiedWorkflowTrace
+  verifiedTrace?: VerifiedWorkflowTrace,
+  verifiedQualification?: VerifiedObserverQualification
 ): string | undefined {
   if (
     !runtime ||
@@ -607,9 +727,19 @@ function validateRuntimeManifest(
       runtimeTrace.observer.version !== verifiedTrace.bundle.observer.version ||
       runtimeTrace.observer.keyFingerprint !== verifiedTrace.keyFingerprint ||
       runtimeTrace.observer.qualificationStatus !== observer.qualificationStatus ||
+      runtimeTrace.observer.qualificationRef !== observer.qualificationRef ||
+      runtimeTrace.observer.qualificationArtifactHash !==
+        observer.qualificationArtifactHash ||
+      runtimeTrace.observer.qualificationAuthorityFingerprint !==
+        observer.qualificationAuthorityFingerprint ||
       observer.id !== verifiedTrace.bundle.observer.id ||
       observer.version !== verifiedTrace.bundle.observer.version ||
-      observer.keyFingerprint !== verifiedTrace.keyFingerprint
+      observer.keyFingerprint !== verifiedTrace.keyFingerprint ||
+      (verifiedQualification !== undefined &&
+        (observer.qualificationArtifactHash !==
+          verifiedQualification.artifactHash ||
+          observer.qualificationAuthorityFingerprint !==
+            verifiedQualification.authorityFingerprint))
     ) {
       return "Runtime workflow trace facts do not match the trusted observer attestation.";
     }
@@ -822,11 +952,11 @@ function runSummary(run: LoadedRun): ComparisonRunSummary {
     provenanceStatus: run.provenanceStatus,
     evidenceKind: run.provenance?.conditions.evidenceKind ?? "unknown",
     observationLevel: run.provenance?.conditions.observationLevel ?? "unknown",
-    observerQualificationStatus: stageOneObserverQualificationStatus(run)
+    observerQualificationStatus: observerQualificationStatus(run)
   };
 }
 
-function stageOneObserverQualificationStatus(
+function observerQualificationStatus(
   run: LoadedRun
 ): ComparisonRunSummary["observerQualificationStatus"] {
   if (run.provenance?.conditions.observationLevel !== "workflow_trace") {
@@ -835,9 +965,24 @@ function stageOneObserverQualificationStatus(
   if (run.provenanceStatus !== "VALID") {
     return "invalid";
   }
-  return run.provenance.conditions.observer?.qualificationStatus === "invalid"
-    ? "invalid"
+  const observer = run.provenance.conditions.observer;
+  if (observer?.qualificationStatus === "invalid") {
+    return "invalid";
+  }
+  return hasQualificationBinding(observer)
+    ? "valid"
     : "missing";
+}
+
+function hasQualificationBinding(
+  observer: RunProvenance["conditions"]["observer"]
+): boolean {
+  return Boolean(
+    observer?.qualificationStatus === "valid" &&
+      observer.qualificationRef === "observer-qualification.json" &&
+      observer.qualificationArtifactHash &&
+      observer.qualificationAuthorityFingerprint
+  );
 }
 
 function canonicalComparisonFailureDefinition(code: string) {

@@ -136,6 +136,18 @@ export function getHardFailureDefinition(
   );
 }
 
+export function getImplementedHardFailureCodes(
+  severity?: "P0" | "P1"
+): string[] {
+  return getEvaluationContract().hardFailures
+    .filter(
+      (item) =>
+        item.status === "implemented" &&
+        (severity === undefined || item.severity === severity)
+    )
+    .map((item) => item.code);
+}
+
 function implementedIds(items: Array<{ id: string; status: EvaluationContractStatus }>): string[] {
   return items.filter((item) => item.status === "implemented").map((item) => item.id);
 }
