@@ -218,7 +218,36 @@ qualification is missing or invalid, P0 evidence exists, privacy or isolation po
 violated, holdout leakage occurs, deterministic replay diverges, or a required schema cannot be
 validated. AI semantic judgment and aggregate scores cannot override any of these conditions.
 
-## Stage 6 Status
+## Production CI and Safety Isolation
+
+Repository CI must prove the tool can reproduce itself before any external
+workflow result is trusted: diff hygiene, typecheck, full tests, plugin build,
+runtime parity, schema validation, naming scan, privacy scan, and fresh plugin
+install smoke all run as independent checks.
+
+The reusable external workflow template is observe-only. It may compare and
+gate a caller-owned baseline/candidate pair, but PASS, DIAGNOSTIC_ONLY, and
+BLOCK are recorded rather than enforced. The template fails closed only when AWB
+cannot run, validate, compare, or write its gate artifact. Redacted summary
+upload is disabled by default and uses short retention when explicitly enabled.
+
+`awb ci evaluate-canary` builds an observe-only production canary report against
+the frozen policy: minimum sample count `30`, max false-positive rate `0.02`,
+max false-negative rate `0`, max flaky rate `0.05`, max runtime p95 `900`
+seconds, and max cost p95 `10` USD. Error rates use their expected-class
+denominators, both known-good and known-bad classes are required, and
+`sampleSetHash` binds all inputs. `awb ci assess` combines the evidence gate,
+runtime manifest, provenance, caller-supplied isolation manifest, canary report,
+and optional signed blocking authorization. Production blocking is a separate
+authorization decision and requires a qualified independent Observer, explicit
+public trust anchors, caller-provided strong Runner isolation, redacted artifact
+retention, and workflow-owner approval. Its signature binds gate, runtime,
+provenance, isolation, canary, and gate-policy hashes. Missing isolation, missing Observer
+qualification, failed canary thresholds, or absent approval keeps the result
+diagnostic-only. AWB validates isolation evidence; it does not provide or claim
+its own Linux isolation backend.
+
+## Stage 8 Status
 
 Proven for the harness: canonical vocabulary, contract hashing boundary, owner-review admission
 boundary, deterministic hard-failure precedence, diagnostic evidence ceilings, content-hashed
@@ -248,4 +277,8 @@ owner-reviewed real external contracts (the public template is 112 items short a
 evidence), qualified independent Codex and Claude live traces, two-rater labels, adjudication for
 disagreements, and production blocking authorization.
 
-Deferred by protocol: CI canary, trends, and adapter conformance.
+Implemented mechanism through Stage 8: repository CI definition, observe-only
+external workflow template, production-blocking authorization guardrails, and
+privacy-safe CI documentation.
+
+Deferred by protocol: canary evidence, trends, and adapter conformance.

@@ -120,6 +120,46 @@
       "missingTrustDisposition": "DIAGNOSTIC_ONLY",
       "unsupportedCode": "ARTIFACT_SCHEMA_VERSION_UNSUPPORTED",
       "action": "Regenerate provenance from the original run artifacts; trust fields cannot be inferred."
+    },
+    {
+      "artifactType": "production_isolation_manifest",
+      "currentVersion": "0.1.0",
+      "readableVersions": ["0.1.x"],
+      "migrationMode": "diagnostic_on_missing_trust",
+      "requiredTrustFields": ["checks.privateKeyUnreadableByRunner", "trustAnchor.source", "retentionPolicy.redactedOnly"],
+      "missingTrustDisposition": "DIAGNOSTIC_ONLY",
+      "unsupportedCode": "ARTIFACT_SCHEMA_VERSION_UNSUPPORTED",
+      "action": "Regenerate isolation evidence from a strong container or equivalent sandbox boundary."
+    },
+    {
+      "artifactType": "production_canary_report",
+      "currentVersion": "0.1.0",
+      "readableVersions": ["0.1.x"],
+      "migrationMode": "diagnostic_on_missing_trust",
+      "requiredTrustFields": ["policyHash", "sampleSetHash", "isolationManifestHash", "gatePolicyHash", "sampleCount", "expectedPassCount", "expectedBlockCount"],
+      "missingTrustDisposition": "DIAGNOSTIC_ONLY",
+      "unsupportedCode": "ARTIFACT_SCHEMA_VERSION_UNSUPPORTED",
+      "action": "Rerun the observe-only canary under the current frozen production readiness policy."
+    },
+    {
+      "artifactType": "production_blocking_authorization",
+      "currentVersion": "0.1.0",
+      "readableVersions": ["0.1.x"],
+      "migrationMode": "diagnostic_on_missing_trust",
+      "requiredTrustFields": ["attestation.signature", "canaryReportHash", "isolationManifestHash", "gateResultHash", "runtimeManifestHash", "provenanceHash", "gatePolicyHash"],
+      "missingTrustDisposition": "DIAGNOSTIC_ONLY",
+      "unsupportedCode": "ARTIFACT_SCHEMA_VERSION_UNSUPPORTED",
+      "action": "Obtain a current authorization signed by the external production change-control authority."
+    },
+    {
+      "artifactType": "production_ci_gate_result",
+      "currentVersion": "0.1.0",
+      "readableVersions": ["0.1.x"],
+      "migrationMode": "diagnostic_on_missing_trust",
+      "requiredTrustFields": ["bindings.gatePolicyHash", "bindings.gateResultHash", "bindings.runtimeManifestHash", "bindings.provenanceHash", "bindings.isolationManifestHash", "bindings.canaryReportHash", "productionBlockingEnabled"],
+      "missingTrustDisposition": "DIAGNOSTIC_ONLY",
+      "unsupportedCode": "ARTIFACT_SCHEMA_VERSION_UNSUPPORTED",
+      "action": "Reassess production readiness from verified gate, isolation, canary, and authorization evidence."
     }
   ]
 }

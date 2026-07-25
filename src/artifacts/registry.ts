@@ -14,7 +14,11 @@ export const ARTIFACT_TYPES = [
   "suite",
   "comparison_result",
   "gate_result",
-  "provenance"
+  "provenance",
+  "production_isolation_manifest",
+  "production_canary_report",
+  "production_blocking_authorization",
+  "production_ci_gate_result"
 ] as const;
 
 export type RegisteredArtifactType = (typeof ARTIFACT_TYPES)[number];

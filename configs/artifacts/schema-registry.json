@@ -29,6 +29,11 @@
     "gold-corpus.schema.json",
     "mutation.schema.json",
     "observer-qualification.schema.json",
+    "production-blocking-authorization.schema.json",
+    "production-canary-policy.schema.json",
+    "production-canary-report.schema.json",
+    "production-ci-gate-result.schema.json",
+    "production-isolation-manifest.schema.json",
     "profile-evidence.schema.json",
     "provenance.schema.json",
     "regression-scenarios.schema.json",
@@ -129,6 +134,38 @@
       "schemaFile": "provenance.schema.json",
       "currentVersion": "0.1.0",
       "compatibilityPolicyRef": "compatibility-matrix.json#provenance",
+      "migrationSupported": true
+    },
+    {
+      "artifactType": "production_isolation_manifest",
+      "fileNames": ["production-isolation-manifest.json"],
+      "schemaFile": "production-isolation-manifest.schema.json",
+      "currentVersion": "0.1.0",
+      "compatibilityPolicyRef": "compatibility-matrix.json#production_isolation_manifest",
+      "migrationSupported": true
+    },
+    {
+      "artifactType": "production_canary_report",
+      "fileNames": ["production-canary-report.json"],
+      "schemaFile": "production-canary-report.schema.json",
+      "currentVersion": "0.1.0",
+      "compatibilityPolicyRef": "compatibility-matrix.json#production_canary_report",
+      "migrationSupported": true
+    },
+    {
+      "artifactType": "production_blocking_authorization",
+      "fileNames": ["production-blocking-authorization.json"],
+      "schemaFile": "production-blocking-authorization.schema.json",
+      "currentVersion": "0.1.0",
+      "compatibilityPolicyRef": "compatibility-matrix.json#production_blocking_authorization",
+      "migrationSupported": true
+    },
+    {
+      "artifactType": "production_ci_gate_result",
+      "fileNames": ["production-ci-gate-result.json"],
+      "schemaFile": "production-ci-gate-result.schema.json",
+      "currentVersion": "0.1.0",
+      "compatibilityPolicyRef": "compatibility-matrix.json#production_ci_gate_result",
       "migrationSupported": true
     }
   ]

@@ -73,6 +73,37 @@ awb gate --comparison <comparison-dir>/comparison-result.json --trusted-observer
 
 Never make either private key available to the evaluated Runner, repository, artifacts, or logs, and never reuse the Observer key as the qualification-authority key. The bundled reference Observer currently requires Darwin plus `/usr/bin/sandbox-exec`. Its deny-default boundary actively verifies that signing-key reads, direct network, and undeclared nested processes fail with `EPERM`; unsupported isolation fails closed. The qualification suite covers known-good, every P0 mutation, omission/order/forgery, wrong key, private-key leakage, tool/network blind spots, repeats, and the canonical evaluation-contract content hash. Never auto-enroll either public key.
 
+For GitHub CI, this repository runs `.github/workflows/ci.yml`: `git diff
+--check`, typecheck, full tests, plugin build, runtime parity, schema
+validation, canonical naming scan, privacy scan, and fresh-install smoke.
+External callers can copy or call
+`.github/workflows/awb-external-observe-only.yml` for observe-only
+baseline/candidate checks. PASS, DIAGNOSTIC_ONLY, and BLOCK are recorded, not
+enforced, by that template; AWB execution or artifact-write failures still fail
+closed. Redacted summary upload is explicit opt-in with short retention.
+
+Production CI assessment uses:
+
+```bash
+awb ci evaluate-canary --samples <samples.json> --isolation-manifest <manifest.json> --gate-policy <gate-policy.json> --out <canary-dir>
+awb ci assess --gate-result <gate-result.json> --runtime-manifest <runtime-manifest.json> --provenance <provenance.json> --isolation-manifest <manifest.json> --canary-report <production-canary-report.json> --out <assessment-dir>
+```
+
+The frozen canary policy requires at least 30 observe-only samples, false
+positive rate <= 0.02, false negative rate 0, flaky rate <= 0.05, runtime p95
+<= 900 seconds, and cost p95 <= 10 USD. False-positive and false-negative
+rates use known-good and known-bad denominators respectively; both classes are
+required, and `sampleSetHash` binds the full sample set.
+
+Do not enable production blocking from this slash command alone. Blocking
+requires explicit workflow-owner authorization, a qualified independent live
+Observer, caller-provided `linux_container` or `strong_sandbox` isolation
+evidence, separate public trust anchors, denied or allowlisted network,
+read-only target input, controlled tool proxying, and redacted artifact
+retention. The authorization signature binds gate, runtime manifest,
+provenance, isolation, canary, and gate-policy hashes. AWB validates supplied
+isolation evidence; it does not provide a Linux isolation backend.
+
 Legacy compatible pipeline: `evaluate` for the complete flow, or `plan-cases` -> inspect `ai-case-plan-validation.json` -> `materialize --strategy ai` -> `run --execution live` when you need manual stage control.
 
 Preferred complete run:

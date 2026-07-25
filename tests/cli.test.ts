@@ -93,6 +93,57 @@ describe("benchmark CLI", () => {
     expect(result.stdout).toContain("runner configs valid");
   });
 
+  test("exposes production CI canary and assessment commands", async () => {
+    const result = await execa(
+      "npm",
+      ["run", "benchmark", "--", "ci", "--help"],
+      { cwd }
+    );
+
+    expect(result.stdout).toContain("evaluate-canary");
+    expect(result.stdout).toContain("assess");
+  });
+
+  test("production CI assess hides caller-controlled time and pairs authorization inputs", async () => {
+    const help = await execa(
+      "npm",
+      ["run", "benchmark", "--", "ci", "assess", "--help"],
+      { cwd }
+    );
+    expect(help.stdout).not.toContain("--now");
+
+    const result = await execa(
+      "npm",
+      [
+        "run",
+        "benchmark",
+        "--",
+        "ci",
+        "assess",
+        "--gate-result",
+        "missing-gate-result.json",
+        "--runtime-manifest",
+        "missing-runtime-manifest.json",
+        "--provenance",
+        "missing-provenance.json",
+        "--isolation-manifest",
+        "missing-isolation-manifest.json",
+        "--canary-report",
+        "missing-canary-report.json",
+        "--authorization",
+        "missing-authorization.json",
+        "--out",
+        "missing-out"
+      ],
+      { cwd, reject: false }
+    );
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain(
+      "--authorization and --trusted-authorization-key must be provided together."
+    );
+  });
+
   test("run rejects an unsupported mode before writing artifacts", async () => {
     const out = await tmp("awb-invalid-mode-");
     try {

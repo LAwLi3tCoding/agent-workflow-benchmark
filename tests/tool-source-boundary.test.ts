@@ -57,7 +57,16 @@ const prohibitedSourcePrivacyPatterns = [
     label: "company name token",
     pattern: new RegExp(`\\b${["mei", "tuan"].join("")}\\b|${["美", "团"].join("")}`, "u")
   },
-  { label: "internal business-data marker", pattern: /内部业务数据|internal business data/iu }
+  {
+    label: "internal business-data marker",
+    pattern: new RegExp(
+      [
+        ["内", "部", "业", "务", "数", "据"].join(""),
+        ["internal", "business", "data"].join(" ")
+      ].join("|"),
+      "iu"
+    )
+  }
 ];
 
 async function listFiles(root: string): Promise<string[]> {

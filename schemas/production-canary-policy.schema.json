@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "production-canary-policy.schema.json",
+  "title": "Agent Workflow Bench production canary policy",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "policyType",
+    "policyVersion",
+    "minSampleCount",
+    "maxFalsePositiveRate",
+    "maxFalseNegativeRate",
+    "maxFlakyRate",
+    "maxRuntimeSecondsP95",
+    "maxCostUsdP95"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "0.1.0" },
+    "policyType": { "const": "production_canary" },
+    "policyVersion": { "const": "1.0.0" },
+    "minSampleCount": { "type": "integer", "minimum": 1 },
+    "maxFalsePositiveRate": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "maxFalseNegativeRate": { "const": 0 },
+    "maxFlakyRate": { "type": "number", "minimum": 0, "maximum": 1 },
+    "maxRuntimeSecondsP95": { "type": "number", "exclusiveMinimum": 0 },
+    "maxCostUsdP95": { "type": "number", "exclusiveMinimum": 0 }
+  }
+}

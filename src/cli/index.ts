@@ -16,6 +16,7 @@ import type {
   MaterializedSuite,
   MutationInput,
   ProfileResult,
+  RuntimeManifest,
   RunnerCapability,
   SuiteResult
 } from "../core/types.js";
@@ -38,7 +39,7 @@ import { renderMarkdownReport } from "../report/report.js";
 import { ensureDir, readJson, readYaml, writeJson, writeYaml } from "../utils/io.js";
 import { AWB_VERSION, CLI_NAME, PRODUCT_NAME, PRODUCT_TAGLINE } from "../core/product.js";
 import { diagnoseWorkflow, renderDoctorReport } from "../doctor/doctor.js";
-import { buildRunProvenance, publicRunnerCapability, semanticCaseSetHash } from "../regression/provenance.js";
+import { buildRunProvenance, publicRunnerCapability, semanticCaseSetHash, type RunProvenance } from "../regression/provenance.js";
 import {
   verifyWorkflowTraceBundle,
   workflowTraceAttemptId,
@@ -61,7 +62,7 @@ import {
   verifyComparisonBundle,
   type ComparisonResult
 } from "../regression/compare.js";
-import { evaluateGate, gateExitCode, renderGateReport } from "../regression/gate.js";
+import { evaluateGate, gateExitCode, renderGateReport, type GateResult } from "../regression/gate.js";
 import {
   getEvaluationContract,
   getReliabilityPolicy
@@ -114,6 +115,17 @@ import {
   writeArtifactMigration
 } from "../artifacts/migration.js";
 import { assertArtifactRegistryComplete } from "../artifacts/registry.js";
+import {
+  buildProductionCanaryReport,
+  type ProductionCanarySample
+} from "../ci/canary.js";
+import {
+  assessProductionCiGate,
+  PRODUCTION_CANARY_POLICY,
+  validateProductionIsolationManifest,
+  type ProductionCiGateResult
+} from "../ci/productionGate.js";
+import { sha256Text, stableJson } from "../utils/hash.js";
 
 const program = new Command();
 
@@ -1040,6 +1052,150 @@ program
     process.exitCode = gateExitCode(result.decision);
   });
 
+const ci = program.command("ci").description("Evaluate production CI readiness artifacts");
+
+ci
+  .command("evaluate-canary")
+  .description("Evaluate observe-only canary samples against frozen production thresholds")
+  .requiredOption("--samples <path>", "JSON array or { samples } of observe-only canary samples")
+  .requiredOption("--isolation-manifest <path>", "production-isolation-manifest.json")
+  .requiredOption("--gate-policy <path>", "gate-policy.json used by the observed gate")
+  .requiredOption("--out <dir>")
+  .action(
+    async (options: {
+      samples: string;
+      isolationManifest: string;
+      gatePolicy: string;
+      out: string;
+    }) => {
+      const samplesInput = await readJson<unknown>(
+        await resolveExistingPath(options.samples)
+      );
+      const samples = normalizeProductionCanarySamples(samplesInput);
+      const isolationManifest = await readJsonWithSchema<Record<string, unknown>>(
+        await resolveExistingPath(options.isolationManifest),
+        "production-isolation-manifest.schema.json",
+        "Production isolation manifest"
+      );
+      const gatePolicyPath = await resolveExistingPath(options.gatePolicy);
+      await readJsonWithSchema<GatePolicy>(
+        gatePolicyPath,
+        "gate-policy.schema.json",
+        "Gate policy"
+      );
+      const gatePolicy = loadGatePolicy(gatePolicyPath);
+      const isolationValidation =
+        validateProductionIsolationManifest(isolationManifest);
+      if (isolationValidation.status === "BLOCK") {
+        throw new Error(isolationValidation.reasons[0]);
+      }
+      const report = buildProductionCanaryReport({
+        samples,
+        isolationManifestHash: stableArtifactHash(isolationManifest),
+        gatePolicyHash: gatePolicy.policyHash
+      });
+      await assertJsonSchema(
+        report,
+        "production-canary-report.schema.json",
+        "Production canary report"
+      );
+      await writeJson(
+        path.join(options.out, "production-canary-report.json"),
+        report
+      );
+      console.log(`production canary ${report.status}: ${options.out}`);
+      process.exitCode = productionCanaryExitCode(report.status);
+    }
+  );
+
+ci
+  .command("assess")
+  .description("Assess whether qualified evidence may enable production blocking")
+  .requiredOption("--gate-result <path>", "gate-result.json")
+  .requiredOption("--runtime-manifest <path>", "runtime-manifest.json")
+  .requiredOption("--provenance <path>", "provenance.json")
+  .requiredOption("--isolation-manifest <path>", "production-isolation-manifest.json")
+  .requiredOption("--canary-report <path>", "production-canary-report.json")
+  .option("--authorization <path>", "signed production-blocking-authorization.json")
+  .option("--trusted-authorization-key <path>", "trusted Ed25519 authorization public key")
+  .requiredOption("--out <dir>")
+  .action(
+    async (options: {
+      gateResult: string;
+      runtimeManifest: string;
+      provenance: string;
+      isolationManifest: string;
+      canaryReport: string;
+      authorization?: string;
+      trustedAuthorizationKey?: string;
+      out: string;
+    }) => {
+      if (
+        Boolean(options.authorization) !==
+        Boolean(options.trustedAuthorizationKey)
+      ) {
+        throw new Error(
+          "--authorization and --trusted-authorization-key must be provided together."
+        );
+      }
+      const gate = await readJsonWithSchema<GateResult>(
+        await resolveExistingPath(options.gateResult),
+        "gate-result.schema.json",
+        "Gate result"
+      );
+      const runtimeManifest = await readJsonWithSchema<RuntimeManifest>(
+        await resolveExistingPath(options.runtimeManifest),
+        "runtime-manifest.schema.json",
+        "Runtime manifest"
+      );
+      const provenance = await readJsonWithSchema<RunProvenance>(
+        await resolveExistingPath(options.provenance),
+        "provenance.schema.json",
+        "Provenance"
+      );
+      const isolationManifest = await readJsonWithSchema<Record<string, unknown>>(
+        await resolveExistingPath(options.isolationManifest),
+        "production-isolation-manifest.schema.json",
+        "Production isolation manifest"
+      );
+      const canary = await readJsonWithSchema<Record<string, unknown>>(
+        await resolveExistingPath(options.canaryReport),
+        "production-canary-report.schema.json",
+        "Production canary report"
+      );
+      const authorization = options.authorization
+        ? await readJsonWithSchema<Record<string, unknown>>(
+            await resolveExistingPath(options.authorization),
+            "production-blocking-authorization.schema.json",
+            "Production blocking authorization"
+          )
+        : undefined;
+      const trustedAuthorizationKey = options.trustedAuthorizationKey
+        ? await readFile(await resolveExistingPath(options.trustedAuthorizationKey))
+        : undefined;
+      const result = assessProductionCiGate({
+        gate,
+        runtimeManifest,
+        provenance,
+        isolationManifest,
+        canary,
+        authorization,
+        trustedAuthorizationKey
+      });
+      await assertJsonSchema(
+        result,
+        "production-ci-gate-result.schema.json",
+        "Production CI gate result"
+      );
+      await writeJson(
+        path.join(options.out, "production-ci-gate-result.json"),
+        result
+      );
+      console.log(`production CI assessment ${result.decision}: ${options.out}`);
+      process.exitCode = productionCiGateExitCode(result);
+    }
+  );
+
 program
   .command("score")
   .option("--run <dir>")
@@ -1952,6 +2108,7 @@ async function validateSchemasAndTargets(): Promise<void> {
   let validateProfileEvidence: ValidateFunction | undefined;
   let validateGenerationManifest: ValidateFunction | undefined;
   let validateRuntimeManifest: ValidateFunction | undefined;
+  let validateProductionCanaryPolicy: ValidateFunction | undefined;
   for (const file of schemaFiles) {
     const schema = JSON.parse(await readFile(path.join(schemaDir, file), "utf8")) as object;
     const validate = ajv.compile(schema);
@@ -2005,6 +2162,9 @@ async function validateSchemasAndTargets(): Promise<void> {
     }
     if (file === "runtime-manifest.schema.json") {
       validateRuntimeManifest = validate;
+    }
+    if (file === "production-canary-policy.schema.json") {
+      validateProductionCanaryPolicy = validate;
     }
   }
   if (!validateTarget) {
@@ -2082,6 +2242,36 @@ async function validateSchemasAndTargets(): Promise<void> {
     );
   }
   loadGatePolicy(canonicalGatePolicyPath);
+  if (!validateProductionCanaryPolicy) {
+    throw new Error("Production canary policy schema is missing.");
+  }
+  const productionCanaryPolicyPath = path.join(
+    benchmarkRoot,
+    "configs",
+    "ci",
+    "production-canary-policy.json"
+  );
+  if (!existsSync(productionCanaryPolicyPath)) {
+    throw new Error("Production canary policy config is missing.");
+  }
+  const productionCanaryPolicy = await readJson(productionCanaryPolicyPath);
+  if (!validateProductionCanaryPolicy(productionCanaryPolicy)) {
+    throw new Error(
+      `Production canary policy failed schema validation: ${ajv.errorsText(
+        validateProductionCanaryPolicy.errors
+      )}`
+    );
+  }
+  if (
+    stableJson(productionCanaryPolicy) !==
+    stableJson({
+      schemaVersion: "0.1.0",
+      policyType: "production_canary",
+      ...PRODUCTION_CANARY_POLICY
+    })
+  ) {
+    throw new Error("Production canary policy config does not match runtime thresholds.");
+  }
   if (existsSync(DEFAULT_GOLD_CORPUS_PATH)) {
     const goldCorpusManifest = YAML.parse(
       await readFile(DEFAULT_GOLD_CORPUS_PATH, "utf8")
@@ -2431,6 +2621,63 @@ function calibrationExitCode(report: CalibrationReport): 0 | 1 | 2 {
     return 1;
   }
   return report.status === "PASS" ? 0 : 2;
+}
+
+function productionCanaryExitCode(status: "PASS" | "FAIL" | "INSUFFICIENT"): 0 | 1 | 2 {
+  if (status === "PASS") {
+    return 0;
+  }
+  return status === "FAIL" ? 1 : 2;
+}
+
+function productionCiGateExitCode(result: ProductionCiGateResult): 0 | 1 | 2 {
+  if (result.decision === "PASS") {
+    return 0;
+  }
+  return result.decision === "BLOCK" ? 1 : 2;
+}
+
+function normalizeProductionCanarySamples(input: unknown): ProductionCanarySample[] {
+  if (Array.isArray(input)) {
+    return input as ProductionCanarySample[];
+  }
+  if (isObjectRecord(input) && Array.isArray(input.samples)) {
+    return input.samples as ProductionCanarySample[];
+  }
+  throw new Error("Production canary samples must be a JSON array or an object with a samples array.");
+}
+
+function stableArtifactHash(value: unknown): string {
+  return sha256Text(stableJson(value));
+}
+
+async function readJsonWithSchema<T>(
+  filePath: string,
+  schemaName: string,
+  label: string
+): Promise<T> {
+  const value = await readJson<T>(filePath);
+  await assertJsonSchema(value, schemaName, label);
+  return value;
+}
+
+async function assertJsonSchema(
+  value: unknown,
+  schemaName: string,
+  label: string
+): Promise<void> {
+  const schema = JSON.parse(
+    await readFile(path.join(getBenchmarkRoot(), "schemas", schemaName), "utf8")
+  ) as object;
+  const ajv = new Ajv2020({ strict: false });
+  const validate = ajv.compile(schema);
+  if (!validate(value)) {
+    throw new Error(`${label} failed schema validation: ${ajv.errorsText(validate.errors)}`);
+  }
+}
+
+function isObjectRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 async function writeExternalValidityLabelingArtifacts(

@@ -1,0 +1,244 @@
+name: AWB External Observe Only
+
+on:
+  workflow_call:
+    inputs:
+      awb-repository:
+        description: Repository containing Agent Workflow Bench.
+        required: true
+        type: string
+      awb-ref:
+        description: Git ref of the Agent Workflow Bench repository to use.
+        required: false
+        type: string
+        default: main
+      target-id:
+        description: Registered AWB target id.
+        required: true
+        type: string
+      target-pack-dir:
+        description: Caller-repository directory containing registry.yaml, target packs, and reviews.
+        required: false
+        type: string
+        default: .awb/targets
+      baseline-ref:
+        description: Baseline repository ref.
+        required: true
+        type: string
+      candidate-ref:
+        description: Candidate repository ref.
+        required: true
+        type: string
+      runner:
+        description: AWB runner name for observe-only collection.
+        required: false
+        type: string
+        default: simulated
+      execution:
+        description: AWB execution mode for observe-only collection.
+        required: false
+        type: string
+        default: simulated
+      gate-policy-path:
+        description: Gate policy path relative to the AWB checkout.
+        required: false
+        type: string
+        default: configs/evaluation/gate-policy.json
+      upload-redacted-artifacts:
+        description: Upload redacted observe-only summary artifacts.
+        required: false
+        type: boolean
+        default: false
+      artifact-retention-days:
+        description: Retention days for uploaded redacted summary artifacts.
+        required: false
+        type: number
+        default: 7
+    outputs:
+      decision:
+        description: Recorded AWB observe-only decision.
+        value: ${{ jobs.observe.outputs.decision }}
+      gate_exit_code:
+        description: Recorded AWB gate exit code.
+        value: ${{ jobs.observe.outputs.gate_exit_code }}
+
+permissions:
+  contents: read
+
+jobs:
+  observe:
+    name: Observe baseline and candidate
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    outputs:
+      decision: ${{ steps.gate.outputs.decision }}
+      gate_exit_code: ${{ steps.gate.outputs.exit_code }}
+
+    steps:
+      - name: Checkout baseline
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository }}
+          ref: ${{ inputs.baseline-ref }}
+          path: baseline
+
+      - name: Checkout candidate
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository }}
+          ref: ${{ inputs.candidate-ref }}
+          path: candidate
+
+      - name: Checkout AWB
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.awb-repository }}
+          ref: ${{ inputs.awb-ref }}
+          path: .awb/tool
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: .awb/tool/package-lock.json
+
+      - name: Install AWB dependencies
+        working-directory: .awb/tool
+        run: npm ci
+
+      - name: Install private target pack
+        env:
+          TARGET_PACK_DIR: ${{ inputs.target-pack-dir }}
+        run: |
+          set -euo pipefail
+          target_pack_dir="candidate/$TARGET_PACK_DIR"
+          if [ ! -f "$target_pack_dir/registry.yaml" ]; then
+            echo "Target pack registry not found. Provide .awb/targets/registry.yaml or set target-pack-dir."
+            exit 1
+          fi
+          rm -rf .awb/tool/configs/targets
+          mkdir -p .awb/tool/configs/targets
+          cp -R "$target_pack_dir"/. .awb/tool/configs/targets/
+
+      - name: Build AWB
+        working-directory: .awb/tool
+        run: npm run build
+
+      - name: Validate AWB schemas and target pack
+        working-directory: .awb/tool
+        run: node dist/src/cli/index.js validate-schema
+
+      - name: Doctor
+        working-directory: .awb/tool
+        env:
+          TARGET_ID: ${{ inputs.target-id }}
+          RUNNER_NAME: ${{ inputs.runner }}
+        run: |
+          set -euo pipefail
+          node dist/src/cli/index.js doctor \
+            --target "$TARGET_ID" \
+            --target-root "$GITHUB_WORKSPACE/candidate" \
+            --runner "$RUNNER_NAME" \
+            --out "$GITHUB_WORKSPACE/reports/doctor"
+
+      - name: Run baseline
+        working-directory: .awb/tool
+        env:
+          TARGET_ID: ${{ inputs.target-id }}
+          RUNNER_NAME: ${{ inputs.runner }}
+          EXECUTION_MODE: ${{ inputs.execution }}
+        run: |
+          set -euo pipefail
+          node dist/src/cli/index.js run \
+            --target "$TARGET_ID" \
+            --target-root "$GITHUB_WORKSPACE/baseline" \
+            --runner "$RUNNER_NAME" \
+            --execution "$EXECUTION_MODE" \
+            --out "$GITHUB_WORKSPACE/reports/baseline"
+
+      - name: Run candidate
+        working-directory: .awb/tool
+        env:
+          TARGET_ID: ${{ inputs.target-id }}
+          RUNNER_NAME: ${{ inputs.runner }}
+          EXECUTION_MODE: ${{ inputs.execution }}
+        run: |
+          set -euo pipefail
+          node dist/src/cli/index.js run \
+            --target "$TARGET_ID" \
+            --target-root "$GITHUB_WORKSPACE/candidate" \
+            --runner "$RUNNER_NAME" \
+            --execution "$EXECUTION_MODE" \
+            --out "$GITHUB_WORKSPACE/reports/candidate"
+
+      - name: Compare
+        working-directory: .awb/tool
+        env:
+          GATE_POLICY_PATH: ${{ inputs.gate-policy-path }}
+        run: |
+          set -euo pipefail
+          node dist/src/cli/index.js compare \
+            --baseline "$GITHUB_WORKSPACE/reports/baseline" \
+            --candidate "$GITHUB_WORKSPACE/reports/candidate" \
+            --gate-policy "$GATE_POLICY_PATH" \
+            --out "$GITHUB_WORKSPACE/reports/comparison"
+
+      - name: Observe-only gate
+        id: gate
+        working-directory: .awb/tool
+        env:
+          GATE_POLICY_PATH: ${{ inputs.gate-policy-path }}
+        run: |
+          set +e
+          node dist/src/cli/index.js gate \
+            --comparison "$GITHUB_WORKSPACE/reports/comparison/comparison-result.json" \
+            --gate-policy "$GATE_POLICY_PATH" \
+            --out "$GITHUB_WORKSPACE/reports/gate"
+          status=$?
+          set -e
+          if [ ! -f "$GITHUB_WORKSPACE/reports/gate/gate-result.json" ]; then
+            echo "AWB gate did not produce gate-result.json; treating this as a runtime failure."
+            exit "${status:-1}"
+          fi
+          if [ "$status" -ne 0 ] && [ "$status" -ne 1 ] && [ "$status" -ne 2 ]; then
+            echo "AWB gate returned unexpected exit code $status; treating this as a runtime failure."
+            exit "$status"
+          fi
+          decision="$(node -e "const fs=require('fs'); const p=process.argv[1]; const v=JSON.parse(fs.readFileSync(p,'utf8')); console.log(v.decision)" "$GITHUB_WORKSPACE/reports/gate/gate-result.json")"
+          if [ "$decision" != "PASS" ] && [ "$decision" != "DIAGNOSTIC_ONLY" ] && [ "$decision" != "BLOCK" ]; then
+            echo "AWB gate-result.json contains an unknown decision."
+            exit 1
+          fi
+          expected_status=0
+          if [ "$decision" = "BLOCK" ]; then
+            expected_status=1
+          elif [ "$decision" = "DIAGNOSTIC_ONLY" ]; then
+            expected_status=2
+          fi
+          if [ "$status" -ne "$expected_status" ]; then
+            echo "AWB gate exit code does not match gate-result.json; treating this as a runtime failure."
+            exit 1
+          fi
+          echo "decision=$decision" >> "$GITHUB_OUTPUT"
+          echo "exit_code=$status" >> "$GITHUB_OUTPUT"
+          {
+            echo "## AWB observe-only result"
+            echo ""
+            echo "- Decision: \`$decision\`"
+            echo "- Gate exit code: \`$status\`"
+            echo ""
+            echo "This reusable workflow records AWB decisions only. PASS, DIAGNOSTIC_ONLY, and BLOCK do not by themselves enable production blocking."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload redacted observe-only summary
+        if: ${{ always() && inputs.upload-redacted-artifacts }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: awb-observe-only-summary
+          retention-days: ${{ inputs.artifact-retention-days }}
+          if-no-files-found: ignore
+          path: |
+            reports/doctor/doctor-result.json
+            reports/comparison/comparison-result.json
+            reports/gate/gate-result.json

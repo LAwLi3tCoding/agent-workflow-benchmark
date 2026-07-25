@@ -1,0 +1,11 @@
+{
+  "schemaVersion": "0.1.0",
+  "policyType": "production_canary",
+  "policyVersion": "1.0.0",
+  "minSampleCount": 30,
+  "maxFalsePositiveRate": 0.02,
+  "maxFalseNegativeRate": 0,
+  "maxFlakyRate": 0.05,
+  "maxRuntimeSecondsP95": 900,
+  "maxCostUsdP95": 10
+}

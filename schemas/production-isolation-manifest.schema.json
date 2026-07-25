@@ -1,0 +1,134 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "production-isolation-manifest.schema.json",
+  "title": "Agent Workflow Bench production isolation manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "artifactType",
+    "boundary",
+    "networkPolicy",
+    "targetMount",
+    "runnerHome",
+    "runnerTmp",
+    "toolProxy",
+    "observerProcess",
+    "trustAnchor",
+    "runnerEnvironment",
+    "retainedArtifacts",
+    "retentionPolicy",
+    "checks"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "0.1.0" },
+    "artifactType": { "const": "production_isolation_manifest" },
+    "boundary": { "enum": ["linux_container", "strong_sandbox"] },
+    "networkPolicy": {
+      "enum": ["deny_by_default", "explicit_allowlist"]
+    },
+    "networkAllowlist": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9](?:[A-Za-z0-9.-]{0,251}[A-Za-z0-9])?$"
+      }
+    },
+    "targetMount": { "const": "read_only" },
+    "runnerHome": { "const": "ephemeral" },
+    "runnerTmp": { "const": "ephemeral" },
+    "toolProxy": { "const": "controlled" },
+    "observerProcess": { "const": "external" },
+    "trustAnchor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source",
+        "observerPublicKeyRef",
+        "qualificationAuthorityPublicKeyRef"
+      ],
+      "properties": {
+        "source": { "const": "external" },
+        "observerPublicKeyRef": { "$ref": "#/$defs/publicKeyRef" },
+        "qualificationAuthorityPublicKeyRef": {
+          "$ref": "#/$defs/publicKeyRef"
+        }
+      }
+    },
+    "runnerEnvironment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["HOME", "TMPDIR"],
+      "properties": {
+        "HOME": { "const": "workspace://ephemeral-home" },
+        "TMPDIR": { "const": "workspace://ephemeral-tmp" }
+      }
+    },
+    "retainedArtifacts": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["ref"],
+        "properties": {
+          "ref": { "$ref": "#/$defs/artifactRef" }
+        }
+      }
+    },
+    "retentionPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["redactedOnly", "encryptedAtRest", "maxDays"],
+      "properties": {
+        "redactedOnly": { "const": true },
+        "encryptedAtRest": { "const": true },
+        "maxDays": { "type": "integer", "minimum": 1, "maximum": 30 }
+      }
+    },
+    "checks": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "directNetworkDenied",
+        "productionWriteDenied",
+        "privateKeyUnreadableByRunner",
+        "observerTraceOutsideRunnerWorkspace"
+      ],
+      "properties": {
+        "directNetworkDenied": { "type": "boolean" },
+        "productionWriteDenied": { "type": "boolean" },
+        "privateKeyUnreadableByRunner": { "type": "boolean" },
+        "observerTraceOutsideRunnerWorkspace": { "type": "boolean" }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "networkPolicy": { "const": "explicit_allowlist" }
+        },
+        "required": ["networkPolicy"]
+      },
+      "then": {
+        "required": ["networkAllowlist"],
+        "properties": {
+          "networkAllowlist": { "minItems": 1 }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "publicKeyRef": {
+      "type": "string",
+      "pattern": "^(?!.*(?:private|secret|credential))[a-z0-9][a-z0-9._-]*\\.pem$"
+    },
+    "artifactRef": {
+      "type": "string",
+      "pattern": "^(?!.*(?:[/\\\\]|@|\\.\\.))[A-Za-z0-9][A-Za-z0-9._-]*$"
+    }
+  }
+}

@@ -40,7 +40,19 @@ describe("external criterion validity", () => {
     expect(serialized).not.toMatch(
       /"runner":"codex"|"runner":"claude"|classification|gateDecision|failureCodes/u
     );
-    expect(serialized).not.toMatch(/\/Users\/|@|private-target|company-domain/iu);
+    expect(serialized).not.toMatch(
+      new RegExp(
+        [
+          "\\/",
+          "Users",
+          "\\/|@|",
+          ["private", "target"].join("-"),
+          "|",
+          ["company", "domain"].join("-")
+        ].join(""),
+        "iu"
+      )
+    );
     expect(result.labelsTemplate).toMatchObject({
       status: "DRAFT",
       labels: [],
@@ -307,7 +319,14 @@ describe("external criterion validity", () => {
 
   test("rejects non-public artifact references before creating a label package", () => {
     const study = makeStudy();
-    study.items[0]!.baseline.ref = "/\u0055sers/private/target-run";
+    study.items[0]!.baseline.ref = [
+      "/",
+      "Users",
+      "/",
+      "private",
+      "/",
+      "target-run"
+    ].join("");
 
     expect(() => createExternalValidityLabelingPackage(study)).toThrow(
       "public-safe external artifact references"

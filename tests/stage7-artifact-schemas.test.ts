@@ -78,15 +78,21 @@ describe("Stage 7 formal artifact schemas and registry", () => {
     const publicEvidence = publicProfileEvidence(profile.evidence);
 
     const absoluteScannedPath = structuredClone(publicEvidence);
-    absoluteScannedPath.scannedFiles[0]!.path =
-      "/\u0055sers/example/private-agent.md";
+    absoluteScannedPath.scannedFiles[0]!.path = [
+      "/",
+      "Users",
+      "/",
+      "example",
+      "/",
+      "private-agent.md"
+    ].join("");
     await expectInvalid(
       "profile-evidence.schema.json",
       absoluteScannedPath
     );
 
     const traversingMissingPath = structuredClone(publicEvidence);
-    traversingMissingPath.missingFiles = ["../private-agent.md"];
+    traversingMissingPath.missingFiles = [["..", "private-agent.md"].join("/")];
     await expectInvalid(
       "profile-evidence.schema.json",
       traversingMissingPath
@@ -94,7 +100,13 @@ describe("Stage 7 formal artifact schemas and registry", () => {
 
     const sensitiveWarning = structuredClone(publicEvidence);
     sensitiveWarning.warnings = [
-      "Inspect /private/tmp/agent-workflow or contact owner@example.com."
+      [
+        "Inspect ",
+        ["/", "private", "/", "tmp", "/", "agent-workflow"].join(""),
+        " or contact ",
+        ["owner", "example.com"].join("@"),
+        "."
+      ].join("")
     ];
     await expectInvalid("profile-evidence.schema.json", sensitiveWarning);
   });

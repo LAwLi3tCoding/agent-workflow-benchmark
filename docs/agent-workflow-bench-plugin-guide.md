@@ -123,6 +123,47 @@ awb gate \
 完整字段、签名规范和 observer 准入检查见
 [`workflow-trace-observer-contract.md`](workflow-trace-observer-contract.md)。
 
+## CI 模板与生产阻断边界
+
+仓库自检 CI 在 `.github/workflows/ci.yml` 中定义，覆盖 `git diff --check`、
+typecheck、全量测试、plugin build、runtime parity、schema validation、canonical
+naming scan、privacy scan 和 fresh-install smoke。任何影响 runtime 的源码、
+schema、config、fixture、package 或 lockfile 变更，都必须重新运行
+`npm run plugin:build` 并提交生成结果。
+
+可复用的外部 workflow 模板是
+`.github/workflows/awb-external-observe-only.yml`。调用方把私有 Target Pack 放在
+自己的 `.awb/targets` 目录，模板会 checkout baseline/candidate、复制 Target Pack、
+运行 `doctor`、`run`、`compare` 和 `gate`。它是 observe-only：PASS、
+`DIAGNOSTIC_ONLY` 和 `BLOCK` 都只记录到 summary，不会仅因为 AWB decision 让调用方
+失败；但 AWB 命令无法执行、schema/compare 失败或没有写出 `gate-result.json` 时会
+fail closed。summary artifact 默认不上传；只有显式设置
+`upload-redacted-artifacts: true` 时才上传短保留期的 redacted summary JSON。
+调用方可读取 `decision` 和 `gate_exit_code` 输出做记录或路由，但不能把
+observe-only 输出解释为生产授权。
+
+生产 CI 的两个命令是：
+
+```bash
+awb ci evaluate-canary --samples <samples.json> --isolation-manifest <manifest.json> --gate-policy <gate-policy.json> --out <canary-dir>
+awb ci assess --gate-result <gate-result.json> --runtime-manifest <runtime-manifest.json> --provenance <provenance.json> --isolation-manifest <manifest.json> --canary-report <production-canary-report.json> --out <assessment-dir>
+```
+
+canary 冻结阈值为：样本数至少 `30`、false positive rate 不高于 `0.02`、false
+negative rate 为 `0`、flaky rate 不高于 `0.05`、runtime p95 不高于 `900` 秒、
+cost p95 不高于 `10` USD。误报率以 known-good 样本为分母，漏报率以 known-bad
+样本为分母；两类样本都必须存在，`sampleSetHash` 绑定完整样本集。`ci assess`
+不会因为 canary 通过就启用 blocking；它还要求 evidence gate PASS、qualified
+live Observer、caller 提供的强隔离 manifest、外部 trust anchors 和显式签名授权。
+授权签名同时绑定 gate、runtime manifest、provenance、isolation、canary 与 gate
+policy；替换任一制品都会 BLOCK。
+
+生产 blocking gate 需要 workflow owner 显式授权、已认证的独立 live
+`workflow_trace` Observer、调用方提供的 `linux_container` 或 `strong_sandbox`
+隔离证据、临时 HOME/TMPDIR、默认禁网或 allowlist、只读 target、受控工具代理、两个
+外部公钥 trust anchors，以及只保存脱敏制品的 retention 策略。任一条件缺失时保持
+`DIAGNOSTIC_ONLY`。AWB 只校验调用方提供的隔离证据，不声称自己提供 Linux 隔离后端。
+
 ## 在 Codex 中使用
 
 在本地源码仓库中注册并安装 Codex 插件：

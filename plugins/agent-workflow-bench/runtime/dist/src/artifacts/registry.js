@@ -13,7 +13,11 @@ export const ARTIFACT_TYPES = [
     "suite",
     "comparison_result",
     "gate_result",
-    "provenance"
+    "provenance",
+    "production_isolation_manifest",
+    "production_canary_report",
+    "production_blocking_authorization",
+    "production_ci_gate_result"
 ];
 export async function loadArtifactSchemaRegistry(benchmarkRoot = getBenchmarkRoot()) {
     const registry = await readJson(path.join(benchmarkRoot, "configs/artifacts/schema-registry.json"));

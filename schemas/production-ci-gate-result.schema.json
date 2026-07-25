@@ -1,0 +1,98 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "production-ci-gate-result.schema.json",
+  "title": "Agent Workflow Bench production CI gate result",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "artifactType",
+    "decision",
+    "ruleId",
+    "productionBlockingEnabled",
+    "enforcementMode",
+    "evidenceDecision",
+    "reasons",
+    "bindings"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "0.1.0" },
+    "artifactType": { "const": "production_ci_gate_result" },
+    "decision": { "enum": ["PASS", "DIAGNOSTIC_ONLY", "BLOCK"] },
+    "ruleId": {
+      "enum": [
+        "PROD-GATE-BLOCK",
+        "PROD-GATE-NOT-PASS",
+        "PROD-ISOLATION-INSUFFICIENT",
+        "PROD-OBSERVER-UNQUALIFIED",
+        "PROD-CANARY-NOT-READY",
+        "PROD-BLOCKING-NOT-AUTHORIZED",
+        "PROD-AUTHORIZATION-INVALID",
+        "PROD_RUNNER_PRIVATE_KEY_EXPOSURE",
+        "PROD-BLOCKING-AUTHORIZED"
+      ]
+    },
+    "productionBlockingEnabled": { "type": "boolean" },
+    "enforcementMode": {
+      "enum": ["observe_only", "production_blocking"]
+    },
+    "evidenceDecision": {
+      "enum": ["PASS", "DIAGNOSTIC_ONLY", "BLOCK"]
+    },
+    "reasons": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "bindings": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "gatePolicyHash",
+        "gateResultHash",
+        "runtimeManifestHash",
+        "provenanceHash",
+        "isolationManifestHash",
+        "canaryReportHash"
+      ],
+      "properties": {
+        "gatePolicyHash": { "$ref": "#/$defs/hash" },
+        "gateResultHash": { "$ref": "#/$defs/hash" },
+        "runtimeManifestHash": { "$ref": "#/$defs/hash" },
+        "provenanceHash": { "$ref": "#/$defs/hash" },
+        "isolationManifestHash": { "$ref": "#/$defs/hash" },
+        "canaryReportHash": { "$ref": "#/$defs/hash" },
+        "authorizationId": { "$ref": "#/$defs/hash" }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "productionBlockingEnabled": { "const": true }
+        },
+        "required": ["productionBlockingEnabled"]
+      },
+      "then": {
+        "properties": {
+          "decision": { "const": "PASS" },
+          "ruleId": { "const": "PROD-BLOCKING-AUTHORIZED" },
+          "enforcementMode": { "const": "production_blocking" },
+          "bindings": { "required": ["authorizationId"] }
+        }
+      },
+      "else": {
+        "properties": {
+          "enforcementMode": { "const": "observe_only" }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "hash": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    }
+  }
+}

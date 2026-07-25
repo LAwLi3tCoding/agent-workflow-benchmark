@@ -66,7 +66,7 @@ describe("external validity schemas", () => {
             ...artifacts.package.items[0],
             baseline: {
               ...artifacts.package.items[0]!.baseline,
-              ref: "/\u0055sers/private/run"
+              ref: ["/", "Users", "/", "private", "/", "run"].join("")
             }
           }
         ]
