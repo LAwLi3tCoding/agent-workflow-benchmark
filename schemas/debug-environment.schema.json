@@ -15,6 +15,19 @@
     "fakeTools": { "type": "array" },
     "networkPolicyHash": { "type": "string" },
     "commandPolicyHash": { "type": "string" },
-    "reproduceCommands": { "type": "array" }
+    "reproduceCommands": { "type": "array" },
+    "preflightResults": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["status", "check", "why"],
+        "properties": {
+          "status": { "enum": ["PASS", "FAIL", "DIAGNOSTIC_ONLY"] },
+          "check": { "type": "string" },
+          "why": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    }
   }
 }

@@ -1,7 +1,7 @@
 {
   "name": "agent-workflow-benchmark",
   "interface": {
-    "displayName": "Agent Workflow Benchmark"
+    "displayName": "Agent Workflow Bench"
   },
   "plugins": [
     {

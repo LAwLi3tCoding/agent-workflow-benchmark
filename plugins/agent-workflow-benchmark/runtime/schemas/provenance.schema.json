@@ -1,0 +1,109 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "provenance.schema.json",
+  "type": "object",
+  "required": ["schemaVersion", "product", "generatedAt", "subject", "conditions", "integrity"],
+  "properties": {
+    "schemaVersion": { "type": "string" },
+    "product": { "const": "Agent Workflow Bench" },
+    "generatedAt": { "type": "string" },
+    "subject": {
+      "type": "object",
+      "required": ["targetId", "contractHash", "contentHash", "git", "variant"],
+      "properties": {
+        "targetId": { "type": "string" },
+        "contractHash": { "type": "string" },
+        "contentHash": { "type": "string" },
+        "git": {
+          "type": "object",
+          "required": ["status"],
+          "properties": {
+            "status": { "enum": ["available", "unavailable"] },
+            "commit": { "type": "string" },
+            "dirty": { "type": "boolean" }
+          }
+        },
+        "variant": {
+          "type": "object",
+          "required": ["kind"],
+          "properties": {
+            "kind": { "enum": ["baseline", "mutation_overlay"] },
+            "id": { "type": "string" },
+            "type": { "type": "string" }
+          }
+        }
+      }
+    },
+    "conditions": {
+      "type": "object",
+      "required": [
+        "suite",
+        "caseSetHash",
+        "budgetHash",
+        "commandPolicyHash",
+        "runner",
+        "executionMode",
+        "evidenceKind",
+        "observationLevel",
+        "isolation",
+        "permissionMode",
+        "environment",
+        "environmentHash",
+        "conditionsHash"
+      ],
+      "properties": {
+        "suite": { "type": "string" },
+        "caseSetHash": { "type": "string" },
+        "budgetHash": { "type": "string" },
+        "commandPolicyHash": { "type": "string" },
+        "runner": {
+          "type": "object",
+          "required": ["name", "adapterVersion", "capabilitiesHash"],
+          "properties": {
+            "name": { "enum": ["codex", "claude", "opencode", "simulated"] },
+            "adapterVersion": { "type": "string" },
+            "version": { "type": "string" },
+            "capabilitiesHash": { "type": "string" }
+          }
+        },
+        "executionMode": { "enum": ["live", "simulated"] },
+        "evidenceKind": { "enum": ["live", "simulated", "unknown"] },
+        "observationLevel": { "enum": ["workflow_trace", "contract_summary", "synthetic_events", "capability_only"] },
+        "isolation": { "enum": ["read_only_sandbox", "working_directory_only", "synthetic", "unknown"] },
+        "permissionMode": { "enum": ["read_only_no_approval", "runner_default", "none", "unknown"] },
+        "model": { "type": "string" },
+        "environment": {
+          "type": "object",
+          "required": ["runtime", "runtimeVersion", "platform", "arch", "ci"],
+          "properties": {
+            "runtime": { "const": "node" },
+            "runtimeVersion": { "type": "string" },
+            "platform": { "type": "string" },
+            "arch": { "type": "string" },
+            "ci": { "type": "boolean" }
+          }
+        },
+        "environmentHash": { "type": "string" },
+        "conditionsHash": { "type": "string" }
+      }
+    },
+    "integrity": {
+      "type": "object",
+      "required": ["status", "artifacts"],
+      "properties": {
+        "status": { "const": "VERIFIED_AT_WRITE" },
+        "artifacts": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["ref", "sha256"],
+            "properties": {
+              "ref": { "type": "string" },
+              "sha256": { "type": "string" }
+            }
+          }
+        }
+      }
+    }
+  }
+}

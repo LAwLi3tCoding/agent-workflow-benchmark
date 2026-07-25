@@ -1,8 +1,9 @@
+import { PRODUCT_NAME } from "../core/product.js";
 export function renderMarkdownReport(result) {
     const failed = result.caseResults.filter((item) => item.verdict === "FAIL");
     const p0Cases = result.p0CaseRecords;
     const lines = [
-        `# Agent Workflow Benchmark Report`,
+        `# ${PRODUCT_NAME} Report`,
         ``,
         `Target: ${result.targetId}`,
         `Suite: ${result.suite}`,

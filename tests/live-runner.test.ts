@@ -17,6 +17,15 @@ describe("live Codex runner", () => {
     try {
       const fakeCodex = path.join(root, "codex");
       const argsFile = path.join(root, "args.json");
+      const fakeSecret = ["sk", "-proj-", "private-live-secret"].join("");
+      const fakeBearer = ["Bearer", " private-live-token"].join("");
+      const fakePath = ["/", "opt", "/", "private-workflow", "/", "secret.txt"].join("");
+      const fakeResult = JSON.stringify({
+        verdict: "PASS",
+        summary: fakeSecret,
+        caveats: [`inspect ${fakePath}`],
+        hardFailureCodes: []
+      });
       await writeFile(
         fakeCodex,
         [
@@ -24,9 +33,10 @@ describe("live Codex runner", () => {
           "const fs = require('fs');",
           "fs.writeFileSync(process.env.AWB_FAKE_CODEX_ARGS_FILE, JSON.stringify(process.argv.slice(2)));",
           "const outIndex = process.argv.indexOf('-o');",
-          "if (outIndex >= 0) fs.writeFileSync(process.argv[outIndex + 1], '{\"verdict\":\"PASS\",\"summary\":\"fake live result\",\"hardFailureCodes\":[]}');",
+          `if (outIndex >= 0) fs.writeFileSync(process.argv[outIndex + 1], ${JSON.stringify(fakeResult)});`,
           "console.log(JSON.stringify({ type: 'session.created', session_id: 'fake-session' }));",
-          "console.log(JSON.stringify({ type: 'message', role: 'assistant', content: 'PASS' }));"
+          `console.log(JSON.stringify({ type: 'message', role: 'assistant', content: ${JSON.stringify(fakeBearer)} }));`,
+          "console.error('workspace ' + process.env.AWB_FAKE_PRIVATE_PATH);"
         ].join("\n"),
         { mode: 0o755 }
       );
@@ -57,7 +67,7 @@ describe("live Codex runner", () => {
         lastMessagePath: path.join(root, "last-message.json"),
         timeoutMs: 10000,
         model: "gpt-5.3-codex-spark",
-        env: { AWB_FAKE_CODEX_ARGS_FILE: argsFile }
+        env: { AWB_FAKE_CODEX_ARGS_FILE: argsFile, AWB_FAKE_PRIVATE_PATH: root }
       });
 
       const args = JSON.parse(await readFile(argsFile, "utf8")) as string[];
@@ -88,11 +98,20 @@ describe("live Codex runner", () => {
       expect(prompt).toContain("expectedHardFailures names the failure type this case is designed to detect");
       expect(prompt).toContain("never copy codes from expectedHardFailures just because they are declared");
       expect(prompt).not.toContain("no expected hard failure is present");
-      expect(await readFile(path.join(root, "transcript.jsonl"), "utf8")).toContain("session.created");
-      await expect(readFile(path.join(root, "transcript.stderr.log"), "utf8")).resolves.toBeDefined();
+      const persistedArtifacts = [
+        await readFile(path.join(root, "transcript.jsonl"), "utf8"),
+        await readFile(path.join(root, "transcript.stderr.log"), "utf8"),
+        await readFile(path.join(root, "last-message.json"), "utf8")
+      ].join("\n");
+      expect(persistedArtifacts).toContain("session.created");
+      expect(persistedArtifacts).not.toContain(fakeBearer.replace("Bearer ", ""));
+      expect(persistedArtifacts).not.toContain(fakeSecret);
+      expect(persistedArtifacts).not.toContain(root);
       expect(run.events.map((event) => event.type)).toContain("runner_transcript");
       expect(run.events.map((event) => event.type)).toContain("runner_exit");
       expect(run.events.find((event) => event.type === "runner_result")?.payload.verdict).toBe("PASS");
+      expect(JSON.stringify(run.events)).not.toContain(root);
+      expect(JSON.stringify(run.events)).not.toContain(fakePath);
       expect(run.telemetryCompleteness).toBeGreaterThan(0.7);
     } finally {
       await rm(root, { recursive: true, force: true });
@@ -158,7 +177,7 @@ describe("live Codex runner", () => {
           "#!/usr/bin/env node",
           "const fs = require('fs');",
           "const outIndex = process.argv.indexOf('-o');",
-          "if (outIndex >= 0) fs.writeFileSync(process.argv[outIndex + 1], '{\"verdict\":\"PASS\",\"summary\":\"fake live cli\",\"hardFailureCodes\":[]}');",
+          "if (outIndex >= 0) fs.writeFileSync(process.argv[outIndex + 1], '{\"verdict\":\"PASS\",\"summary\":\"fake live cli\",\"caveats\":[\"inspect /opt/private-live/workflow.txt\"],\"hardFailureCodes\":[]}');",
           "console.log(JSON.stringify({ type: 'message', role: 'assistant', content: 'PASS' }));"
         ].join("\n"),
         { mode: 0o755 }
@@ -195,8 +214,24 @@ describe("live Codex runner", () => {
       );
 
       const runtime = JSON.parse(await readFile(path.join(runOut, "runtime-manifest.json"), "utf8"));
+      const provenance = JSON.parse(await readFile(path.join(runOut, "provenance.json"), "utf8"));
+      const events = JSON.parse(
+        await readFile(path.join(runOut, "events", "minimal-directory-agent-smoke-001-static-contract.json"), "utf8")
+      );
+      const caseResult = JSON.parse(
+        await readFile(path.join(runOut, "case-results", "minimal-directory-agent-smoke-001-static-contract.json"), "utf8")
+      );
+      await execa("npm", ["run", "benchmark", "--", "report", "--run", runOut, "--format", "md,json"], { cwd });
+      const report = await readFile(path.join(runOut, "report.md"), "utf8");
       expect(runtime.runner.executionMode).toBe("live");
       expect(runtime.liveTranscriptCount).toBe(1);
+      expect(provenance.conditions.evidenceKind).toBe("live");
+      expect(provenance.conditions.observationLevel).toBe("contract_summary");
+      expect(provenance.conditions.isolation).toBe("read_only_sandbox");
+      expect(provenance.conditions.permissionMode).toBe("read_only_no_approval");
+      expect(JSON.stringify({ runtime, provenance, events, caseResult })).not.toContain(root);
+      expect(JSON.stringify({ events, caseResult })).not.toContain("/opt/private-live/workflow.txt");
+      expect(report).not.toContain("/opt/private-live/workflow.txt");
       expect(await readFile(path.join(runOut, "transcripts", "minimal-directory-agent-smoke-001-static-contract.jsonl"), "utf8")).toContain("assistant");
     } finally {
       await rm(root, { recursive: true, force: true });

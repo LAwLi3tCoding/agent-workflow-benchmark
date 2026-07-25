@@ -1,0 +1,129 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "comparison-result.schema.json",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "product",
+    "baseline",
+    "candidate",
+    "comparability",
+    "classification",
+    "scoreDelta",
+    "caseDeltas",
+    "summary",
+    "hardFailures",
+    "evidenceRefs",
+    "integrity"
+  ],
+  "properties": {
+    "schemaVersion": { "type": "string" },
+    "product": { "const": "Agent Workflow Bench" },
+    "baseline": { "$ref": "#/$defs/runSummary" },
+    "candidate": { "$ref": "#/$defs/runSummary" },
+    "comparability": {
+      "type": "object",
+      "required": ["status", "reasons"],
+      "properties": {
+        "status": { "enum": ["COMPARABLE", "INCOMPARABLE"] },
+        "reasons": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "classification": { "enum": ["IMPROVED", "REGRESSED", "UNCHANGED", "MIXED", "HARD_FAILURE", "INCOMPARABLE"] },
+    "scoreDelta": { "type": ["number", "null"] },
+    "caseDeltas": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["caseId", "classification", "scoreDelta", "newHardFailures", "resolvedHardFailures"],
+        "properties": {
+          "caseId": { "type": "string" },
+          "classification": { "enum": ["IMPROVED", "REGRESSED", "UNCHANGED", "HARD_FAILURE", "INCOMPARABLE"] },
+          "baselineVerdict": { "type": "string" },
+          "candidateVerdict": { "type": "string" },
+          "scoreDelta": { "type": ["number", "null"] },
+          "newHardFailures": { "type": "array", "items": { "type": "string" } },
+          "resolvedHardFailures": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "required": ["improved", "regressed", "unchanged", "hardFailure", "incomparable"],
+      "properties": {
+        "improved": { "type": "number" },
+        "regressed": { "type": "number" },
+        "unchanged": { "type": "number" },
+        "hardFailure": { "type": "number" },
+        "incomparable": { "type": "number" }
+      }
+    },
+    "hardFailures": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["code", "source", "why"],
+        "properties": {
+          "code": { "type": "string" },
+          "source": { "enum": ["baseline", "candidate", "comparison"] },
+          "caseId": { "type": "string" },
+          "why": { "type": "string" }
+        }
+      }
+    },
+    "evidenceRefs": {
+      "type": "object",
+      "required": ["baseline", "candidate"],
+      "properties": {
+        "baseline": { "type": "array", "items": { "type": "string" } },
+        "candidate": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "integrity": {
+      "type": "object",
+      "required": ["status", "comparisonHash", "baselineRef", "candidateRef", "artifacts"],
+      "properties": {
+        "status": { "const": "VERIFIED_AT_WRITE" },
+        "comparisonHash": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+        "baselineRef": { "type": "string" },
+        "candidateRef": { "type": "string" },
+        "artifacts": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["ref", "sha256"],
+            "properties": {
+              "ref": { "type": "string" },
+              "sha256": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" }
+            }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "runSummary": {
+      "type": "object",
+      "required": [
+        "targetId",
+        "suite",
+        "runId",
+        "releaseDecision",
+        "score",
+        "provenanceStatus",
+        "evidenceKind",
+        "observationLevel"
+      ],
+      "properties": {
+        "targetId": { "type": "string" },
+        "suite": { "type": "string" },
+        "runId": { "type": "string" },
+        "releaseDecision": { "enum": ["APPROVE", "CONDITIONAL_APPROVE", "BLOCK", "DIAGNOSTIC_ONLY"] },
+        "score": { "type": "number" },
+        "provenanceStatus": { "enum": ["VALID", "MISSING", "INVALID"] },
+        "evidenceKind": { "enum": ["live", "simulated", "unknown"] },
+        "observationLevel": { "enum": ["workflow_trace", "contract_summary", "synthetic_events", "capability_only", "unknown"] }
+      }
+    }
+  }
+}

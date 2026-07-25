@@ -11,7 +11,7 @@ export function getBenchmarkRoot(): string {
   return repoRoot;
 }
 
-export async function loadTargetPack(targetId: string): Promise<TargetPack> {
+export async function loadTargetPack(targetId: string, options: { rootOverride?: string } = {}): Promise<TargetPack> {
   const registryPath = path.join(repoRoot, "configs/targets/registry.yaml");
   const registry = YAML.parse(await readFile(registryPath, "utf8")) as {
     targets: Array<{ id: string; configPath: string }>;
@@ -22,7 +22,11 @@ export async function loadTargetPack(targetId: string): Promise<TargetPack> {
   }
   const configPath = path.resolve(repoRoot, entry.configPath);
   const raw = YAML.parse(await readFile(configPath, "utf8")) as Omit<TargetPack, "configPath">;
-  const root = path.isAbsolute(raw.root) ? raw.root : path.resolve(repoRoot, raw.root);
+  const root = options.rootOverride
+    ? path.resolve(options.rootOverride)
+    : path.isAbsolute(raw.root)
+      ? raw.root
+      : path.resolve(repoRoot, raw.root);
   return { ...raw, root, configPath };
 }
 

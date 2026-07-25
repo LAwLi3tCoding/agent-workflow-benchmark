@@ -38,6 +38,6 @@ if [ -f "$PWD_CANDIDATE/package.json" ] && [ -f "$PWD_CANDIDATE/src/cli/index.ts
   exec npm --prefix "$PWD_CANDIDATE" run benchmark -- "$@"
 fi
 
-echo "No runnable Agent Workflow Benchmark runtime found." >&2
+echo "No runnable Agent Workflow Bench runtime found." >&2
 echo "Run from a source checkout with AWB_PROJECT_ROOT set, or rebuild the plugin with npm run plugin:build." >&2
 exit 1

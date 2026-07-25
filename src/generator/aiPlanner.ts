@@ -1,9 +1,17 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { execa } from "execa";
 import type { AiCaseDraft, AiCasePlan, ContractModel, CoverageMode, ProfileEvidence } from "../core/types.js";
 import { dedupeCaseIds, normalizeCaseId } from "./caseIds.js";
 import { deriveWorkflowCoverageTargets, normalizeAiCasePlanBindings, recommendedAiCaseCount } from "./coverage.js";
+import {
+  profileEvidenceSensitiveValues,
+  publicAiCasePlan,
+  publicProfileEvidence,
+  redactSensitiveText
+} from "../utils/redaction.js";
+import { PRODUCT_NAME } from "../core/product.js";
+import { sha256Text } from "../utils/hash.js";
 
 export type AiPlannerRunner = "codex" | "claude" | "fixture";
 
@@ -44,7 +52,7 @@ export function buildAiCasePlanPrompt(contract: ContractModel, options: { maxCas
     contractHash: contract.contractHash
   };
   return [
-    "You are the AI case planner for Agent Workflow Benchmark.",
+    `You are the AI case planner for ${PRODUCT_NAME}.`,
     "Your first task is to understand the target agent workflow first, then generate benchmark cases from that understanding.",
     "Do not start from a fixed template list. Use the ContractModel to infer risk areas, operations, oracle evidence, and failure modes.",
     "Keep cases executable by a benchmark runner: every case must have concrete operationSequence steps, oracleIds, expectedHardFailures, coverageTags, scoringRubric, and optional bindings.",
@@ -109,7 +117,12 @@ export async function runAiCasePlanner(contract: ContractModel, options: RunAiCa
   const prompt = buildAiCasePlanPrompt(contract, { maxCases: options.maxCases, evidence: options.evidence, coverageMode: options.coverageMode });
   const promptPath = path.join(options.outDir, "ai-case-planner-prompt.txt");
   const rawResponsePath = path.join(options.outDir, "ai-case-planner-response.json");
-  await writeFile(promptPath, prompt);
+  const portablePrompt = buildAiCasePlanPrompt(contract, {
+    maxCases: options.maxCases,
+    evidence: options.evidence ? publicProfileEvidence(options.evidence) : undefined,
+    coverageMode: options.coverageMode
+  });
+  await writeFile(promptPath, redactSensitiveText(portablePrompt, { paths: [options.outDir] }));
 
   const rawResponse =
     options.runner === "fixture"
@@ -117,10 +130,33 @@ export async function runAiCasePlanner(contract: ContractModel, options: RunAiCa
       : options.runner === "codex"
         ? await runCodexPlanner(prompt, options)
         : await runClaudePlanner(prompt, options);
-  await writeFile(rawResponsePath, `${rawResponse.trim()}\n`);
-  const plan = normalizeAiCasePlanBindings(
-    normalizeAiCasePlan(parsePlannerJson(rawResponse), options.runner, options.model, { maxCases: options.maxCases, coverageMode: options.coverageMode }),
-    contract
+  await writeFile(
+    rawResponsePath,
+    `${JSON.stringify(
+      {
+        schemaVersion: "0.1.0",
+        contentRedacted: true,
+        contentHash: sha256Text(rawResponse),
+        bytes: Buffer.byteLength(rawResponse),
+        planner: options.runner,
+        ...(options.model ? { model: options.model } : {})
+      },
+      null,
+      2
+    )}\n`
+  );
+  const plan = publicAiCasePlan(
+    normalizeAiCasePlanBindings(
+      normalizeAiCasePlan(parsePlannerJson(rawResponse), options.runner, options.model, {
+        maxCases: options.maxCases,
+        coverageMode: options.coverageMode
+      }),
+      contract
+    ),
+    {
+      paths: [options.outDir],
+      values: profileEvidenceSensitiveValues(options.evidence)
+    }
   );
   return { plan, promptPath, rawResponsePath };
 }
@@ -257,10 +293,14 @@ async function runCodexPlanner(prompt: string, options: RunAiCasePlannerOptions)
     ],
     { timeout: options.timeoutMs, reject: false, input: "" }
   );
-  if (result.exitCode !== 0) {
-    throw new Error(`Codex AI planner failed with exit ${result.exitCode}: ${result.stderr}`);
+  try {
+    if (result.exitCode !== 0) {
+      throw new Error(`Codex AI planner failed with exit ${result.exitCode}: ${redactSensitiveText(result.stderr, { paths: [options.outDir] })}`);
+    }
+    return await readFile(lastMessagePath, "utf8");
+  } finally {
+    await rm(lastMessagePath, { force: true });
   }
-  return readFile(lastMessagePath, "utf8");
 }
 
 async function runClaudePlanner(prompt: string, options: RunAiCasePlannerOptions): Promise<string> {
@@ -270,7 +310,7 @@ async function runClaudePlanner(prompt: string, options: RunAiCasePlannerOptions
   }
   const result = await execa(process.env.AWB_CLAUDE_EXECUTABLE ?? "claude", args, { timeout: options.timeoutMs, reject: false });
   if (result.exitCode !== 0) {
-    throw new Error(`Claude AI planner failed with exit ${result.exitCode}: ${result.stderr}`);
+    throw new Error(`Claude AI planner failed with exit ${result.exitCode}: ${redactSensitiveText(result.stderr, { paths: [options.outDir] })}`);
   }
   return result.stdout;
 }

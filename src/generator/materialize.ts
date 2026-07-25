@@ -1,5 +1,6 @@
 import type { AiCasePlan, BenchmarkCase, ContractModel, MaterializedSuite } from "../core/types.js";
 import { sha256Text, stableJson } from "../utils/hash.js";
+import { publicAiCasePlan } from "../utils/redaction.js";
 import { normalizeCaseId } from "./caseIds.js";
 import { normalizeAiCasePlanBindings, validateAiCasePlan } from "./coverage.js";
 
@@ -39,10 +40,13 @@ export function materializeSmokeSuite(contract: ContractModel, options: { suite?
 
 export function materializeAiSuite(
   contract: ContractModel,
-  options: { planner: string; model?: string; plan: AiCasePlan; suite?: string }
+  options: { planner: string; model?: string; plan: AiCasePlan; suite?: string; sensitiveValues?: string[] }
 ): MaterializedSuite {
   const suiteName = options.suite ?? "smoke";
-  const normalizedPlan = normalizeAiCasePlanBindings(options.plan, contract);
+  const normalizedPlan = publicAiCasePlan(
+    normalizeAiCasePlanBindings(options.plan, contract),
+    { values: options.sensitiveValues }
+  );
   const validation = validateAiCasePlan(normalizedPlan, contract);
   if (validation.invalidBindings.length > 0) {
     throw new Error(`AI case plan has invalid ContractModel bindings: ${validation.invalidBindings.map((item) => `${item.caseId}.${item.field}=${item.value}`).join(", ")}`);

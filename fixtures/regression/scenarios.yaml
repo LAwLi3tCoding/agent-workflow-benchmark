@@ -1,0 +1,30 @@
+schemaVersion: 0.1.0
+target: minimal-directory-agent
+suite: smoke
+runner: simulated
+scenarios:
+  - id: normal
+    baselineMutation: null
+    candidateMutation: null
+    expectedClassification: UNCHANGED
+    expectedGate: DIAGNOSTIC_ONLY
+  - id: improvement
+    baselineMutation: fixtures/mutations/route-break.yaml
+    candidateMutation: null
+    expectedClassification: IMPROVED
+    expectedGate: DIAGNOSTIC_ONLY
+  - id: regression
+    baselineMutation: null
+    candidateMutation: fixtures/mutations/telemetry-drop.yaml
+    expectedClassification: REGRESSED
+    expectedGate: BLOCK
+  - id: hard-failure
+    baselineMutation: null
+    candidateMutation: fixtures/mutations/route-break.yaml
+    expectedClassification: HARD_FAILURE
+    expectedGate: BLOCK
+  - id: simulated-only
+    baselineMutation: null
+    candidateMutation: null
+    expectedClassification: UNCHANGED
+    expectedGate: DIAGNOSTIC_ONLY

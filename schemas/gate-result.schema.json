@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "gate-result.schema.json",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "product",
+    "decision",
+    "ruleId",
+    "targetId",
+    "suite",
+    "comparisonClassification",
+    "comparisonIntegrity",
+    "reasons",
+    "evidenceRefs"
+  ],
+  "properties": {
+    "schemaVersion": { "type": "string" },
+    "product": { "const": "Agent Workflow Bench" },
+    "decision": { "enum": ["PASS", "DIAGNOSTIC_ONLY", "BLOCK"] },
+    "ruleId": {
+      "enum": [
+        "GATE-HARD-FAILURE",
+        "GATE-COMPARISON-INTEGRITY",
+        "GATE-REGRESSION",
+        "GATE-CANDIDATE-BLOCK",
+        "GATE-INCOMPARABLE",
+        "GATE-EVIDENCE-NOT-WORKFLOW-TRACE",
+        "GATE-CANDIDATE-DIAGNOSTIC",
+        "GATE-CANDIDATE-BELOW-PASS",
+        "GATE-PASS"
+      ]
+    },
+    "targetId": { "type": "string" },
+    "suite": { "type": "string" },
+    "comparisonClassification": {
+      "enum": ["IMPROVED", "REGRESSED", "UNCHANGED", "MIXED", "HARD_FAILURE", "INCOMPARABLE"]
+    },
+    "comparisonIntegrity": { "enum": ["VALID", "INVALID"] },
+    "reasons": { "type": "array", "items": { "type": "string" } },
+    "evidenceRefs": { "type": "array", "items": { "type": "string" } }
+  }
+}

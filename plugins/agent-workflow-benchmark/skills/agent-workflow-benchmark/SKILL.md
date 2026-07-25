@@ -1,11 +1,11 @@
 ---
 name: agent-workflow-benchmark
-description: AI-first agent workflow benchmark. Use when the user wants to evaluate, benchmark, compare, debug, or improve an agent workflow in Codex or Claude Code; generate benchmark cases using LLM understanding of the target workflow; run Codex/Claude live benchmark runners and detect opencode compatibility; produce explainable scores, token/efficiency metrics, reports, mutation reverse validation, or benchmark self-debug repair plans.
+description: Agent Workflow Bench (AWB) CI-grade regression testing for coding-agent workflows. Use when the user wants to evaluate, benchmark, compare, gate, debug, or improve an agent workflow in Codex or Claude Code; generate benchmark cases using LLM understanding of the target workflow; run Codex/Claude live benchmark runners and detect opencode compatibility; produce explainable scores, token/efficiency metrics, reports, mutation reverse validation, or benchmark self-debug repair plans.
 ---
 
-# Agent Workflow Benchmark
+# Agent Workflow Bench
 
-Use `awb` when it is on `PATH`. If it is not on `PATH`, resolve the plugin wrapper at `../../bin/awb` relative to this `SKILL.md` file. For source-checkout development, set `AWB_PROJECT_ROOT` to the repository root to force the wrapper to use local TypeScript sources instead of the bundled plugin runtime.
+Use `awb` when it is on `PATH`. If it is not on `PATH`, resolve the plugin wrapper at `../../bin/awb` relative to this `SKILL.md` file. For source-checkout development, set `AWB_PROJECT_ROOT` to the repository root to force the wrapper to use local TypeScript sources instead of the bundled plugin runtime. Keep the plugin/skill slug `agent-workflow-benchmark` and legacy benchmark/evaluate commands compatible.
 
 ## Methodology
 
@@ -13,7 +13,19 @@ Use `docs/ai-workflow-evaluation-methodology.md` as the benchmark method. The co
 
 ## AI-first flow
 
-For a complete local evaluation workflow, prefer the one-shot command:
+For CI-grade regression testing, prefer doctor -> matched baseline/candidate run -> compare -> gate:
+
+```bash
+awb doctor --target <target-id> --runner simulated --out reports/doctor/<target-id>
+awb run --target <target-id> --target-root <baseline-checkout> --runner simulated --execution simulated --out reports/regression/baseline
+awb run --target <target-id> --target-root <candidate-checkout> --runner simulated --execution simulated --out reports/regression/candidate
+awb compare --baseline <baseline-run> --candidate <candidate-run> --out <comparison-dir>
+awb gate --comparison <comparison-dir>/comparison-result.json --out <gate-dir>
+```
+
+Gate exit codes are `0` for PASS, `2` for DIAGNOSTIC_ONLY, and `1` for BLOCK or tool/runtime failure. PASS requires trusted live `workflow_trace` evidence. Simulated runs and current live `contract-summary` adapters are diagnostic-only and cannot PASS the CI gate.
+
+For a complete local evaluation workflow, the legacy one-shot command remains supported:
 
 ```bash
 awb evaluate --target <target-id> --planner-runner codex --runner codex --coverage-mode full --execution live --out reports/evaluations/<target-id>
@@ -27,7 +39,7 @@ awb evaluate --target <target-id> --planner-runner fixture --runner simulated --
 
 `evaluate` writes `profile/`, `ai-plan/`, `cases/`, `run/suite-result.json`, `run/report.md`, `run/harness-validation.json`, `run/recommendations.json`, `run/recommendations.md`, `run/p0-cases.json`, `run/p0-cases.md`, and `evaluation-summary.json`. P0 records can also be appended to a durable JSONL file with `--p0-case-log <path>`. Use `--mutation <mutation-yaml>` only with simulated execution to test whether P0 recording and recommendations trigger correctly.
 
-The report is the benchmark diagnostic decision artifact for the evidence actually collected: it includes release decision, dimension scores, agent modification recommendations, harness validation, P0 case records, case results, and debug health. Treat it as a real workflow release gate only when the target runner/adapter emits real workflow trace events.
+The report is the benchmark diagnostic decision artifact for the evidence actually collected: it includes release decision, dimension scores, agent modification recommendations, harness validation, P0 case records, case results, and debug health. Treat it as a real workflow release gate only when the target runner/adapter emits trusted live `workflow_trace` events.
 
 If you need manual control over each stage, use the step-by-step flow below.
 

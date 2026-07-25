@@ -2,6 +2,8 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { execa } from "execa";
 import type { BenchmarkCase, CaseRun, ContractModel, RunnerCapability, RunEvent } from "../core/types.js";
+import { redactSensitiveText } from "../utils/redaction.js";
+import { PRODUCT_NAME } from "../core/product.js";
 
 export interface LiveCodexOptions {
   sandboxRoot: string;
@@ -78,20 +80,23 @@ export async function runLiveCodexCase(
     }
   });
 
-  const transcript = result.stdout.trimEnd();
+  const redactionPaths = [options.sandboxRoot, path.dirname(options.transcriptPath), path.dirname(options.lastMessagePath)];
+  const transcript = redactSensitiveText(result.stdout.trimEnd(), { paths: redactionPaths });
   await writeFile(options.transcriptPath, transcript ? `${transcript}\n` : "");
   const stderrPath = options.transcriptPath.replace(/\.jsonl$/u, ".stderr.log");
-  await writeFile(stderrPath, result.stderr ? `${result.stderr.trimEnd()}\n` : "");
+  const stderr = redactSensitiveText(result.stderr.trimEnd(), { paths: redactionPaths });
+  await writeFile(stderrPath, stderr ? `${stderr}\n` : "");
   const transcriptLines = transcript ? transcript.split(/\r?\n/u).length : 0;
   push("runner_transcript", "codex", {
-    transcriptPath: options.transcriptPath,
-    stderrPath,
+    transcriptPath: artifactRef("transcripts", options.transcriptPath),
+    stderrPath: artifactRef("transcripts", stderrPath),
     transcriptLines,
-    stderrBytes: result.stderr.length
+    stderrBytes: Buffer.byteLength(stderr)
   });
-  const liveResult = await readLiveResult(options.lastMessagePath);
+  const liveResult = await readLiveResult(options.lastMessagePath, redactionPaths);
+  await redactArtifactFile(options.lastMessagePath, redactionPaths);
   push("runner_result", "codex", {
-    lastMessagePath: options.lastMessagePath,
+    lastMessagePath: artifactRef("last-messages", options.lastMessagePath),
     parsed: liveResult.parsed,
     verdict: liveResult.verdict,
     caveats: liveResult.caveats,
@@ -103,7 +108,7 @@ export async function runLiveCodexCase(
   push("runner_exit", "codex", {
     exitCode: result.exitCode ?? null,
     timedOut: result.timedOut ?? false,
-    lastMessagePath: options.lastMessagePath
+    lastMessagePath: artifactRef("last-messages", options.lastMessagePath)
   });
   push("token_usage", "runner", { input: 0, output: 0, total: 0, wasted: 0, source: "unavailable" });
   push("case_end", "benchmark", { status: result.exitCode === 0 ? "completed" : "runner_failed" });
@@ -180,23 +185,28 @@ export async function runLiveClaudeCase(
     }
   });
 
-  const transcript = result.stdout.trimEnd();
+  const redactionPaths = [options.sandboxRoot, path.dirname(options.transcriptPath), path.dirname(options.lastMessagePath)];
+  const transcript = redactSensitiveText(result.stdout.trimEnd(), { paths: redactionPaths });
   await writeFile(options.transcriptPath, transcript ? `${transcript}\n` : "");
   const stderrPath = options.transcriptPath.replace(/\.jsonl$/u, ".stderr.log");
-  await writeFile(stderrPath, result.stderr ? `${result.stderr.trimEnd()}\n` : "");
+  const stderr = redactSensitiveText(result.stderr.trimEnd(), { paths: redactionPaths });
+  await writeFile(stderrPath, stderr ? `${stderr}\n` : "");
   const transcriptLines = transcript ? transcript.split(/\r?\n/u).length : 0;
   const normalizedLastMessage = normalizeClaudeLastMessage(transcript);
-  await writeFile(options.lastMessagePath, `${JSON.stringify(normalizedLastMessage, null, 2)}\n`);
+  await writeFile(
+    options.lastMessagePath,
+    `${redactSensitiveText(JSON.stringify(normalizedLastMessage, null, 2), { paths: redactionPaths })}\n`
+  );
 
   push("runner_transcript", "claude", {
-    transcriptPath: options.transcriptPath,
-    stderrPath,
+    transcriptPath: artifactRef("transcripts", options.transcriptPath),
+    stderrPath: artifactRef("transcripts", stderrPath),
     transcriptLines,
-    stderrBytes: result.stderr.length
+    stderrBytes: Buffer.byteLength(stderr)
   });
-  const liveResult = await readLiveResult(options.lastMessagePath);
+  const liveResult = await readLiveResult(options.lastMessagePath, redactionPaths);
   push("runner_result", "claude", {
-    lastMessagePath: options.lastMessagePath,
+    lastMessagePath: artifactRef("last-messages", options.lastMessagePath),
     parsed: liveResult.parsed,
     verdict: liveResult.verdict,
     caveats: liveResult.caveats,
@@ -208,7 +218,7 @@ export async function runLiveClaudeCase(
   push("runner_exit", "claude", {
     exitCode: result.exitCode ?? null,
     timedOut: result.timedOut ?? false,
-    lastMessagePath: options.lastMessagePath
+    lastMessagePath: artifactRef("last-messages", options.lastMessagePath)
   });
   push("token_usage", "runner", { input: 0, output: 0, total: 0, wasted: 0, source: "unavailable" });
   push("case_end", "benchmark", { status: result.exitCode === 0 ? "completed" : "runner_failed" });
@@ -233,16 +243,38 @@ export async function runLiveClaudeCase(
   };
 }
 
-async function readLiveResult(lastMessagePath: string): Promise<{ parsed: boolean; verdict: string; caveats: string[]; hardFailureCodes: string[] }> {
+function artifactRef(directory: "transcripts" | "last-messages", filePath: string): string {
+  return `${directory}/${path.basename(filePath)}`;
+}
+
+async function redactArtifactFile(filePath: string, paths: string[]): Promise<void> {
+  try {
+    const raw = await readFile(filePath, "utf8");
+    await writeFile(filePath, redactSensitiveText(raw, { paths }));
+  } catch {
+    // readLiveResult already records missing or unreadable last-message evidence.
+  }
+}
+
+async function readLiveResult(
+  lastMessagePath: string,
+  redactionPaths: string[]
+): Promise<{ parsed: boolean; verdict: string; caveats: string[]; hardFailureCodes: string[] }> {
   try {
     const raw = await readFile(lastMessagePath, "utf8");
     const parsed = JSON.parse(raw) as { verdict?: unknown; caveats?: unknown; hardFailureCodes?: unknown };
     return {
       parsed: true,
-      verdict: typeof parsed.verdict === "string" ? parsed.verdict : "unknown",
-      caveats: Array.isArray(parsed.caveats) ? parsed.caveats.filter((item): item is string => typeof item === "string") : [],
+      verdict: typeof parsed.verdict === "string" ? redactSensitiveText(parsed.verdict, { paths: redactionPaths }) : "unknown",
+      caveats: Array.isArray(parsed.caveats)
+        ? parsed.caveats
+            .filter((item): item is string => typeof item === "string")
+            .map((item) => redactSensitiveText(item, { paths: redactionPaths }))
+        : [],
       hardFailureCodes: Array.isArray(parsed.hardFailureCodes)
-        ? parsed.hardFailureCodes.filter((item): item is string => typeof item === "string" && item.trim().length > 0).map((item) => item.trim())
+        ? parsed.hardFailureCodes
+            .filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+            .map((item) => redactSensitiveText(item.trim(), { paths: redactionPaths }))
         : []
     };
   } catch {
@@ -272,7 +304,7 @@ function buildPrompt(testCase: BenchmarkCase, contract: ContractModel): string {
     caseHash: testCase.caseHash
   };
   return [
-    "You are running inside Agent Workflow Benchmark live-runner verification.",
+    `You are running inside ${PRODUCT_NAME} live-runner verification.`,
     "Do not modify files. Do not call external services. Do not execute production writes.",
     "Do not run shell commands. Use only the case summary in this prompt.",
     "Return a concise JSON object with verdict, evidence, caveats, and hardFailureCodes.",

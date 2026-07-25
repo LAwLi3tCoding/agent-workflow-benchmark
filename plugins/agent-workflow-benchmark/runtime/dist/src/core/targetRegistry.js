@@ -7,7 +7,7 @@ const repoRoot = findBenchmarkRoot();
 export function getBenchmarkRoot() {
     return repoRoot;
 }
-export async function loadTargetPack(targetId) {
+export async function loadTargetPack(targetId, options = {}) {
     const registryPath = path.join(repoRoot, "configs/targets/registry.yaml");
     const registry = YAML.parse(await readFile(registryPath, "utf8"));
     const entry = registry.targets.find((target) => target.id === targetId);
@@ -16,7 +16,11 @@ export async function loadTargetPack(targetId) {
     }
     const configPath = path.resolve(repoRoot, entry.configPath);
     const raw = YAML.parse(await readFile(configPath, "utf8"));
-    const root = path.isAbsolute(raw.root) ? raw.root : path.resolve(repoRoot, raw.root);
+    const root = options.rootOverride
+        ? path.resolve(options.rootOverride)
+        : path.isAbsolute(raw.root)
+            ? raw.root
+            : path.resolve(repoRoot, raw.root);
     return { ...raw, root, configPath };
 }
 export async function listTargetIds() {

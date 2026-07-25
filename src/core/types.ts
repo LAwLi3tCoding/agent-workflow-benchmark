@@ -425,7 +425,7 @@ export interface DebugEnvironment {
   networkPolicyHash: string;
   commandPolicyHash: string;
   reproduceCommands: string[];
-  preflightResults: Array<{ status: "PASS" | "FAIL"; check: string; why: string }>;
+  preflightResults: Array<{ status: "PASS" | "FAIL" | "DIAGNOSTIC_ONLY"; check: string; why: string }>;
 }
 
 export interface ReverseValidationResult {

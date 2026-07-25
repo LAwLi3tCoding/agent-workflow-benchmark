@@ -1,8 +1,20 @@
-# Agent Workflow Benchmark
+# Agent Workflow Bench
 
-Use this command to run an AI-first benchmark flow from Claude Code.
+Use this command to run CI-grade regression testing for a coding-agent workflow from Claude Code. The slash command and plugin slug remain `agent-workflow-benchmark`, and the CLI remains `awb`.
 
-Core pipeline: `evaluate` for the complete flow, or `plan-cases` -> inspect `ai-case-plan-validation.json` -> `materialize --strategy ai` -> `run --execution live` when you need manual stage control.
+Recommended gate pipeline: `doctor` -> matched baseline/candidate run -> `compare` -> `gate`.
+
+```bash
+awb doctor --target "$ARGUMENTS" --runner simulated --out reports/doctor/"$ARGUMENTS"
+awb run --target "$ARGUMENTS" --target-root <baseline-checkout> --runner simulated --execution simulated --out reports/runs/"$ARGUMENTS"-baseline
+awb run --target "$ARGUMENTS" --target-root <candidate-checkout> --runner simulated --execution simulated --out reports/runs/"$ARGUMENTS"-candidate
+awb compare --baseline <baseline-run> --candidate <candidate-run> --out reports/comparisons/"$ARGUMENTS"
+awb gate --comparison reports/comparisons/"$ARGUMENTS"/comparison-result.json --out reports/gates/"$ARGUMENTS"
+```
+
+Gate exit codes are `0` for PASS, `2` for DIAGNOSTIC_ONLY, and `1` for BLOCK or tool/runtime failure. PASS requires trusted live `workflow_trace` evidence. Simulated runs and current live `contract-summary` adapters are diagnostic-only and cannot PASS the CI gate.
+
+Legacy compatible pipeline: `evaluate` for the complete flow, or `plan-cases` -> inspect `ai-case-plan-validation.json` -> `materialize --strategy ai` -> `run --execution live` when you need manual stage control.
 
 Preferred complete run:
 

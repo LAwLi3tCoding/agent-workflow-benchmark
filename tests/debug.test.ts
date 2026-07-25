@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { mkdtemp, rm, stat } from "node:fs/promises";
+import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { hashPath } from "../src/utils/hash.js";
@@ -21,10 +21,26 @@ describe("self-debug workflow", () => {
         outDir: out
       });
 
-      await expect(stat(env.sandboxRoot)).resolves.toBeTruthy();
+      await expect(stat(path.join(out, env.sandboxRoot))).resolves.toBeTruthy();
       expect(env.contractHash).toBe(profile.contract.contractHash);
       expect(env.fakeTools.map((tool) => tool.name)).toContain("gh");
       expect(env.reproduceCommands[0]).toContain("debug prepare-env");
+      expect(env.sandboxRoot).toBe("sandbox");
+      expect(env.fixtureRepos[0]).toMatchObject({
+        source: "target://root",
+        sandboxPath: "repos/target-copy"
+      });
+      expect(env.reproduceCommands[0]).toContain("--case <case-yaml>");
+      expect(env.reproduceCommands[0]).toContain("--out <debug-out>");
+      expect(env.preflightResults).toEqual([
+        expect.objectContaining({
+          status: "DIAGNOSTIC_ONLY",
+          check: "production-network-deny",
+          why: expect.stringContaining("does not enforce network isolation")
+        })
+      ]);
+      expect(JSON.stringify(env)).not.toContain(out);
+      expect(await readFile(path.join(out, "debug-environment.json"), "utf8")).not.toContain(out);
     } finally {
       await rm(out, { recursive: true, force: true });
     }

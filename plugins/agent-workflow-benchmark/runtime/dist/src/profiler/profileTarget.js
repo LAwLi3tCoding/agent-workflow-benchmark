@@ -34,11 +34,12 @@ export async function profileTarget(target) {
     if (target.contracts.joins.length === 0) {
         warnings.push("No required joins declared; required-join template will use notApplicable for stricter targets.");
     }
+    const portableRoot = "target://root";
     const contractBase = {
         schemaVersion: "0.1.0",
         targetId: target.id,
         targetType: target.targetType,
-        root: target.root,
+        root: portableRoot,
         entrypoints: target.entrypoints,
         roles: target.roles,
         statuses: target.contracts.statuses,
@@ -58,7 +59,7 @@ export async function profileTarget(target) {
     return {
         evidence: {
             targetId: target.id,
-            root: target.root,
+            root: portableRoot,
             scannedFiles,
             missingFiles: [...new Set(missingFiles)].sort(),
             warnings

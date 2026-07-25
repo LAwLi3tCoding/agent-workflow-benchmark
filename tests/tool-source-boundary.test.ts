@@ -13,9 +13,26 @@ const scannedRoots = [
   "plugins/agent-workflow-benchmark/runtime/configs",
   "plugins/agent-workflow-benchmark/skills",
   "README.md",
+  "README.zh-CN.md",
+  "README.ja.md",
   "docs/agent-workflow-benchmark-human-guide.md",
   "docs/ai-workflow-evaluation-methodology.md",
   "docs/agent-workflow-benchmark-plugin-guide.md"
+];
+
+const sourceFacingPrivacyRoots = [
+  "README.md",
+  "README.zh-CN.md",
+  "README.ja.md",
+  "docs",
+  "configs",
+  "fixtures",
+  ".agents/plugins/marketplace.json",
+  ".claude-plugin/marketplace.json",
+  "plugins/agent-workflow-benchmark/.codex-plugin",
+  "plugins/agent-workflow-benchmark/.claude-plugin",
+  "plugins/agent-workflow-benchmark/skills",
+  "plugins/agent-workflow-benchmark/commands"
 ];
 
 const prohibitedTargetTerms = [
@@ -29,6 +46,18 @@ const prohibitedTargetTerms = [
   ["prd", "reviewer", "agent"].join("-"),
   ["design", "reviewer", "agent"].join("-"),
   ["code", "reviewer", "agent"].join("-")
+];
+
+const prohibitedSourcePrivacyPatterns = [
+  { label: "absolute user home path", pattern: new RegExp(["/", "Users", "/"].join(""), "u") },
+  { label: "personal GitHub handle", pattern: new RegExp(`\\b${["LAw", "Li3t", "Coding"].join("")}\\b`, "u") },
+  { label: "local user id", pattern: new RegExp(`\\b${["liu", "yi", "85"].join("")}\\b`, "u") },
+  { label: "company domain token", pattern: new RegExp(`\\b${["san", "kuai"].join("")}\\b`, "iu") },
+  {
+    label: "company name token",
+    pattern: new RegExp(`\\b${["mei", "tuan"].join("")}\\b|${["美", "团"].join("")}`, "u")
+  },
+  { label: "internal business-data marker", pattern: /内部业务数据|internal business data/iu }
 ];
 
 async function listFiles(root: string): Promise<string[]> {
@@ -58,6 +87,22 @@ describe("tool source boundary", () => {
       for (const term of prohibitedTargetTerms) {
         if (content.includes(term)) {
           offenders.push(`${path.relative(cwd, file)} contains ${term}`);
+        }
+      }
+    }
+
+    expect(offenders).toEqual([]);
+  });
+
+  test("does not publish personal or company identifiers in source-facing package assets", async () => {
+    const files = (await Promise.all(sourceFacingPrivacyRoots.map(listFiles))).flat();
+    const offenders: string[] = [];
+
+    for (const file of files) {
+      const content = await readFile(file, "utf8");
+      for (const { label, pattern } of prohibitedSourcePrivacyPatterns) {
+        if (pattern.test(content)) {
+          offenders.push(`${path.relative(cwd, file)} contains ${label}`);
         }
       }
     }

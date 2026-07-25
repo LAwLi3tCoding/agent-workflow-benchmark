@@ -31,7 +31,15 @@ describe("agent workflow benchmark plugin package", () => {
 
     expect(manifest.name).toBe("agent-workflow-benchmark");
     expect(manifest.skills).toBe("./skills/");
-    expect(manifest.interface.displayName).toBe("Agent Workflow Benchmark");
+    expect(manifest.interface.displayName).toBe("Agent Workflow Bench");
+    expect(
+      [
+        manifest.description,
+        manifest.interface.shortDescription,
+        manifest.interface.longDescription,
+        ...(manifest.interface.defaultPrompt ?? [])
+      ].join("\n")
+    ).toMatch(/CI.*regression|regression.*CI/u);
     await expect(stat(path.join(pluginRoot, "skills", "agent-workflow-benchmark", "SKILL.md"))).resolves.toBeTruthy();
   });
 
@@ -43,9 +51,12 @@ describe("agent workflow benchmark plugin package", () => {
     await expect(stat(path.join(pluginRoot, "commands", "agent-workflow-benchmark.md"))).resolves.toBeTruthy();
     await access(path.join(pluginRoot, "bin", "awb"));
     const command = await readFile(path.join(pluginRoot, "commands", "agent-workflow-benchmark.md"), "utf8");
+    expect(command).toContain("doctor");
     expect(command).toContain("plan-cases");
     expect(command).toContain("materialize --strategy ai");
     expect(command).toContain("run --execution live");
+    expect(command).toContain("compare");
+    expect(command).toContain("gate");
   });
 
   test("ships a self-contained plugin runtime for installs without a source checkout", async () => {
@@ -56,7 +67,12 @@ describe("agent workflow benchmark plugin package", () => {
     await expect(stat(path.join(runtimeRoot, "dist", "src", "cli", "index.js"))).resolves.toBeTruthy();
     await expect(stat(path.join(runtimeRoot, "configs", "targets", "registry.yaml"))).resolves.toBeTruthy();
     await expect(stat(path.join(runtimeRoot, "schemas", "case.schema.json"))).resolves.toBeTruthy();
+    await expect(stat(path.join(runtimeRoot, "schemas", "doctor-result.schema.json"))).resolves.toBeTruthy();
+    await expect(stat(path.join(runtimeRoot, "schemas", "provenance.schema.json"))).resolves.toBeTruthy();
+    await expect(stat(path.join(runtimeRoot, "schemas", "comparison-result.schema.json"))).resolves.toBeTruthy();
+    await expect(stat(path.join(runtimeRoot, "schemas", "gate-result.schema.json"))).resolves.toBeTruthy();
     await expect(stat(path.join(runtimeRoot, "fixtures", "mutations", "core.yaml"))).resolves.toBeTruthy();
+    await expect(stat(path.join(runtimeRoot, "fixtures", "regression", "scenarios.yaml"))).resolves.toBeTruthy();
 
     const wrapper = await readFile(path.join(pluginRoot, "bin", "awb"), "utf8");
     expect(wrapper).toContain("RUNTIME_DIR");
@@ -119,9 +135,64 @@ describe("agent workflow benchmark plugin package", () => {
       expect((await readFile(path.join(out, "run", "p0-cases.md"), "utf8")).trim().length).toBeGreaterThan(0);
       expect((await readFile(path.join(out, "run", "recommendations.md"), "utf8")).trim().length).toBeGreaterThan(0);
       const summary = JSON.parse(await readFile(path.join(out, "evaluation-summary.json"), "utf8"));
-      await expect(stat(summary.artifacts.report)).resolves.toBeTruthy();
-      await expect(stat(summary.artifacts.recommendations)).resolves.toBeTruthy();
-      await expect(stat(summary.harness.artifacts.harnessValidation)).resolves.toBeTruthy();
+      expect(path.isAbsolute(summary.artifacts.report)).toBe(false);
+      expect(path.isAbsolute(summary.artifacts.recommendations)).toBe(false);
+      expect(path.isAbsolute(summary.harness.artifacts.harnessValidation)).toBe(false);
+      await expect(stat(path.join(out, summary.artifacts.report))).resolves.toBeTruthy();
+      await expect(stat(path.join(out, summary.artifacts.recommendations))).resolves.toBeTruthy();
+      await expect(stat(path.join(out, summary.harness.artifacts.harnessValidation))).resolves.toBeTruthy();
+    } finally {
+      await rm(outsideCwd, { recursive: true, force: true });
+      await rm(install.root, { recursive: true, force: true });
+    }
+  });
+
+  test("plugin wrapper can run a copied CI regression core flow without source checkout discovery", async () => {
+    const outsideCwd = await mkdtemp(path.join(tmpdir(), "awb-wrapper-ci-flow-cwd-"));
+    const install = await copyPluginInstall();
+    const awb = path.join(install.pluginPath, "bin", "awb");
+    const env = { ...process.env, AWB_PROJECT_ROOT: "" };
+    const doctorOut = path.join(outsideCwd, "doctor");
+    const baselineOut = path.join(outsideCwd, "baseline");
+    const candidateOut = path.join(outsideCwd, "candidate");
+    const comparisonOut = path.join(outsideCwd, "comparison");
+    const gateOut = path.join(outsideCwd, "gate");
+
+    try {
+      await execa(
+        awb,
+        ["doctor", "--target", "minimal-directory-agent", "--runner", "simulated", "--out", doctorOut],
+        { cwd: outsideCwd, env }
+      );
+      await execa(
+        awb,
+        ["run", "--target", "minimal-directory-agent", "--runner", "simulated", "--execution", "simulated", "--out", baselineOut],
+        { cwd: outsideCwd, env }
+      );
+      await execa(
+        awb,
+        ["run", "--target", "minimal-directory-agent", "--runner", "simulated", "--execution", "simulated", "--out", candidateOut],
+        { cwd: outsideCwd, env }
+      );
+      await execa(
+        awb,
+        ["compare", "--baseline", baselineOut, "--candidate", candidateOut, "--out", comparisonOut],
+        { cwd: outsideCwd, env }
+      );
+      const gate = await execa(awb, ["gate", "--comparison", path.join(comparisonOut, "comparison-result.json"), "--out", gateOut], {
+        cwd: outsideCwd,
+        env,
+        reject: false
+      });
+
+      const doctor = JSON.parse(await readFile(path.join(doctorOut, "doctor-result.json"), "utf8"));
+      await expectValidPluginRuntimeSchema(install.pluginPath, "schemas/doctor-result.schema.json", doctor);
+      const comparison = JSON.parse(await readFile(path.join(comparisonOut, "comparison-result.json"), "utf8"));
+      await expectValidPluginRuntimeSchema(install.pluginPath, "schemas/comparison-result.schema.json", comparison);
+      const gateResult = JSON.parse(await readFile(path.join(gateOut, "gate-result.json"), "utf8"));
+      await expectValidPluginRuntimeSchema(install.pluginPath, "schemas/gate-result.schema.json", gateResult);
+      expect(gate.exitCode).toBe(2);
+      expect(gateResult.decision).toBe("DIAGNOSTIC_ONLY");
     } finally {
       await rm(outsideCwd, { recursive: true, force: true });
       await rm(install.root, { recursive: true, force: true });

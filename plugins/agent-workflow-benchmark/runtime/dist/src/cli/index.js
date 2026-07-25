@@ -16,8 +16,29 @@ import { scoreCase, scoreSuite } from "../scorer/score.js";
 import { prepareDebugEnvironment, reverseValidate } from "../debug/debugWorkflow.js";
 import { renderMarkdownReport } from "../report/report.js";
 import { ensureDir, readJson, readYaml, writeJson, writeYaml } from "../utils/io.js";
+import { AWB_VERSION, CLI_NAME, PRODUCT_NAME, PRODUCT_TAGLINE } from "../core/product.js";
+import { diagnoseWorkflow, renderDoctorReport } from "../doctor/doctor.js";
+import { buildRunProvenance, publicRunnerCapability } from "../regression/provenance.js";
+import { createComparisonBundle, renderComparisonReport, verifyComparisonBundle } from "../regression/compare.js";
+import { evaluateGate, gateExitCode, renderGateReport } from "../regression/gate.js";
+import { profileEvidenceSensitiveValues, publicAiCasePlan, publicProfileEvidence } from "../utils/redaction.js";
 const program = new Command();
-program.name("agent-workflow-benchmark").description("Generic agent workflow benchmark").version("0.1.0");
+program.name(CLI_NAME).description(`${PRODUCT_NAME} — ${PRODUCT_TAGLINE}`).version(AWB_VERSION);
+program
+    .command("doctor")
+    .description("Discover a target workflow and report runner/evidence readiness")
+    .requiredOption("--target <id>")
+    .option("--target-root <path>", "override the registered target root for this isolated checkout")
+    .option("--runner <runner>", "codex, claude, opencode, or simulated", "codex")
+    .requiredOption("--out <dir>")
+    .action(async (options) => {
+    const profile = await profileTarget(await loadTargetPack(options.target, { rootOverride: options.targetRoot }));
+    const capability = await detectRunnerCapability(normalizeRunnerName(options.runner));
+    const result = diagnoseWorkflow(profile, capability);
+    await writeJson(path.join(options.out, "doctor-result.json"), result);
+    await writeReportFile(path.join(options.out, "doctor-report.md"), renderDoctorReport(result));
+    console.log(`doctor written: ${options.out}`);
+});
 program.command("validate-schema").action(async () => {
     await validateSchemasAndTargets();
     console.log("schemas valid");
@@ -47,6 +68,7 @@ program
 program
     .command("plan-cases")
     .requiredOption("--target <id>")
+    .option("--target-root <path>", "override the registered target root for this isolated checkout")
     .option("--runner <runner>", "codex, claude, or fixture", "codex")
     .option("--coverage-mode <mode>", "smoke, full, or adaptive", "smoke")
     .option("--live-model <model>", "model for live Codex/Claude planning")
@@ -54,7 +76,7 @@ program
     .option("--max-cases <n>", "maximum AI cases to request")
     .requiredOption("--out <dir>")
     .action(async (options) => {
-    const profile = await profileTarget(await loadTargetPack(options.target));
+    const profile = await profileTarget(await loadTargetPack(options.target, { rootOverride: options.targetRoot }));
     const coverageMode = normalizeCoverageMode(options.coverageMode);
     const maxCases = options.maxCases
         ? parsePositiveInt(options.maxCases, "--max-cases")
@@ -75,11 +97,12 @@ program
 program
     .command("profile")
     .requiredOption("--target <id>")
+    .option("--target-root <path>", "override the registered target root for this isolated checkout")
     .requiredOption("--out <dir>")
     .action(async (options) => {
-    const profile = await profileTarget(await loadTargetPack(options.target));
+    const profile = await profileTarget(await loadTargetPack(options.target, { rootOverride: options.targetRoot }));
     await ensureDir(options.out);
-    await writeJson(path.join(options.out, "profile-evidence.json"), profile.evidence);
+    await writeJson(path.join(options.out, "profile-evidence.json"), publicProfileEvidence(profile.evidence));
     await writeJson(path.join(options.out, "contract-model.json"), profile.contract);
     await writeJson(path.join(options.out, "profile-summary.json"), {
         targetId: profile.contract.targetId,
@@ -92,21 +115,27 @@ program
 program
     .command("materialize")
     .requiredOption("--target <id>")
+    .option("--target-root <path>", "override the registered target root for this isolated checkout")
     .option("--suite <name>", "suite name", "smoke")
     .option("--coverage-mode <mode>", "smoke, full, or adaptive")
     .option("--strategy <strategy>", "template or ai", "template")
     .option("--ai-plan <path>", "AI planner JSON artifact for --strategy ai")
     .requiredOption("--out <dir>")
     .action(async (options) => {
-    const profile = await profileTarget(await loadTargetPack(options.target));
+    const profile = await profileTarget(await loadTargetPack(options.target, { rootOverride: options.targetRoot }));
     const strategy = normalizeMaterializeStrategy(options.strategy);
-    const aiPlan = strategy === "ai" ? await readRequiredAiPlan(options.aiPlan) : undefined;
+    const sensitiveValues = profileEvidenceSensitiveValues(profile.evidence);
+    const rawAiPlan = strategy === "ai" ? await readRequiredAiPlan(options.aiPlan) : undefined;
+    const aiPlan = rawAiPlan
+        ? publicAiCasePlan(rawAiPlan, { values: sensitiveValues })
+        : undefined;
     const suite = aiPlan
         ? materializeAiSuite(profile.contract, {
             planner: aiPlan.planner,
             model: aiPlan.model,
             plan: aiPlan,
-            suite: options.suite
+            suite: options.suite,
+            sensitiveValues
         })
         : materializeSmokeSuite(profile.contract, { suite: options.suite });
     await ensureDir(options.out);
@@ -124,6 +153,7 @@ program
 program
     .command("run")
     .option("--target <id>")
+    .option("--target-root <path>", "override the registered target root for this isolated checkout")
     .option("--suite <name>", "suite name", "smoke")
     .option("--case <path>")
     .option("--cases-dir <dir>")
@@ -139,31 +169,50 @@ program
     .action(async (options) => {
     const runDir = options.out ?? path.join("reports/runs", `run-${Date.now()}`);
     await ensureDir(runDir);
-    const { contract, cases } = await resolveRunInputs(options);
+    const { target, profile, contract, cases } = await resolveRunInputs(options);
     const runnerCapability = await detectRunnerCapability(normalizeRunnerName(options.runner));
     const executionMode = normalizeExecutionMode(options.execution);
     const mutation = options.mutation ? (await loadMutations({ mutation: options.mutation }))[0] : undefined;
     if (mutation && executionMode === "live") {
         throw new Error("--mutation is only supported for simulated execution");
     }
-    if (!runnerCapability.supported) {
-        if (!options.dryRun) {
-            throw new Error(`Runner ${runnerCapability.name} is unavailable: ${runnerCapability.disabledReason}`);
-        }
+    if (!runnerCapability.supported && !options.dryRun) {
+        throw new Error(`Runner ${runnerCapability.name} is unavailable: ${runnerCapability.disabledReason}`);
+    }
+    if (options.dryRun) {
         const suiteResult = scoreSuite(path.basename(runDir), contract, options.suite, []);
         await writeJson(path.join(runDir, "suite-result.json"), suiteResult);
         await writeRecommendationArtifacts(runDir, suiteResult);
         await writeP0CaseArtifacts(runDir, suiteResult, options.p0CaseLog);
-        await writeJson(path.join(runDir, "runtime-manifest.json"), {
-            runner: runnerCapability,
+        const runtimeManifestPath = path.join(runDir, "runtime-manifest.json");
+        await writeJson(runtimeManifestPath, {
+            runner: {
+                ...publicRunnerCapability(runnerCapability),
+                executionMode
+            },
             mode: options.mode,
-            dryRun: options.dryRun,
+            dryRun: true,
             contractHash: contract.contractHash,
             caseCount: 0,
             skippedCaseCount: cases.length,
-            casesDir: options.casesDir,
+            caseSource: options.casesDir ? "cases://provided" : "target://materialized",
             mutation
         });
+        await writeJson(path.join(runDir, "provenance.json"), await buildRunProvenance({
+            profile,
+            cases,
+            suite: options.suite,
+            runner: runnerCapability,
+            executionMode,
+            model: options.liveModel,
+            mutation,
+            artifacts: [
+                { ref: "suite-result.json", path: path.join(runDir, "suite-result.json") },
+                { ref: "runtime-manifest.json", path: runtimeManifestPath }
+            ],
+            targetRoot: target.root,
+            dryRun: true
+        }));
         console.log(`run written: ${runDir}`);
         enforceGateMode(options.mode, suiteResult);
         return;
@@ -189,9 +238,10 @@ program
     await writeJson(path.join(runDir, "suite-result.json"), suiteResult);
     await writeRecommendationArtifacts(runDir, suiteResult);
     await writeP0CaseArtifacts(runDir, suiteResult, options.p0CaseLog);
-    await writeJson(path.join(runDir, "runtime-manifest.json"), {
+    const runtimeManifestPath = path.join(runDir, "runtime-manifest.json");
+    await writeJson(runtimeManifestPath, {
         runner: {
-            ...runnerCapability,
+            ...publicRunnerCapability(runnerCapability),
             executionMode
         },
         mode: options.mode,
@@ -199,15 +249,30 @@ program
         contractHash: contract.contractHash,
         caseCount: cases.length,
         liveTranscriptCount,
-        casesDir: options.casesDir,
+        caseSource: options.casesDir ? "cases://provided" : "target://materialized",
         mutation
     });
+    await writeJson(path.join(runDir, "provenance.json"), await buildRunProvenance({
+        profile,
+        cases,
+        suite: options.suite,
+        runner: runnerCapability,
+        executionMode,
+        model: options.liveModel,
+        mutation,
+        artifacts: [
+            { ref: "suite-result.json", path: path.join(runDir, "suite-result.json") },
+            { ref: "runtime-manifest.json", path: runtimeManifestPath }
+        ],
+        targetRoot: target.root
+    }));
     console.log(`run written: ${runDir}`);
     enforceGateMode(options.mode, suiteResult);
 });
 program
     .command("evaluate")
     .requiredOption("--target <id>")
+    .option("--target-root <path>", "override the registered target root for this isolated checkout")
     .option("--planner-runner <runner>", "codex, claude, or fixture", "codex")
     .option("--runner <id>", "runner id", "codex")
     .option("--coverage-mode <mode>", "smoke, full, or adaptive", "full")
@@ -232,10 +297,10 @@ program
     if (mutation && executionMode === "live") {
         throw new Error("--mutation is only supported for simulated execution");
     }
-    const target = await loadTargetPack(options.target);
+    const target = await loadTargetPack(options.target, { rootOverride: options.targetRoot });
     const profile = await profileTarget(target);
     await ensureDir(profileDir);
-    await writeJson(path.join(profileDir, "profile-evidence.json"), profile.evidence);
+    await writeJson(path.join(profileDir, "profile-evidence.json"), publicProfileEvidence(profile.evidence));
     await writeJson(path.join(profileDir, "contract-model.json"), profile.contract);
     await writeJson(path.join(profileDir, "profile-summary.json"), {
         targetId: profile.contract.targetId,
@@ -262,7 +327,8 @@ program
         planner: aiPlanRun.plan.planner,
         model: aiPlanRun.plan.model,
         plan: aiPlanRun.plan,
-        suite: options.suite
+        suite: options.suite,
+        sensitiveValues: profileEvidenceSensitiveValues(profile.evidence)
     });
     await ensureDir(casesDir);
     await writeJson(path.join(casesDir, "ai-case-plan-validation.json"), aiPlanValidation);
@@ -300,9 +366,10 @@ program
     await writeJson(path.join(runDir, "harness-validation.json"), suiteResult.harnessValidation);
     await writeRecommendationArtifacts(runDir, suiteResult);
     await writeP0CaseArtifacts(runDir, suiteResult, options.p0CaseLog ?? path.join(outDir, "p0-cases.jsonl"));
-    await writeJson(path.join(runDir, "runtime-manifest.json"), {
+    const runtimeManifestPath = path.join(runDir, "runtime-manifest.json");
+    await writeJson(runtimeManifestPath, {
         runner: {
-            ...runnerCapability,
+            ...publicRunnerCapability(runnerCapability),
             executionMode
         },
         mode: "diagnostic",
@@ -310,10 +377,24 @@ program
         contractHash: profile.contract.contractHash,
         caseCount: suite.cases.length,
         liveTranscriptCount,
-        casesDir,
+        caseSource: "evaluation://cases",
         mutation
     });
     await writeReport(path.join(runDir, "report.md"), suiteResult);
+    await writeJson(path.join(runDir, "provenance.json"), await buildRunProvenance({
+        profile,
+        cases: suite.cases,
+        suite: options.suite,
+        runner: runnerCapability,
+        executionMode,
+        model: options.liveModel,
+        mutation,
+        artifacts: [
+            { ref: "suite-result.json", path: path.join(runDir, "suite-result.json") },
+            { ref: "runtime-manifest.json", path: runtimeManifestPath }
+        ],
+        targetRoot: target.root
+    }));
     await writeJson(path.join(outDir, "evaluation-summary.json"), {
         schemaVersion: "0.1.0",
         targetId: profile.contract.targetId,
@@ -330,22 +411,49 @@ program
             plan: suiteResult.harnessValidation.plan,
             phases: suiteResult.harnessValidation.phases,
             artifacts: {
-                harnessValidation: path.join(runDir, "harness-validation.json")
+                harnessValidation: "run/harness-validation.json"
             }
         },
         artifacts: {
-            profile: path.join(profileDir, "contract-model.json"),
-            aiPlan: path.join(planDir, "ai-case-plan.json"),
-            casesManifest: path.join(casesDir, "manifest.json"),
-            suiteResult: path.join(runDir, "suite-result.json"),
-            report: path.join(runDir, "report.md"),
-            harnessValidation: path.join(runDir, "harness-validation.json"),
-            recommendations: path.join(runDir, "recommendations.json"),
-            p0Cases: path.join(runDir, "p0-cases.json"),
-            p0CaseLog: options.p0CaseLog ?? path.join(outDir, "p0-cases.jsonl")
+            profile: "profile/contract-model.json",
+            aiPlan: "ai-plan/ai-case-plan.json",
+            casesManifest: "cases/manifest.json",
+            suiteResult: "run/suite-result.json",
+            report: "run/report.md",
+            harnessValidation: "run/harness-validation.json",
+            recommendations: "run/recommendations.json",
+            p0Cases: "run/p0-cases.json",
+            p0CaseLog: options.p0CaseLog ? "external://p0-case-log" : "p0-cases.jsonl",
+            provenance: "run/provenance.json"
         }
     });
     console.log(`evaluation written: ${outDir}`);
+});
+program
+    .command("compare")
+    .description("Compare matched baseline and candidate run artifacts")
+    .requiredOption("--baseline <dir>", "baseline run or evaluation directory")
+    .requiredOption("--candidate <dir>", "candidate run or evaluation directory")
+    .requiredOption("--out <dir>")
+    .action(async (options) => {
+    const result = await createComparisonBundle(options.baseline, options.candidate, options.out);
+    await writeJson(path.join(options.out, "comparison-result.json"), result);
+    await writeReportFile(path.join(options.out, "comparison-report.md"), renderComparisonReport(result));
+    console.log(`comparison written: ${options.out}`);
+});
+program
+    .command("gate")
+    .description("Apply the deterministic CI gate to a paired comparison")
+    .requiredOption("--comparison <path>", "comparison-result.json")
+    .requiredOption("--out <dir>")
+    .action(async (options) => {
+    const comparison = await readJson(options.comparison);
+    const verification = await verifyComparisonBundle(options.comparison, comparison);
+    const result = evaluateGate(comparison, verification);
+    await writeJson(path.join(options.out, "gate-result.json"), result);
+    await writeReportFile(path.join(options.out, "gate-report.md"), renderGateReport(result));
+    console.log(`gate written: ${options.out}`);
+    process.exitCode = gateExitCode(result.decision);
 });
 program
     .command("score")
@@ -742,8 +850,9 @@ async function validateSchemasAndTargets() {
 async function resolveRunInputs(options) {
     if (options.case) {
         const testCase = await readYaml(options.case);
-        const contract = (await profileTarget(await loadTargetPack(testCase.targetId))).contract;
-        return { contract, cases: [testCase] };
+        const target = await loadTargetPack(testCase.targetId, { rootOverride: options.targetRoot });
+        const profile = await profileTarget(target);
+        return { target, profile, contract: profile.contract, cases: [testCase] };
     }
     if (options.casesDir) {
         const caseFiles = (await readdir(options.casesDir))
@@ -753,15 +862,17 @@ async function resolveRunInputs(options) {
             throw new Error(`No case YAML files found in ${options.casesDir}`);
         }
         const cases = await Promise.all(caseFiles.map((file) => readYaml(path.join(options.casesDir, file))));
-        const contract = (await profileTarget(await loadTargetPack(cases[0].targetId))).contract;
-        return { contract, cases };
+        const target = await loadTargetPack(cases[0].targetId, { rootOverride: options.targetRoot });
+        const profile = await profileTarget(target);
+        return { target, profile, contract: profile.contract, cases };
     }
     if (!options.target) {
         throw new Error("--target, --case, or --cases-dir is required");
     }
-    const profile = await profileTarget(await loadTargetPack(options.target));
+    const target = await loadTargetPack(options.target, { rootOverride: options.targetRoot });
+    const profile = await profileTarget(target);
     const suite = materializeSmokeSuite(profile.contract, { suite: options.suite });
-    return { contract: profile.contract, cases: suite.cases };
+    return { target, profile, contract: profile.contract, cases: suite.cases };
 }
 async function resolveDebugInputs(options) {
     if (options.case) {

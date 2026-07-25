@@ -1,4 +1,6 @@
-# Agent Workflow Benchmark 插件使用说明
+# Agent Workflow Bench 插件使用说明
+
+Agent Workflow Bench（AWB）定位为 coding-agent workflow 的 CI 级回归测试工具。CLI 仍是 `awb`，插件名和命令 slug 仍是 `agent-workflow-benchmark`，旧的 benchmark/evaluate 用法继续兼容。
 
 ## 当前形态
 
@@ -16,6 +18,13 @@ plugins/agent-workflow-benchmark/
 
 它不是只把旧 CLI 包一层，而是把 benchmark 主流程改成 AI-first：
 
+1. 先运行 `awb doctor --target <target-id> --runner <runner> --out <doctor-dir>`，profile target、确认 runner 能力并查看 evidence 上限。
+2. 用同一 target、suite、runner mode 和 contract hash 跑 matched baseline / candidate。
+3. 用 `awb compare --baseline <baseline-run> --candidate <candidate-run> --out <comparison-dir>` 比较回归和证据缺口。
+4. 用 `awb gate --comparison <comparison-dir>/comparison-result.json --out <gate-dir>` 执行 CI gate：PASS exit `0`，DIAGNOSTIC_ONLY exit `2`，BLOCK exit `1`。
+
+传统分步 evaluate 流程仍兼容：
+
 1. 通过 `profile` 建立被测 workflow 的结构化 `ContractModel`。
 2. 通过 `plan-cases` 调用当前运行时 LLM，例如 Codex 或 Claude Code，让 LLM 基于 `ContractModel`、被扫描 agent 文件摘录和覆盖目标先理解 workflow，再生成 case plan。
 3. 检查 `ai-case-plan-validation.json`，确认 case 数量、coverage tags、missing targets 和 bindings 没有明显缺口。
@@ -23,7 +32,11 @@ plugins/agent-workflow-benchmark/
 5. 通过 `run --cases-dir` 执行 AI-generated cases。
 6. 通过 `report/score/debug reverse-validate/diagnose` 生成解释性结果和工具自调试证据。
 
-现在推荐优先使用 `evaluate` 一键执行完整流程。它会写出 `profile/`、`ai-plan/`、`cases/`、`run/suite-result.json`、`run/report.md`、`run/harness-validation.json`、`run/recommendations.json`、`run/recommendations.md`、`run/p0-cases.json`、`run/p0-cases.md` 和 `evaluation-summary.json`。报告里包含维度评分、agent workflow 修改建议、harness validation 和 P0 case records。
+`evaluate` 一键流程会写出 `profile/`、`ai-plan/`、`cases/`、`run/suite-result.json`、`run/report.md`、`run/harness-validation.json`、`run/recommendations.json`、`run/recommendations.md`、`run/p0-cases.json`、`run/p0-cases.md` 和 `evaluation-summary.json`。报告里包含维度评分、agent workflow 修改建议、harness validation 和 P0 case records。
+
+门禁边界：只有可信 live adapter 输出真实 `workflow_trace` evidence 时，gate 才能 PASS。simulated run 和当前 live `contract-summary` adapter 只能给 `DIAGNOSTIC_ONLY`，不能给 PASS。
+
+`compare` 会把 baseline/candidate 的 suite、provenance 和 runtime manifest 快照写入 comparison 目录并记录完整性哈希。`gate` 会重新验证这些快照、交叉校验 runtime 执行事实与 provenance/adapter 证据上限，并重新计算 comparison；手工修改 comparison JSON、证据文件或仅重算可编辑哈希都会得到 `BLOCK`，不能伪造 live PASS。
 
 ## 在 Codex 中使用
 
@@ -31,7 +44,7 @@ plugins/agent-workflow-benchmark/
 
 ```bash
 codex plugin marketplace add "$(git rev-parse --show-toplevel)"
-codex plugin add agent-workflow-benchmark@agent-workflow-benchmark-local
+codex plugin add agent-workflow-benchmark@agent-workflow-benchmark
 codex plugin list
 ```
 
@@ -131,8 +144,8 @@ claude --plugin-dir "$(git rev-parse --show-toplevel)/plugins/agent-workflow-ben
 
 - `npm run validate`：运行 typecheck 和 Vitest 全量测试。
 - `npm test -- tests/plugin-package.test.ts tests/live-runner.test.ts`：验证插件 wrapper、packaged runtime、live runner prompt/transcript 行为。
-- `plugins/agent-workflow-benchmark/bin/awb validate-schema`：验证插件 runtime 的 schema 和 runner config 可加载。
-- `plan-cases --runner codex` 成功生成真实 LLM case plan，prompt 中包含 `Workflow evidence excerpts` 和 agent 文件内容摘录。
+- `plugins/agent-workflow-benchmark/bin/awb validate-schema`：验证插件 runtime 的 schema、runner config 和 target pack 可加载；带完整 `--target/--runner/--out` 参数的 `doctor` 验证 target profile、runner 能力和 evidence 上限。
+- `plan-cases --runner codex` 可以把 agent 文件摘录作为 transient LLM input 生成真实 case plan；持久化的 prompt artifact 只保留相对路径、hash 和字节数，response artifact 只保留内容 hash，不保存原始 excerpt 或原始模型响应。
 - `materialize --strategy ai` 成功生成 AI cases。
 - `run --cases-dir` 成功执行 AI-generated cases。
-- AI-generated 单 case 的 `--execution live` Codex verdict 为 `PASS`，作用范围是 live runner prompt/transcript 诊断结果，不是对真实 target entrypoint 执行的发布批准。
+- AI-generated 单 case 的 `--execution live` Codex verdict 如果为 `PASS`，作用范围仍是 live runner prompt/transcript 诊断结果；在 current `contract-summary` adapter 下不是对真实 target entrypoint 执行的发布批准，也不能作为 CI gate PASS。

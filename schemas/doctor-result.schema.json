@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "doctor-result.schema.json",
+  "type": "object",
+  "required": ["schemaVersion", "product", "target", "runner", "readiness", "checks"],
+  "properties": {
+    "schemaVersion": { "type": "string" },
+    "product": { "const": "Agent Workflow Bench" },
+    "target": {
+      "type": "object",
+      "required": ["id", "status", "contractHash", "roleCount", "entrypointCount", "missingFiles", "warnings"],
+      "properties": {
+        "id": { "type": "string" },
+        "status": { "enum": ["PASS", "FAIL"] },
+        "contractHash": { "type": "string" },
+        "roleCount": { "type": "number" },
+        "entrypointCount": { "type": "number" },
+        "missingFiles": { "type": "array", "items": { "type": "string" } },
+        "warnings": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "runner": {
+      "type": "object",
+      "required": ["name", "supported", "adapterVersion", "capabilitiesHash", "evidenceKind", "observationLevel"],
+      "properties": {
+        "name": { "enum": ["codex", "claude", "opencode", "simulated"] },
+        "supported": { "type": "boolean" },
+        "version": { "type": "string" },
+        "adapterVersion": { "type": "string" },
+        "capabilitiesHash": { "type": "string" },
+        "evidenceKind": { "enum": ["live", "simulated", "unknown"] },
+        "observationLevel": { "enum": ["workflow_trace", "contract_summary", "synthetic_events", "capability_only"] }
+      }
+    },
+    "readiness": { "enum": ["PASS", "DIAGNOSTIC_ONLY", "BLOCK"] },
+    "checks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "status", "why"],
+        "properties": {
+          "id": { "enum": ["target-files", "contract-profile", "runner-capability", "evidence-boundary"] },
+          "status": { "enum": ["PASS", "WARN", "FAIL"] },
+          "why": { "type": "string" }
+        }
+      }
+    }
+  }
+}

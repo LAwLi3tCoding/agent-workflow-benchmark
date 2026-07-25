@@ -18,7 +18,7 @@ export async function prepareDebugEnvironment(target, contract, testCase, option
     for (const name of fakeToolNames) {
         const toolPath = path.join(binRoot, name);
         await writeFile(toolPath, "#!/usr/bin/env sh\necho '{\"policyDecision\":\"deny\",\"allowed\":false}'\nexit 0\n", { mode: 0o755 });
-        fakeTools.push({ name, path: toolPath, behaviorFixture: `fixtures/fake-tools/${name}/${options.mockProfile}.json` });
+        fakeTools.push({ name, path: `bin/${name}`, behaviorFixture: `fixtures/fake-tools/${name}/${options.mockProfile}.json` });
     }
     const env = {
         schemaVersion: "0.1.0",
@@ -27,7 +27,7 @@ export async function prepareDebugEnvironment(target, contract, testCase, option
         caseId: testCase.id,
         contractHash: contract.contractHash,
         caseHash: testCase.caseHash,
-        sandboxRoot,
+        sandboxRoot: "sandbox",
         mockProfile: options.mockProfile,
         fakeTools,
         mockServices: [
@@ -41,19 +41,25 @@ export async function prepareDebugEnvironment(target, contract, testCase, option
         fixtureRepos: [
             {
                 id: "target-copy",
-                source: target.root,
-                sandboxPath: repoCopy,
+                source: "target://root",
+                sandboxPath: "repos/target-copy",
                 sourceHash: await hashPath(target.root)
             }
         ],
         stateSeeds: [],
         artifactSeeds: [],
-        networkPolicyHash: sha256Text("loopback-only"),
+        networkPolicyHash: sha256Text("declared-loopback-only-not-enforced"),
         commandPolicyHash: sha256Text(stableJson(target.commandPolicy)),
         reproduceCommands: [
-            `npm run benchmark -- debug prepare-env --case ${testCase.id} --runner ${options.runner} --mock-profile ${options.mockProfile} --out ${options.outDir}`
+            `npm run benchmark -- debug prepare-env --case <case-yaml> --runner ${options.runner} --mock-profile ${options.mockProfile} --out <debug-out>`
         ],
-        preflightResults: [{ status: "PASS", check: "production-network-deny", why: "Only loopback fake services are configured." }]
+        preflightResults: [
+            {
+                status: "DIAGNOSTIC_ONLY",
+                check: "production-network-deny",
+                why: "Only loopback fake services are declared; prepare-env does not enforce network isolation."
+            }
+        ]
     };
     await writeFile(path.join(options.outDir, "debug-environment.json"), JSON.stringify(env, null, 2));
     return env;
@@ -111,7 +117,7 @@ export async function reverseValidate(target, contract, testCase, options) {
             suspectedComponents: ["cases/templates/smoke", "src/scorer/score.ts"],
             confidence: "medium"
         }, null, 2));
-        result.debugDossierPath = dossierPath;
+        result.debugDossierPath = "debug-dossier.json";
     }
     await writeFile(path.join(options.outDir, "reverse-validation-result.json"), JSON.stringify(result, null, 2));
     return result;

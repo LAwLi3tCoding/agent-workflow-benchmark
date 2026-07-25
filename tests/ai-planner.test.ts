@@ -1,7 +1,10 @@
 import { describe, expect, test } from "vitest";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { loadTargetPack } from "../src/core/targetRegistry.js";
 import { profileTarget } from "../src/profiler/profileTarget.js";
-import { buildAiCasePlanPrompt, normalizeAiCasePlan } from "../src/generator/aiPlanner.js";
+import { buildAiCasePlanPrompt, normalizeAiCasePlan, runAiCasePlanner } from "../src/generator/aiPlanner.js";
 import { recommendedAiCaseCount, validateAiCasePlan } from "../src/generator/coverage.js";
 import type { ContractModel } from "../src/core/types.js";
 
@@ -68,6 +71,43 @@ describe("AI case planner", () => {
     expect(prompt).toContain("operationSequence");
     expect(prompt).toContain("coverageTags");
     expect(prompt).toContain("minimal-directory-agent");
+  });
+
+  test("persists only portable planner evidence and a response digest", async () => {
+    const out = await mkdtemp(path.join(tmpdir(), "awb-ai-planner-private-"));
+    try {
+      const profile = await profileTarget(await loadTargetPack("minimal-directory-agent"));
+      const evidence = {
+        ...profile.evidence,
+        scannedFiles: profile.evidence.scannedFiles.map((file) => ({
+          ...file,
+          excerpt: "INTERNAL_BUSINESS_DATA_MARKER"
+        }))
+      };
+
+      const run = await runAiCasePlanner(profile.contract, {
+        runner: "fixture",
+        coverageMode: "smoke",
+        timeoutMs: 1000,
+        outDir: out,
+        maxCases: 1,
+        evidence
+      });
+      const persistedPrompt = await readFile(run.promptPath, "utf8");
+      const persistedResponse = JSON.parse(await readFile(run.rawResponsePath, "utf8"));
+
+      expect(persistedPrompt).not.toContain("INTERNAL_BUSINESS_DATA_MARKER");
+      expect(persistedPrompt).toContain(evidence.scannedFiles[0]!.sha256);
+      expect(persistedResponse).toMatchObject({
+        schemaVersion: "0.1.0",
+        contentRedacted: true,
+        contentHash: expect.stringMatching(/^sha256:/),
+        planner: "fixture"
+      });
+      expect(JSON.stringify(persistedResponse)).not.toContain("targetUnderstanding");
+    } finally {
+      await rm(out, { recursive: true, force: true });
+    }
   });
 
   test("normalizes and validates raw LLM case-plan JSON", () => {

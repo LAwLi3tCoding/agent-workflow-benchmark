@@ -1,9 +1,9 @@
 {
   "name": "agent-workflow-benchmark",
   "version": "0.1.0+codex.20260706202456",
-  "description": "AI-first benchmark workflow for evaluating agent workflows through Claude Code and Codex.",
+  "description": "CI-grade regression testing for coding-agent workflows through Claude Code and Codex.",
   "author": {
-    "name": "LAwLi3tCoding"
+    "name": "Project contributors"
   },
   "license": "UNLICENSED"
 }

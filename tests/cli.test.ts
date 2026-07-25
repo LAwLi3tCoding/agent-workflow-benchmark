@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { execa } from "execa";
@@ -27,6 +27,66 @@ async function expectInvalidSchema(schemaPath: string, value: unknown): Promise<
 }
 
 describe("benchmark CLI", () => {
+  test("help presents Agent Workflow Bench as the awb CI regression CLI", async () => {
+    const result = await execa("npm", ["run", "benchmark", "--", "--help"], { cwd });
+
+    expect(result.stdout).toContain("Usage: awb");
+    expect(result.stdout).toContain("Agent Workflow Bench");
+    expect(result.stdout).toContain("CI-grade regression testing for coding-agent workflows");
+  });
+
+  test("doctor discovers the target and reports the simulated evidence ceiling without local paths", async () => {
+    const out = await tmp("awb-doctor-");
+    try {
+      await execa(
+        "npm",
+        [
+          "run",
+          "benchmark",
+          "--",
+          "doctor",
+          "--target",
+          "minimal-directory-agent",
+          "--runner",
+          "simulated",
+          "--out",
+          out
+        ],
+        { cwd }
+      );
+
+      const result = JSON.parse(await readFile(path.join(out, "doctor-result.json"), "utf8"));
+      await expectValidSchema("schemas/doctor-result.schema.json", result);
+      expect(result.product).toBe("Agent Workflow Bench");
+      expect(result.target).toMatchObject({
+        id: "minimal-directory-agent",
+        status: "PASS",
+        missingFiles: []
+      });
+      expect(result.runner).toMatchObject({
+        name: "simulated",
+        supported: true,
+        evidenceKind: "simulated",
+        observationLevel: "synthetic_events"
+      });
+      expect(result.readiness).toBe("DIAGNOSTIC_ONLY");
+      expect(result.checks.map((check: { id: string }) => check.id)).toEqual(
+        expect.arrayContaining(["target-files", "contract-profile", "runner-capability", "evidence-boundary"])
+      );
+      const serialized = JSON.stringify(result);
+      expect(serialized).not.toContain(cwd);
+      expect(serialized).not.toMatch(/\/(?:Users|home)\/[^/]+/);
+
+      const report = await readFile(path.join(out, "doctor-report.md"), "utf8");
+      expect(report).toContain("# Agent Workflow Bench Doctor");
+      expect(report).toContain("Readiness: DIAGNOSTIC_ONLY");
+      expect(report).toContain("synthetic_events");
+      expect(report).not.toContain(cwd);
+    } finally {
+      await rm(out, { recursive: true, force: true });
+    }
+  });
+
   test("validate-schema compiles schemas and target packs", async () => {
     const result = await execa("npm", ["run", "benchmark", "--", "validate-schema"], { cwd });
     expect(result.stdout).toContain("schemas valid");
@@ -67,11 +127,51 @@ describe("benchmark CLI", () => {
       await execa("npm", ["run", "benchmark", "--", "profile", "--target", "minimal-directory-agent", "--out", out], { cwd });
 
       await expect(stat(path.join(out, "profile-evidence.json"))).resolves.toBeTruthy();
+      const evidence = JSON.parse(await readFile(path.join(out, "profile-evidence.json"), "utf8"));
       const contract = JSON.parse(await readFile(path.join(out, "contract-model.json"), "utf8"));
       expect(contract.targetId).toBe("minimal-directory-agent");
       expect(contract.contractHash).toMatch(/^sha256:/);
+      expect(contract.root).toBe("target://root");
+      expect(evidence.root).toBe("target://root");
+      expect(evidence.scannedFiles.every((file: { excerpt?: string }) => file.excerpt === undefined)).toBe(true);
+      expect(JSON.stringify({ contract, evidence })).not.toContain(cwd);
     } finally {
       await rm(out, { recursive: true, force: true });
+    }
+  });
+
+  test("profile target-root override keeps the portable contract identity stable across isolated copies", async () => {
+    const baselineRoot = await tmp("awb-target-baseline-");
+    const candidateRoot = await tmp("awb-target-candidate-");
+    const baselineOut = await tmp("awb-profile-baseline-");
+    const candidateOut = await tmp("awb-profile-candidate-");
+    const fixtureRoot = path.join(cwd, "fixtures", "repos", "minimal-directory-agent");
+    try {
+      await cp(fixtureRoot, baselineRoot, { recursive: true });
+      await cp(fixtureRoot, candidateRoot, { recursive: true });
+      await execa(
+        "npm",
+        ["run", "benchmark", "--", "profile", "--target", "minimal-directory-agent", "--target-root", baselineRoot, "--out", baselineOut],
+        { cwd }
+      );
+      await execa(
+        "npm",
+        ["run", "benchmark", "--", "profile", "--target", "minimal-directory-agent", "--target-root", candidateRoot, "--out", candidateOut],
+        { cwd }
+      );
+
+      const baseline = JSON.parse(await readFile(path.join(baselineOut, "contract-model.json"), "utf8"));
+      const candidate = JSON.parse(await readFile(path.join(candidateOut, "contract-model.json"), "utf8"));
+      expect(baseline.contractHash).toBe(candidate.contractHash);
+      expect(baseline.root).toBe("target://root");
+      expect(candidate.root).toBe("target://root");
+      expect(JSON.stringify({ baseline, candidate })).not.toContain(baselineRoot);
+      expect(JSON.stringify({ baseline, candidate })).not.toContain(candidateRoot);
+    } finally {
+      await rm(baselineRoot, { recursive: true, force: true });
+      await rm(candidateRoot, { recursive: true, force: true });
+      await rm(baselineOut, { recursive: true, force: true });
+      await rm(candidateOut, { recursive: true, force: true });
     }
   });
 
@@ -168,18 +268,22 @@ describe("benchmark CLI", () => {
     const planDir = await tmp("awb-ai-plan-");
     try {
       const planPath = path.join(planDir, "plan.json");
+      const planSecret = ["sk", "-proj-", "materialize-secret"].join("");
+      const planEmail = ["planner", "@", "example", ".com"].join("");
+      const planPathValue = ["/", "opt", "/", "workflow", "/", "private.md"].join("");
+      const targetSourceExcerpt = "Owns triage, orchestration, gates, and final DoD.";
       await writeFile(
         planPath,
         JSON.stringify(
           {
             planner: "fixture",
             model: "fixture-model",
-            targetUnderstanding: "The workflow has explicit owner handoff and artifact gates.",
+            targetUnderstanding: `The workflow has explicit owner handoff and artifact gates. ${targetSourceExcerpt} ${planSecret} ${planEmail} ${planPathValue}`,
             cases: [
               {
                 id: "owner-artifact-gate",
                 title: "Owner writes declared artifact before PASS gate",
-                riskFocus: "owner routing and artifact/gate ordering",
+                riskFocus: `owner routing and artifact/gate ordering ${targetSourceExcerpt} ${planSecret}`,
                 operationSequence: ["invoke primary role", "verify owner handoff", "verify artifact write"],
                 oracleIds: ["oracle-ai-owner-artifact-gate"],
                 expectedHardFailures: [],
@@ -226,6 +330,14 @@ describe("benchmark CLI", () => {
       expect(testCase).toContain("Risk focus: owner routing and artifact/gate ordering");
       expect(testCase).toContain("coverageTags");
       expect(testCase).toContain("mode: ai-first");
+      const persistedArtifacts = `${JSON.stringify(manifest)}\n${testCase}`;
+      expect(persistedArtifacts).not.toContain(planSecret);
+      expect(persistedArtifacts).not.toContain(planEmail);
+      expect(persistedArtifacts).not.toContain(planPathValue);
+      expect(persistedArtifacts).not.toContain(targetSourceExcerpt);
+      expect(persistedArtifacts).toContain("<redacted>");
+      expect(persistedArtifacts).toContain("<email>");
+      expect(persistedArtifacts).toContain("<absolute-path>");
     } finally {
       await rm(out, { recursive: true, force: true });
       await rm(planDir, { recursive: true, force: true });
@@ -265,10 +377,91 @@ describe("benchmark CLI", () => {
       expect(validation.coverageMode).toBe("smoke");
       expect(validation.recommendedCaseCount).toBeGreaterThan(8);
       expect(validation.invalidBindings).toEqual([]);
-      await expect(stat(path.join(out, "ai-case-planner-prompt.txt"))).resolves.toBeTruthy();
-      await expect(stat(path.join(out, "ai-case-planner-response.json"))).resolves.toBeTruthy();
+      const persistedPrompt = await readFile(path.join(out, "ai-case-planner-prompt.txt"), "utf8");
+      const persistedResponse = JSON.parse(await readFile(path.join(out, "ai-case-planner-response.json"), "utf8"));
+      expect(persistedPrompt).not.toContain("Owns triage and definition of done");
+      expect(persistedResponse).toMatchObject({
+        contentRedacted: true,
+        contentHash: expect.stringMatching(/^sha256:/),
+        planner: "fixture"
+      });
     } finally {
       await rm(out, { recursive: true, force: true });
+    }
+  });
+
+  test("plan-cases redacts secrets, identity, local paths, and verbatim source excerpts returned by a live planner", async () => {
+    const out = await tmp("awb-plan-private-");
+    const fakeRoot = await tmp("awb-plan-runner-");
+    try {
+      const fakeCodex = path.join(fakeRoot, "codex");
+      const planSecret = ["sk", "-proj-", "planner-private-value"].join("");
+      const planEmail = ["planner", "@", "example", ".com"].join("");
+      const planPathValue = ["/", "Users", "/", "example", "/", "private", "/", "source.md"].join("");
+      const sourceExcerpt = ["Owns triage, orchestration,", " gates, and final DoD."].join("");
+      const privateText = [planSecret, planEmail, planPathValue, sourceExcerpt].join(" ");
+      const fakePlan = {
+        targetUnderstanding: `Target summary ${privateText}`,
+        workflowUnderstanding: {
+          goal: `Goal ${privateText}`,
+          stages: [`stage ${privateText}`],
+          criticalInvariants: [`invariant ${privateText}`],
+          scoringSignals: [`signal ${privateText}`]
+        },
+        cases: [
+          {
+            id: "private-plan-output",
+            title: `Title ${privateText}`,
+            riskFocus: `Risk ${privateText}`,
+            operationSequence: [`operate ${privateText}`],
+            oracleIds: ["oracle-private-plan"],
+            expectedHardFailures: [],
+            coverageTags: ["dimension:entrypoint"],
+            scoringRubric: [`rubric ${privateText}`],
+            bindings: { primaryRole: "orchestrator-agent" }
+          }
+        ]
+      };
+      await writeFile(
+        fakeCodex,
+        [
+          "#!/usr/bin/env node",
+          "const fs = require('fs');",
+          "const outIndex = process.argv.indexOf('-o');",
+          `fs.writeFileSync(process.argv[outIndex + 1], ${JSON.stringify(JSON.stringify(fakePlan))});`
+        ].join("\n"),
+        { mode: 0o755 }
+      );
+
+      await execa(
+        "npm",
+        [
+          "run",
+          "benchmark",
+          "--",
+          "plan-cases",
+          "--target",
+          "minimal-directory-agent",
+          "--runner",
+          "codex",
+          "--max-cases",
+          "1",
+          "--out",
+          out
+        ],
+        { cwd, env: { AWB_CODEX_EXECUTABLE: fakeCodex } }
+      );
+
+      const persistedPlan = await readFile(path.join(out, "ai-case-plan.json"), "utf8");
+      for (const privateValue of [planSecret, planEmail, planPathValue, sourceExcerpt]) {
+        expect(persistedPlan).not.toContain(privateValue);
+      }
+      expect(persistedPlan).toContain("<redacted>");
+      expect(persistedPlan).toContain("<email>");
+      expect(persistedPlan).toContain("<absolute-path>");
+    } finally {
+      await rm(out, { recursive: true, force: true });
+      await rm(fakeRoot, { recursive: true, force: true });
     }
   });
 
@@ -399,6 +592,49 @@ describe("benchmark CLI", () => {
       expect(scoreJson.benchmarkEvidenceDecision).toBe("DIAGNOSTIC_ONLY");
       expect(scoreJson.releaseDecision).toBe("DIAGNOSTIC_ONLY");
       expect(scoreJson.scope).toContain("collected benchmark evidence only");
+    } finally {
+      await rm(out, { recursive: true, force: true });
+    }
+  });
+
+  test("run writes portable, integrity-bound provenance with an honest simulated evidence boundary", async () => {
+    const out = await tmp("awb-provenance-");
+    try {
+      await execa(
+        "npm",
+        ["run", "benchmark", "--", "run", "--target", "minimal-directory-agent", "--suite", "smoke", "--runner", "simulated", "--out", out],
+        { cwd }
+      );
+
+      const provenance = JSON.parse(await readFile(path.join(out, "provenance.json"), "utf8"));
+      await expectValidSchema("schemas/provenance.schema.json", provenance);
+      expect(provenance.product).toBe("Agent Workflow Bench");
+      expect(provenance.subject).toMatchObject({
+        targetId: "minimal-directory-agent",
+        contractHash: expect.stringMatching(/^sha256:/),
+        contentHash: expect.stringMatching(/^sha256:/)
+      });
+      expect(provenance.conditions).toMatchObject({
+        suite: "smoke",
+        caseSetHash: expect.stringMatching(/^sha256:/),
+        executionMode: "simulated",
+        evidenceKind: "simulated",
+        observationLevel: "synthetic_events"
+      });
+      expect(provenance.integrity.artifacts).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            ref: "suite-result.json",
+            sha256: expect.stringMatching(/^sha256:/)
+          })
+        ])
+      );
+
+      const runtime = JSON.parse(await readFile(path.join(out, "runtime-manifest.json"), "utf8"));
+      const persisted = JSON.stringify({ provenance, runtime });
+      expect(persisted).not.toContain(cwd);
+      expect(persisted).not.toContain(out);
+      expect(persisted).not.toMatch(/\/(?:Users|home)\/[^/]+/);
     } finally {
       await rm(out, { recursive: true, force: true });
     }
@@ -619,9 +855,12 @@ describe("benchmark CLI", () => {
       expect(summary.suite).toBe("full-regression");
       expect(summary.harness.plan.status).toBeDefined();
       expect(summary.harness.plan.invalidBindingCount).toBe(0);
-      expect(summary.harness.artifacts.harnessValidation).toBe(path.join(out, "run", "harness-validation.json"));
-      expect(summary.artifacts.report).toBe(path.join(out, "run", "report.md"));
-      expect(summary.artifacts.recommendations).toBe(path.join(out, "run", "recommendations.json"));
+      expect(summary.harness.artifacts.harnessValidation).toBe("run/harness-validation.json");
+      expect(summary.artifacts.report).toBe("run/report.md");
+      expect(summary.artifacts.recommendations).toBe("run/recommendations.json");
+      expect(summary.artifacts.provenance).toBe("run/provenance.json");
+      expect(JSON.stringify(summary)).not.toContain(out);
+      await expect(stat(path.join(out, summary.artifacts.provenance))).resolves.toBeTruthy();
       await expect(stat(path.join(out, "run", "harness-validation.json"))).resolves.toBeTruthy();
     } finally {
       await rm(out, { recursive: true, force: true });
