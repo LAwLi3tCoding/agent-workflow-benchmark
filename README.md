@@ -541,3 +541,8 @@ Repository layout:
 - [Evaluation methodology](docs/ai-workflow-evaluation-methodology.md)
 - [简体中文 README](README.zh-CN.md)
 - [日本語 README](README.ja.md)
+
+## License
+
+Agent Workflow Bench is open source software licensed under the
+[MIT License](LICENSE).

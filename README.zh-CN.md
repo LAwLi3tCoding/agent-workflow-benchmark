@@ -514,3 +514,7 @@ runtime。
 - [评测方法论](docs/ai-workflow-evaluation-methodology.md)
 - [English README](README.md)
 - [日本語 README](README.ja.md)
+
+## 开源许可
+
+Agent Workflow Bench 是采用 [MIT License](LICENSE) 发布的开源软件。

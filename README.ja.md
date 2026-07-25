@@ -533,3 +533,8 @@ Runtime behavior、schema、config、fixture に影響する変更では bundled
 - [Evaluation methodology](docs/ai-workflow-evaluation-methodology.md)
 - [English README](README.md)
 - [简体中文 README](README.zh-CN.md)
+
+## ライセンス
+
+Agent Workflow Bench は [MIT License](LICENSE) の下で公開されている
+オープンソースソフトウェアです。
