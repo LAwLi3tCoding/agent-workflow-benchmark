@@ -48,16 +48,65 @@ Reference URLs:
    `report.md`, `suite-result.json`, `harness-validation.json`, and `evaluation-summary.json` separate runner/simulated outcomes from harness health. A target can have no observed P0 failures in the collected benchmark evidence while the harness still reports planning warnings; conversely, a run can be BLOCKed while the harness remains PASS if it produced valid cases, scores, and repair suggestions.
 
 11. **Compare matched baseline and candidate runs before gate.**
-   Baseline and candidate evidence is gateable only when target id, suite, runner mode, adapter trust level, and `contractHash` are matched. `awb compare` must surface score regressions, new hard failures, telemetry gaps, and comparability caveats before `awb gate` evaluates the result.
+   Baseline and candidate evidence is gateable only when target id, suite, runner mode, adapter trust level, `contractHash`, and gate-policy binding are matched. `awb compare` must surface score regressions, new hard failures, telemetry gaps, policy mismatches, and comparability caveats before `awb gate` evaluates the result.
 
 12. **Gate with explicit terminal decisions.**
    `awb gate` uses three terminal decisions: `PASS`, `DIAGNOSTIC_ONLY`, and `BLOCK`. Exit codes are `0` for PASS, `2` for DIAGNOSTIC_ONLY, and `1` for BLOCK or tool/runtime failure. PASS requires a qualified independent live `workflow_trace`; simulated evidence, built-in live `contract-summary` adapters, and signed traces without a valid Observer qualification artifact are diagnostic-only.
 
-13. **Persist P0 cases as local reusable regression evidence.**
+13. **Calibrate score and gate policy without changing evidence truth.**
+   `awb gate-policy calibrate` evaluates bounded dimension-weight, telemetry-threshold, budget-threshold, and classification-delta candidates from development/calibration data, then `awb gate-policy validate-holdout` validates the frozen policy on holdout. No policy is emitted unless a candidate preserves P0 recall `1` and false PASS `0`. Public synthetic support is descriptive and does not by itself prove superior telemetry or budget settings. Calibration never changes whether Observer evidence is valid, and it cannot let aggregate scores or AI judgment override deterministic hard failures.
+
+14. **Persist P0 cases as local reusable regression evidence.**
    Every P0 hard failure must be recorded as structured local evidence, not only rendered in a report. AWB writes `p0-cases.json`, `p0-cases.md`, and can append durable JSONL records with `--p0-case-log`. These records identify the target, run, case, contract hash, failure code, evidence events, and recommended action so previously evaluated agent workflows can be retested against their most important failures.
 
-14. **Use reverse validation to test the benchmark itself.**
+15. **Use reverse validation to test the benchmark itself.**
    Overlay-only mutation reverse validation checks configured simulated mutations against the benchmark scorer and oracle fixtures without mutating the real target source. If a mutation survives, repair the benchmark oracle, fixture, observer, target pack, or scorer before trusting the suite. Live Codex/Claude runner behavior must be validated separately through live execution artifacts.
+
+## Gate Policy Calibration
+
+Use the Stage 6 calibration workflow to produce a versioned policy and holdout report:
+
+```bash
+awb gate-policy calibrate \
+  --corpus fixtures/gold-corpus/v1/manifest.yaml \
+  --policy-version 1.0.0 \
+  --out reports/gate-policy/v1/fit
+
+awb gate-policy validate-holdout \
+  --corpus fixtures/gold-corpus/v1/manifest.yaml \
+  --policy reports/gate-policy/v1/fit/gate-policy.json \
+  --calibration-report reports/gate-policy/v1/fit/calibration-report.json \
+  --out reports/gate-policy/v1/holdout
+```
+
+`calibrate` exits `2` with `PENDING_HOLDOUT`; `validate-holdout` exits `0` for PASS and
+`1` for FAIL. The committed public synthetic reports are:
+
+- `fixtures/calibration/v1/fit/gate-policy.json`
+- `fixtures/calibration/v1/fit/calibration-report.json`
+- `fixtures/calibration/v1/fit/calibration-report.md`
+- `fixtures/calibration/v1/holdout/calibration-report.json`
+- `fixtures/calibration/v1/holdout/calibration-report.md`
+
+These artifacts are harness-diagnostic and `releaseEligible: false`. They demonstrate that
+the policy machinery, split boundary, schemas, and holdout checks work on public synthetic
+data; they do not establish production criterion validity.
+
+Holdout stability is labeled `deterministic_harness_replay`: every repeat reruns the full
+synthetic trajectory materialization, detector, and scoring path. It is not a substitute
+for live reliability evidence.
+
+For historical recomputation, pass the same policy to comparison and gate:
+
+```bash
+awb compare --baseline <baseline-run> --candidate <candidate-run> --gate-policy <gate-policy.json> --out <comparison-dir>
+awb gate --comparison <comparison-dir>/comparison-result.json --gate-policy <gate-policy.json> --out <gate-dir>
+```
+
+Missing or mismatched `policyVersion`, `rulesHash`, or `policyHash` makes the result
+incomparable. A policy version can change scoring thresholds and classification deltas, but
+hard failures, invalid provenance, evidence absence, Observer qualification failure, and
+safety violations still dominate all scores and AI judgments.
 
 ## Trusted Workflow-Trace Admission
 
@@ -103,8 +152,9 @@ Admission is fail-closed:
 - trace evidence must be redacted before signing;
 - the trace, runtime manifest, provenance, comparison snapshot, and gate recomputation are all
   integrity-bound;
-- `compare` and `gate` must receive the same external public-key trust anchor. Recomputing
-  editable JSON hashes cannot repair an invalid observer signature.
+- `compare` and `gate` must receive the same external public-key trust anchor and compatible
+  gate-policy binding. Recomputing editable JSON hashes cannot repair an invalid observer
+  signature or a policy mismatch.
 
 This attestation proves who signed the collected trace and that the evidence was not changed
 after signing. It does not by itself prove that the observer implementation saw every relevant

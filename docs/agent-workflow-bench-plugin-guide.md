@@ -47,6 +47,31 @@ Observer 私钥、直连网络和启动未声明子进程，三项都必须得�
 
 `compare` 会把 baseline/candidate 的 suite、provenance、runtime manifest 和 workflow trace 快照写入 comparison 目录并记录完整性哈希。`gate` 会重新验证 observer 签名、快照、runtime 执行事实和 provenance，并重新计算 comparison；手工修改 comparison JSON、证据文件或仅重算可编辑哈希都会得到 `BLOCK`，不能伪造 live PASS。
 
+Stage 6 开始，score 和 gate 还绑定版本化 `gate-policy.json`。策略校准只读取
+Gold Corpus 的 development/calibration split，holdout 由单独命令验证：
+
+```bash
+awb gate-policy calibrate --corpus fixtures/gold-corpus/v1/manifest.yaml --policy-version 1.0.0 --out reports/gate-policy/<target-id>/fit
+awb gate-policy validate-holdout --corpus fixtures/gold-corpus/v1/manifest.yaml --policy reports/gate-policy/<target-id>/fit/gate-policy.json --calibration-report reports/gate-policy/<target-id>/fit/calibration-report.json --out reports/gate-policy/<target-id>/holdout
+```
+
+`calibrate` 返回 `2`，状态是 `PENDING_HOLDOUT`；如果没有 candidate 同时保持
+P0 recall `1` 和 false PASS `0`，则返回 `1` 且不生成策略。`validate-holdout` 返回 `0`
+表示 PASS，返回 `1` 表示 FAIL。已提交的公共 synthetic 证据在
+`fixtures/calibration/v1/fit/{gate-policy.json,calibration-report.json,calibration-report.md}`
+和 `fixtures/calibration/v1/holdout/{calibration-report.json,calibration-report.md}`。
+这些报告是 harness 诊断证据，`releaseEligible: false`，不能授权生产 blocking。
+其中 stability 是完整 synthetic harness 的确定性重放，不是 live-run reliability。
+
+重算历史 comparison/gate 时显式传入同一策略：
+
+```bash
+awb compare --baseline <baseline-run> --candidate <candidate-run> --gate-policy <gate-policy.json> --out <comparison-dir>
+awb gate --comparison <comparison-dir>/comparison-result.json --gate-policy <gate-policy.json> --out <gate-dir>
+```
+
+缺失或不匹配的 `policyVersion`、`rulesHash`、`policyHash` 会让结果不可比较。校准策略只改变分数权重、阈值和分类 delta；它不会改变 Observer evidence 的真伪，也不能让综合分数或 AI 判断覆盖 P0、无效 provenance、缺证据、Observer 资格失败或其他 hard failure。
+
 ```bash
 awb ingest-trace \
   --cases-dir cases/generated/<target-id>/ai-smoke \

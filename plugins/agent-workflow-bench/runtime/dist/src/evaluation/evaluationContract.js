@@ -32,6 +32,9 @@ export function getReliabilityPolicy() {
 export function getCriterionValidityPolicy() {
     return getEvaluationContract().criterionValidityPolicy;
 }
+export function getGatePolicyContract() {
+    return getEvaluationContract().gatePolicy;
+}
 export function getHardFailureDefinition(code) {
     return getEvaluationContract().hardFailures.find((item) => item.code === code && item.status === "implemented");
 }
@@ -84,6 +87,19 @@ function assertEvaluationContract(contract) {
         criterion.overallAgreementMinimum !== 0.85 ||
         criterion.cohenKappaMinimum !== 0.8) {
         throw new Error("Canonical evaluation contract criterion validity policy is invalid or weakens frozen thresholds.");
+    }
+    const gatePolicy = contract.gatePolicy;
+    if (!gatePolicy ||
+        gatePolicy.policyId !== "awb-gate-policy" ||
+        gatePolicy.canonicalRef !== "configs/evaluation/gate-policy.json" ||
+        gatePolicy.schemaRef !== "schemas/gate-policy.schema.json" ||
+        gatePolicy.calibrationReportSchemaRef !==
+            "schemas/calibration-report.schema.json" ||
+        JSON.stringify(gatePolicy.fitSplits) !==
+            JSON.stringify(["development", "calibration"]) ||
+        gatePolicy.holdoutSplit !== "holdout" ||
+        gatePolicy.publicFixtureReleaseEligible !== false) {
+        throw new Error("Canonical evaluation contract gate-policy boundary is missing or unsafe.");
     }
     for (const [label, ids] of [
         ["event", contract.events.map((item) => item.id)],

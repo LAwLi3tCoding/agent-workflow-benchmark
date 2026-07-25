@@ -267,6 +267,41 @@ awb debug reverse-validate \
 Mutation overlay は scorer と oracle を検証します。Target Source は変更せず、
 live runner の挙動を証明するものでもありません。
 
+### Gate Policy の校正
+
+Gold Corpus の development/calibration データだけで versioned policy を fitting します。
+
+```bash
+awb gate-policy calibrate \
+  --corpus fixtures/gold-corpus/v1/manifest.yaml \
+  --policy-version 1.0.0 \
+  --out reports/gate-policy/v1/fit
+```
+
+このコマンドは `gate-policy.json`、`calibration-report.json`、
+`calibration-report.md` を書き、終了コード `2` を返します。これは
+`PENDING_HOLDOUT` であり、holdout label を fit に使っていないためです。P0 recall
+`1` と false PASS `0` を維持する candidate がなければ、policy を出力せず終了
+コード `1` を返します。凍結した policy は別に unseen holdout で検証します。
+
+```bash
+awb gate-policy validate-holdout \
+  --corpus fixtures/gold-corpus/v1/manifest.yaml \
+  --policy reports/gate-policy/v1/fit/gate-policy.json \
+  --calibration-report reports/gate-policy/v1/fit/calibration-report.json \
+  --out reports/gate-policy/v1/holdout
+```
+
+holdout 検証は `PASS` なら `0`、`FAIL` なら `1` を返します。Stability は synthetic
+harness 全体の deterministic replay であり、live-run reliability ではありません。
+Public Gold Corpus の PASS は harness diagnostic であり、`releaseEligible: false` のままです。実際の
+criterion validity、human labels、qualified live trace、本番 blocking authorization
+は別途必要です。詳しくは
+[Gate Policy Calibration](docs/gate-policy-calibration.md) を参照してください。
+
+Committed public synthetic evidence は `fixtures/calibration/v1/fit` と
+`fixtures/calibration/v1/holdout` にあります。
+
 ## コマンドと成果物
 
 | Command | 目的 |
@@ -281,6 +316,7 @@ live runner の挙動を証明するものでもありません。
 | `ingest-trace` | 独立署名済み live trace の検証と採点 |
 | `compare` | 揃った baseline/candidate 証拠を比較 |
 | `gate` | 決定論的 CI release policy の適用 |
+| `gate-policy ...` | Versioned score/gate policy の校正または holdout 検証 |
 | `score` / `report` | 既存 Run の確認・描画 |
 | `criterion-validity ...` | 盲検化した外部研究 package の生成・独立ラベル分析 |
 | `debug ...` | Benchmark Harness の逆検証と診断 |
@@ -296,9 +332,14 @@ live runner の挙動を証明するものでもありません。
 | `workflow-trace.json` | 独立署名済みの正規化 live trace |
 | `comparison-result.json` | 完全性に結び付いたペア比較 |
 | `gate-result.json` | 決定論的リリース判定 |
+| `gate-policy.json` / `calibration-report.*` | Versioned policy、fit evidence、holdout diagnostics |
 | `report.md` / `validity-report.*` | 人間向け診断と外部妥当性の証拠 |
 
 完全なオプションは `awb <command> --help` で確認できます。
+
+`compare` と `gate` は `--gate-policy <path>` を受け取ります。履歴結果の再計算では
+同じ policy を使ってください。policy version、rules hash、policy hash が欠落または
+不一致の場合、AWB は結果を比較不能として扱います。
 
 ## セキュリティとプライバシー
 

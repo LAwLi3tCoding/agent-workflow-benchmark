@@ -8,6 +8,7 @@
     "targetId",
     "suite",
     "runId",
+    "gatePolicy",
     "caseResults",
     "dimensionScores",
     "recommendations",
@@ -25,6 +26,7 @@
     "targetId": { "type": "string" },
     "suite": { "type": "string" },
     "runId": { "type": "string" },
+    "gatePolicy": { "$ref": "#/$defs/gatePolicyBinding" },
     "caseResults": {
       "type": "array",
       "items": {
@@ -205,6 +207,28 @@
               "why": { "type": "string" }
             }
           }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "gatePolicyBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["policyId", "policyVersion", "policyHash", "rulesHash"],
+      "properties": {
+        "policyId": { "const": "awb-gate-policy" },
+        "policyVersion": {
+          "type": "string",
+          "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(?:-[0-9A-Za-z.-]+)?(?:\\+[0-9A-Za-z.-]+)?$"
+        },
+        "policyHash": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "rulesHash": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
         }
       }
     }

@@ -1,0 +1,95 @@
+{
+  "schemaVersion": "0.1.0",
+  "artifactType": "gate_policy",
+  "product": "Agent Workflow Bench",
+  "policyId": "awb-gate-policy",
+  "policyVersion": "1.0.0",
+  "rulesHash": "sha256:a58f969de636f05f318fa292e2957b0c014e80856419564421e1e5089a199c19",
+  "status": "CALIBRATED",
+  "hardFailurePrecedence": true,
+  "derivedFrom": {
+    "goldCorpus": {
+      "corpusId": "awb-gold-corpus",
+      "corpusVersion": "1.0.0",
+      "corpusHash": "sha256:bbc06437165d6375304f2d8f15041b0d1c66d399dd50264b03d4ee133267e797",
+      "labelsHash": "sha256:9f5d6c016f7f301c332204ee82290fcaa71d42531d9c96b41842d92e47c12eac",
+      "trajectoriesHash": "sha256:d56395eaf6e7dc0a51766ce48529a6aa0ebb24700b402fd7528c9467b4d5e603"
+    },
+    "fitSplits": [
+      "development",
+      "calibration"
+    ],
+    "splitHashes": {
+      "development": "sha256:b1776c63b3f579143708a432e554bfbb2604a054d791c734c9e70f58c40eac55",
+      "calibration": "sha256:bb23e29975811e475e8088b2fc67986a4165c54867ceeea2bd60f6dfadefbac7"
+    },
+    "sampleCount": 24,
+    "sampleHash": "sha256:b088ef574af3d87b8fcbdd72fa4c10e3d992ad4d50490245d3af205377591ae1"
+  },
+  "rules": {
+    "dimensionWeights": {
+      "artifact": 1,
+      "contract": 1,
+      "efficiency": 1,
+      "gate": 1,
+      "join": 1,
+      "ownership": 1,
+      "routing": 1,
+      "runner": 1,
+      "sideEffect": 1,
+      "state": 1,
+      "telemetry": 1
+    },
+    "score": {
+      "casePassMinimum": 85,
+      "caseConditionalMinimum": 70,
+      "suiteApproveMinimum": 85,
+      "suiteConditionalMinimum": 70,
+      "p0ScoreCap": 49,
+      "p1ScoreCap": 84
+    },
+    "telemetry": {
+      "minimumCompleteness": 0.75,
+      "truePassRequires": {
+        "evidenceKind": "live",
+        "observationLevel": "workflow_trace",
+        "observerQualification": "valid"
+      },
+      "diagnosticOnlyObservationLevels": [
+        "capability_only",
+        "contract_summary",
+        "synthetic_events"
+      ],
+      "blockingFailureCodes": [
+        "ARTIFACT_PATH_DRIFT",
+        "GATE_FALSE_PASS",
+        "OBSERVER_EVENT_FORGED",
+        "PRODUCTION_SIDE_EFFECT",
+        "PROVENANCE_INVALID",
+        "SECRET_LEAK",
+        "TARGET_JOIN_MISSING",
+        "TARGET_OWNER_BYPASS",
+        "TARGET_ROUTE_FORBIDDEN",
+        "TRACE_EVENT_MISSING",
+        "TRACE_EVENT_ORDER_INVALID",
+        "UNREGISTERED_HARD_FAILURE"
+      ]
+    },
+    "budget": {
+      "maximumTokenBudgetRatio": 1,
+      "maximumWallClockBudgetRatio": 1,
+      "wastedRatioWarning": 0.2,
+      "exhaustionFailureCodes": [
+        "TOKEN_LEDGER_MISSING"
+      ]
+    },
+    "classification": {
+      "minimumMeaningfulScoreDelta": 1
+    }
+  },
+  "policyHash": "sha256:280378f348874572dc1eb39106a2e63ff8768c0581e608fe1ca37305a2e16dfc",
+  "integrity": {
+    "status": "VERIFIED_AT_WRITE",
+    "contentHash": "sha256:6a12783b86edd07c6ceb3485ea09a46a68be1421421c1528a02e4c7d518ed66c"
+  }
+}

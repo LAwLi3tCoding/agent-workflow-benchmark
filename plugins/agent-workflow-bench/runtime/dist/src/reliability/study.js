@@ -68,10 +68,15 @@ async function loadReliabilitySample(sampleId, baselineInput, candidateInput, se
             candidateProvenance.conditions.seed !== seed) {
             return missingSample(sampleId, seed, "SEED_MISMATCH", context);
         }
-        const gate = evaluateGate(comparison, {
-            status: "VALID",
-            reasons: []
-        });
+        const gate = trustOptions.gatePolicy
+            ? evaluateGate(comparison, {
+                status: "VALID",
+                reasons: []
+            }, trustOptions.gatePolicy, gatePolicyEvidenceRef(trustOptions.gatePolicy))
+            : evaluateGate(comparison, {
+                status: "VALID",
+                reasons: []
+            });
         const baselineDimensions = new Map(baselineSuite.dimensionScores.map((dimension) => [
             dimension.dimension,
             dimension.score
@@ -265,4 +270,7 @@ function isMissingFile(error) {
     return (error instanceof Error &&
         "code" in error &&
         error.code === "ENOENT");
+}
+function gatePolicyEvidenceRef(policy) {
+    return `${policy.policyId}@${policy.policyVersion}#${policy.policyHash}`;
 }

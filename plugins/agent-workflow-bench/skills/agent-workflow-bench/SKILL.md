@@ -42,6 +42,17 @@ awb criterion-validity analyze --study <study.yaml> --observations <external-val
 
 The observation manifest references content-hashed comparison bundles. `analyze` revalidates both signed traces, Observer qualification, comparison integrity, and study bindings with explicit public keys; self-asserted trust fields cannot produce PASS. The public `fixtures/external-validity/v1/study.yaml` is only an 8-item privacy-safe template. A real PASS requires 120 reviewed external items: directory, CLI, and hybrid targets across Codex and Claude; known-improvement, no-change, ordinary-regression, and P0-regression strata; qualified independent live `workflow_trace` evidence; two independent blinded raters; adjudication; P0 recall 1.0; false PASS 0; overall agreement at least 0.85; and Cohen kappa at least 0.8. Missing labels, owner reviews, qualified traces, adjudication, or sample coverage keep criterion validity diagnostic-only.
 
+For calibrated gate-policy diagnostics, fit on development/calibration only, then validate the frozen policy on holdout:
+
+```bash
+awb gate-policy calibrate --corpus fixtures/gold-corpus/v1/manifest.yaml --policy-version 1.0.0 --out reports/gate-policy/v1/fit
+awb gate-policy validate-holdout --corpus fixtures/gold-corpus/v1/manifest.yaml --policy reports/gate-policy/v1/fit/gate-policy.json --calibration-report reports/gate-policy/v1/fit/calibration-report.json --out reports/gate-policy/v1/holdout
+```
+
+`calibrate` exits `2` with `PENDING_HOLDOUT`; it exits `1` without a policy when no candidate preserves P0 recall `1` and false PASS `0`. `validate-holdout` exits `0` for PASS and `1` for FAIL. Reports bind policy version, rules hash, policy hash, split hashes, dimension evidence, paired effects, telemetry/budget threshold support, and candidate selection. Holdout stability is deterministic full-harness replay, not live-run reliability. Public Gold Corpus PASS is harness-diagnostic with `releaseEligible: false`; it cannot authorize production blocking or replace real criterion-validity labels.
+
+Committed public synthetic evidence lives under `fixtures/calibration/v1/fit` and `fixtures/calibration/v1/holdout`; use it for harness/schema/policy regression checks only.
+
 Qualify the reference Observer without changing any trust root:
 
 ```bash
@@ -55,6 +66,8 @@ awb ingest-trace --cases-dir <cases-dir> --suite <suite> --trace <workflow-trace
 awb compare --baseline <baseline-run> --candidate <candidate-run> --trusted-observer-key <public.pem> --trusted-qualification-key <authority-public.pem> --out <comparison-dir>
 awb gate --comparison <comparison-dir>/comparison-result.json --trusted-observer-key <public.pem> --trusted-qualification-key <authority-public.pem> --out <gate-dir>
 ```
+
+Use `--gate-policy <gate-policy.json>` on both `compare` and `gate` when recomputing older artifacts. Missing or mismatched policy version, rules hash, or policy hash is incomparable. Hard failures still dominate calibrated scores.
 
 Both private signing keys must remain outside the evaluated Runner, repository, artifacts, and logs, and the Observer and qualification authority must use different key pairs. The bundled reference Observer currently requires Darwin plus `/usr/bin/sandbox-exec`; it fails closed elsewhere. Its deny-default boundary actively proves signing-key reads, direct network, and nested process execution are denied with `EPERM`; Runner HOME/TMPDIR changes stay observable, and the signed trace output must be outside every Runner workspace. The qualification suite binds known-good/P0/blind-spot/repeat evidence to the exact Observer implementation, Contract, case set, canonical evaluation-contract content, and Schemas. AWB never enrolls either key automatically.
 

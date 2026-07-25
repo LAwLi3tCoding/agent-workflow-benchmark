@@ -29,7 +29,20 @@ awb criterion-validity analyze --study <external-validity-study.yaml> --observat
 
 The observation manifest contains comparison-bundle references and hashes, not trusted status claims. Analysis revalidates both signed traces, Observer qualification, comparison integrity, and study bindings with the explicit public keys. The bundled public fixture is an 8-item privacy-safe template, not production validity evidence. A real external-validity PASS requires the frozen 120-item study across directory/CLI/hybrid targets, Codex/Claude runners, four design strata, owner-reviewed contracts, qualified independent live `workflow_trace` observations, two independent blinded raters, adjudication, P0 recall 1.0, false PASS 0, overall agreement at least 0.85, and Cohen kappa at least 0.8. Until then the result remains pending or diagnostic-only.
 
+For gate-policy calibration, fit on development/calibration only, then validate holdout separately:
+
+```bash
+awb gate-policy calibrate --corpus fixtures/gold-corpus/v1/manifest.yaml --policy-version 1.0.0 --out reports/gate-policy/"$ARGUMENTS"/fit
+awb gate-policy validate-holdout --corpus fixtures/gold-corpus/v1/manifest.yaml --policy reports/gate-policy/"$ARGUMENTS"/fit/gate-policy.json --calibration-report reports/gate-policy/"$ARGUMENTS"/fit/calibration-report.json --out reports/gate-policy/"$ARGUMENTS"/holdout
+```
+
+`calibrate` exits `2` with `PENDING_HOLDOUT`; it exits `1` without a policy when no candidate preserves P0 recall `1` and false PASS `0`. `validate-holdout` exits `0` for PASS and `1` for FAIL. Holdout stability is deterministic full-harness replay, not live-run reliability. Public Gold Corpus PASS is harness-diagnostic with `releaseEligible: false`; it is not production criterion-validity evidence and cannot authorize blocking gates.
+
+Committed public synthetic evidence lives under `fixtures/calibration/v1/fit` and `fixtures/calibration/v1/holdout`; use it for harness/schema/policy regression checks only.
+
 Gate exit codes are `0` for PASS, `2` for DIAGNOSTIC_ONLY, and `1` for BLOCK or tool/runtime failure. PASS requires a qualified independent live `workflow_trace`. Simulated runs, current live `contract-summary` adapters, and signed traces without a valid authority-signed qualification artifact are diagnostic-only.
+
+Use `--gate-policy <gate-policy.json>` on `compare` and `gate` when recomputing previous artifacts. Missing or mismatched policy version, rules hash, or policy hash is incomparable. Deterministic hard failures continue to dominate calibrated scores.
 
 Qualify the reference Observer first. This writes evidence and an integrity-bound artifact but never changes a trust root:
 

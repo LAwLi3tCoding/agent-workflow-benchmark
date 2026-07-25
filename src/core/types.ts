@@ -404,6 +404,7 @@ export interface SuiteResult {
   targetId: string;
   suite: string;
   runId: string;
+  gatePolicy: import("../calibration/policyArtifact.js").GatePolicyBinding;
   caseResults: Array<{
     caseId: string;
     verdict: CaseResult["verdict"];

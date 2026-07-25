@@ -33,6 +33,7 @@ import { renderReliabilityMarkdown } from "../reliability/reliability.js";
 import { runReliabilityStudy } from "../reliability/study.js";
 import { analyzeExternalValidity, analyzeExternalValidityFromComparisons, createExternalValidityLabelingPackage, renderExternalValidityMarkdown } from "../validity/externalValidity.js";
 import { loadExternalValidityHumanLabels, loadExternalValidityObservations, loadExternalValidityStudy, validateExternalValidityPackage, validateExternalValidityReport } from "../validity/io.js";
+import { assertCalibrationReportIntegrity, fitGatePolicy, loadCanonicalGatePolicy, loadGatePolicy, renderCalibrationMarkdown, validateGatePolicyHoldout } from "../calibration/gatePolicy.js";
 const program = new Command();
 program.name(CLI_NAME).description(`${PRODUCT_NAME} — ${PRODUCT_TAGLINE}`).version(AWB_VERSION);
 program
@@ -640,15 +641,20 @@ program
     .requiredOption("--candidate <dir>", "candidate run or evaluation directory")
     .option("--trusted-observer-key <path>", "trusted Ed25519 observer public key for workflow_trace evidence")
     .option("--trusted-qualification-key <path>", "trusted Ed25519 qualification authority public key")
+    .option("--gate-policy <path>", "gate-policy.json used to recompute the comparison; mismatched run policies remain incomparable")
     .requiredOption("--out <dir>")
     .action(async (options) => {
+    const policy = options.gatePolicy
+        ? loadGatePolicy(await resolveExistingPath(options.gatePolicy))
+        : loadCanonicalGatePolicy();
     const result = await createComparisonBundle(options.baseline, options.candidate, options.out, {
         trustedObserverKeyPath: options.trustedObserverKey
             ? await resolveExistingPath(options.trustedObserverKey)
             : undefined,
         trustedQualificationKeyPath: options.trustedQualificationKey
             ? await resolveExistingPath(options.trustedQualificationKey)
-            : undefined
+            : undefined,
+        gatePolicy: policy
     });
     await writeJson(path.join(options.out, "comparison-result.json"), result);
     await writeReportFile(path.join(options.out, "comparison-report.md"), renderComparisonReport(result));
@@ -660,18 +666,25 @@ program
     .requiredOption("--comparison <path>", "comparison-result.json")
     .option("--trusted-observer-key <path>", "trusted Ed25519 observer public key for workflow_trace evidence")
     .option("--trusted-qualification-key <path>", "trusted Ed25519 qualification authority public key")
+    .option("--gate-policy <path>", "gate-policy.json used to revalidate and gate this comparison")
     .requiredOption("--out <dir>")
     .action(async (options) => {
     const comparison = await readJson(options.comparison);
+    const policy = options.gatePolicy
+        ? loadGatePolicy(await resolveExistingPath(options.gatePolicy))
+        : loadCanonicalGatePolicy();
     const verification = await verifyComparisonBundle(options.comparison, comparison, {
         trustedObserverKeyPath: options.trustedObserverKey
             ? await resolveExistingPath(options.trustedObserverKey)
             : undefined,
         trustedQualificationKeyPath: options.trustedQualificationKey
             ? await resolveExistingPath(options.trustedQualificationKey)
-            : undefined
+            : undefined,
+        gatePolicy: policy
     });
-    const result = evaluateGate(comparison, verification);
+    const result = evaluateGate(comparison, verification, policy, options.gatePolicy
+        ? `${policy.policyId}@${policy.policyVersion}#${policy.policyHash}`
+        : "configs/evaluation/gate-policy.json");
     await writeJson(path.join(options.out, "gate-result.json"), result);
     await writeReportFile(path.join(options.out, "gate-report.md"), renderGateReport(result));
     console.log(`gate written: ${options.out}`);
@@ -794,6 +807,63 @@ goldCorpus
         throw new Error(`Gold Corpus validation failed with ${report.blindSpots.length} blind spot(s).`);
     }
     console.log(`gold corpus valid: corpusVersion=${corpus.manifest.corpusVersion} ${corpus.cases.length} trajectories`);
+});
+const gatePolicyCommands = program
+    .command("gate-policy")
+    .description("Calibrate a versioned evidence-first gate policy without using holdout labels during fit");
+gatePolicyCommands
+    .command("calibrate")
+    .description("Fit policy candidates from development/calibration data and emit a pending holdout report")
+    .requiredOption("--corpus <path>", "versioned Gold Corpus manifest")
+    .requiredOption("--policy-version <semver>", "semantic gate-policy version")
+    .option("--previous-policy <path>", "previous gate-policy.json; defaults to the canonical policy and enforces rule-version changes")
+    .requiredOption("--out <dir>")
+    .action(async (options) => {
+    const inputs = await resolveCalibrationInputs(options.corpus);
+    const previousPolicy = options.previousPolicy
+        ? loadGatePolicy(await resolveExistingPath(options.previousPolicy))
+        : loadCanonicalGatePolicy();
+    const fitted = await fitGatePolicy({
+        ...inputs,
+        policyVersion: options.policyVersion,
+        previousPolicy
+    });
+    await Promise.all([
+        validateArtifactAgainstSchema("gate-policy.schema.json", fitted.policy),
+        validateArtifactAgainstSchema("calibration-report.schema.json", fitted.report)
+    ]);
+    await Promise.all([
+        writeJson(path.join(options.out, "gate-policy.json"), fitted.policy),
+        writeJson(path.join(options.out, "calibration-report.json"), fitted.report),
+        writeReportFile(path.join(options.out, "calibration-report.md"), renderCalibrationMarkdown(fitted.report))
+    ]);
+    console.log(`gate policy calibrated; holdout remains unopened: ${options.out}`);
+    process.exitCode = calibrationExitCode(fitted.report);
+});
+gatePolicyCommands
+    .command("validate-holdout")
+    .description("Validate an immutable fitted policy on the separately loaded unseen holdout split")
+    .requiredOption("--corpus <path>", "same versioned Gold Corpus manifest used during fit")
+    .requiredOption("--policy <path>", "frozen gate-policy.json")
+    .requiredOption("--calibration-report <path>", "untampered PENDING_HOLDOUT calibration-report.json")
+    .requiredOption("--out <dir>")
+    .action(async (options) => {
+    const inputs = await resolveCalibrationInputs(options.corpus);
+    const policy = loadGatePolicy(await resolveExistingPath(options.policy));
+    const calibrationReport = await readJson(await resolveExistingPath(options.calibrationReport));
+    await validateArtifactAgainstSchema("calibration-report.schema.json", calibrationReport);
+    const report = await validateGatePolicyHoldout({
+        ...inputs,
+        policy,
+        calibrationReport
+    });
+    await validateArtifactAgainstSchema("calibration-report.schema.json", report);
+    await Promise.all([
+        writeJson(path.join(options.out, "calibration-report.json"), report),
+        writeReportFile(path.join(options.out, "calibration-report.md"), renderCalibrationMarkdown(report))
+    ]);
+    console.log(`gate policy holdout ${report.status}: ${options.out}`);
+    process.exitCode = calibrationExitCode(report);
 });
 debug
     .command("prepare-env")
@@ -1155,6 +1225,20 @@ function normalizeGoldCorpusSplit(value) {
     }
     throw new Error(`Unsupported Gold Corpus split: ${value}`);
 }
+async function resolveCalibrationInputs(corpusValue) {
+    const corpusPath = await resolveExistingPath(corpusValue);
+    const manifest = await readYaml(corpusPath);
+    if (!manifest.targetId) {
+        throw new Error("Gold Corpus manifest is missing targetId.");
+    }
+    const target = await loadTargetPack(manifest.targetId);
+    const profile = await profileTarget(target);
+    return {
+        corpusPath,
+        contract: profile.contract,
+        cases: materializeSmokeSuite(profile.contract).cases
+    };
+}
 function normalizeExecutionMode(value) {
     if (value === "simulated" || value === "auto") {
         return "simulated";
@@ -1235,6 +1319,8 @@ async function validateSchemasAndTargets() {
     let validateObserverQualification;
     let validateReliabilityStudy;
     let validateReliabilityReport;
+    let validateGatePolicyArtifact;
+    let validateCalibrationReportArtifact;
     for (const file of schemaFiles) {
         const schema = JSON.parse(await readFile(path.join(schemaDir, file), "utf8"));
         const validate = ajv.compile(schema);
@@ -1271,6 +1357,12 @@ async function validateSchemasAndTargets() {
         if (file === "reliability-report.schema.json") {
             validateReliabilityReport = validate;
         }
+        if (file === "gate-policy.schema.json") {
+            validateGatePolicyArtifact = validate;
+        }
+        if (file === "calibration-report.schema.json") {
+            validateCalibrationReportArtifact = validate;
+        }
     }
     if (!validateTarget) {
         throw new Error("target-pack.schema.json missing");
@@ -1289,6 +1381,9 @@ async function validateSchemasAndTargets() {
     }
     if (!validateReliabilityStudy || !validateReliabilityReport) {
         throw new Error("Reliability schemas are missing.");
+    }
+    if (!validateGatePolicyArtifact || !validateCalibrationReportArtifact) {
+        throw new Error("Gate-policy calibration schemas are missing.");
     }
     const externalValiditySchemaFiles = [
         "external-validity-study.schema.json",
@@ -1310,6 +1405,15 @@ async function validateSchemasAndTargets() {
     if (!validateEvaluationContract(evaluationContract)) {
         throw new Error(`Canonical evaluation contract failed schema validation: ${ajv.errorsText(validateEvaluationContract.errors)}`);
     }
+    const canonicalGatePolicyPath = path.join(benchmarkRoot, "configs/evaluation/gate-policy.json");
+    if (!existsSync(canonicalGatePolicyPath)) {
+        throw new Error("Canonical gate policy is missing.");
+    }
+    const canonicalGatePolicy = await readJson(canonicalGatePolicyPath);
+    if (!validateGatePolicyArtifact(canonicalGatePolicy)) {
+        throw new Error(`Canonical gate policy failed schema validation: ${ajv.errorsText(validateGatePolicyArtifact.errors)}`);
+    }
+    loadGatePolicy(canonicalGatePolicyPath);
     if (existsSync(DEFAULT_GOLD_CORPUS_PATH)) {
         const goldCorpusManifest = YAML.parse(await readFile(DEFAULT_GOLD_CORPUS_PATH, "utf8"));
         if (!validateGoldCorpus(goldCorpusManifest)) {
@@ -1363,8 +1467,49 @@ async function validateSchemasAndTargets() {
             throw new Error(`Runner config ${file} failed schema validation: ${ajv.errorsText(validateRunner.errors)}`);
         }
     }
+    const calibrationArtifactRoot = path.join(benchmarkRoot, "fixtures/calibration/v1");
+    const committedFitPolicyPath = path.join(calibrationArtifactRoot, "fit/gate-policy.json");
+    const committedFitReportPath = path.join(calibrationArtifactRoot, "fit/calibration-report.json");
+    const committedHoldoutReportPath = path.join(calibrationArtifactRoot, "holdout/calibration-report.json");
+    for (const artifactPath of [
+        committedFitPolicyPath,
+        committedFitReportPath,
+        committedHoldoutReportPath
+    ]) {
+        if (!existsSync(artifactPath)) {
+            throw new Error(`Committed gate-policy calibration artifact is missing: ${path.relative(benchmarkRoot, artifactPath)}.`);
+        }
+    }
+    const committedFitPolicy = loadGatePolicy(committedFitPolicyPath);
+    if (committedFitPolicy.policyHash !== canonicalGatePolicy.policyHash ||
+        committedFitPolicy.rulesHash !== canonicalGatePolicy.rulesHash) {
+        throw new Error("Committed calibration policy does not match the canonical gate policy.");
+    }
+    const committedFitReport = await readJson(committedFitReportPath);
+    const committedHoldoutReport = await readJson(committedHoldoutReportPath);
+    for (const report of [committedFitReport, committedHoldoutReport]) {
+        if (!validateCalibrationReportArtifact(report)) {
+            throw new Error(`Committed calibration report failed schema validation: ${ajv.errorsText(validateCalibrationReportArtifact.errors)}`);
+        }
+        assertCalibrationReportIntegrity(report);
+    }
+    if (committedFitReport.status !== "PENDING_HOLDOUT" ||
+        committedHoldoutReport.status !== "PASS" ||
+        committedFitReport.releaseEligible !== false ||
+        committedHoldoutReport.releaseEligible !== false) {
+        throw new Error("Committed calibration reports do not preserve the harness-diagnostic fit/holdout boundary.");
+    }
     if (!existsSync(DEFAULT_GOLD_CORPUS_PATH)) {
         throw new Error("Versioned Gold Corpus manifest is missing.");
+    }
+}
+async function validateArtifactAgainstSchema(schemaName, value) {
+    const schemaPath = path.join(getBenchmarkRoot(), "schemas", schemaName);
+    const schema = JSON.parse(await readFile(schemaPath, "utf8"));
+    const ajv = new Ajv2020({ strict: false });
+    const validate = ajv.compile(schema);
+    if (!validate(value)) {
+        throw new Error(`${schemaName} validation failed: ${ajv.errorsText(validate.errors)}`);
     }
 }
 async function resolveRunInputs(options) {
@@ -1474,6 +1619,12 @@ function reliabilityExitCode(report) {
         return 1;
     }
     return report.strongConclusionAllowed ? 0 : 2;
+}
+function calibrationExitCode(report) {
+    if (report.status === "FAIL") {
+        return 1;
+    }
+    return report.status === "PASS" ? 0 : 2;
 }
 async function writeExternalValidityLabelingArtifacts(outDir, artifacts) {
     await Promise.all([

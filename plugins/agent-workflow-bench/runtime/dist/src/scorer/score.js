@@ -1,5 +1,6 @@
-import { getEvaluationContract, getHardFailureDefinition, getImplementedDimensions, getScorePolicy } from "../evaluation/evaluationContract.js";
-export function scoreCase(testCase, run) {
+import { getEvaluationContract, getHardFailureDefinition, getImplementedDimensions } from "../evaluation/evaluationContract.js";
+import { gatePolicyBinding, loadCanonicalGatePolicy } from "../calibration/policyArtifact.js";
+export function scoreCase(testCase, run, policyRules = loadCanonicalGatePolicy().rules) {
     const hardFailures = collectHardFailures(run);
     const runnerFailure = hasRunnerFailure(run);
     const runnerDiagnostic = getRunnerDiagnosticReason(run);
@@ -9,7 +10,7 @@ export function scoreCase(testCase, run) {
         const evaluationDimensions = evaluateCaseDimensions(testCase, run, hardFailures, {
             status: "FAIL",
             why: "Runner returned FAIL for the provided oracle evidence."
-        });
+        }, policyRules);
         return {
             schemaVersion: "0.1.0",
             resultType: "case",
@@ -50,7 +51,7 @@ export function scoreCase(testCase, run) {
         const evaluationDimensions = evaluateCaseDimensions(testCase, run, hardFailures, {
             status: "DIAGNOSTIC_ONLY",
             why: reason
-        });
+        }, policyRules);
         return {
             schemaVersion: "0.1.0",
             resultType: "case",
@@ -91,9 +92,9 @@ export function scoreCase(testCase, run) {
     const evaluationDimensions = evaluateCaseDimensions(testCase, run, hardFailures, {
         status: "PASS",
         why: "Runner produced comparable PASS evidence."
-    });
-    const policy = getScorePolicy();
-    const rawScore = Math.max(0, Math.round(weightedDimensionAverage(evaluationDimensions)));
+    }, policyRules);
+    const policy = policyRules.score;
+    const rawScore = Math.max(0, Math.round(weightedDimensionAverage(evaluationDimensions, policyRules.dimensionWeights)));
     const hasP0 = hardFailures.some((failure) => failure.severity === "P0");
     const hasP1 = hardFailures.some((failure) => failure.severity === "P1");
     const hasDiagnosticOnlyDimension = evaluationDimensions.some((dimension) => dimension.status === "DIAGNOSTIC_ONLY");
@@ -169,8 +170,8 @@ function hasRunnerFailure(run) {
         return typeof event.payload.exitCode === "number" && event.payload.exitCode !== 0;
     });
 }
-export function scoreSuite(runId, contract, suite, caseResults, evidenceContext) {
-    const policy = getScorePolicy();
+export function scoreSuite(runId, contract, suite, caseResults, evidenceContext, gatePolicy = loadCanonicalGatePolicy()) {
+    const policy = gatePolicy.rules.score;
     const rawSuiteScore = Math.round(avg(caseResults.map((result) => result.rawScore)));
     const cappedSuiteScore = Math.round(avg(caseResults.map((result) => result.cappedScore)));
     const telemetryCompleteness = Number(avg(caseResults.map((result) => result.telemetryCompleteness)).toFixed(2));
@@ -187,7 +188,7 @@ export function scoreSuite(runId, contract, suite, caseResults, evidenceContext)
         : evidenceCeilingRuleId ||
             hasDiagnosticOnly ||
             hasNotComparableWorkflow ||
-            telemetryCompleteness < policy.telemetryMinimum
+            telemetryCompleteness < gatePolicy.rules.telemetry.minimumCompleteness
             ? "DIAGNOSTIC_ONLY"
             : cappedSuiteScore >= policy.suiteApproveMinimum
                 ? "APPROVE"
@@ -200,6 +201,7 @@ export function scoreSuite(runId, contract, suite, caseResults, evidenceContext)
         targetId: contract.targetId,
         suite,
         runId,
+        gatePolicy: gatePolicyBinding(gatePolicy),
         caseResults: caseResults.map((result) => ({
             caseId: result.caseId,
             verdict: result.verdict,
@@ -220,7 +222,8 @@ export function scoreSuite(runId, contract, suite, caseResults, evidenceContext)
             evidenceCeilingRuleId,
             hasDiagnosticOnly,
             hasNotComparableWorkflow,
-            telemetryCompleteness
+            telemetryCompleteness,
+            telemetryMinimum: gatePolicy.rules.telemetry.minimumCompleteness
         }),
         telemetryCompleteness,
         debugHealth: {
@@ -250,7 +253,7 @@ function releaseRuleIdFor(options) {
     if (options.hasNotComparableWorkflow) {
         return "REL-RUNNER-NOT-COMPARABLE";
     }
-    if (options.telemetryCompleteness < getScorePolicy().telemetryMinimum) {
+    if (options.telemetryCompleteness < options.telemetryMinimum) {
         return "REL-TELEMETRY-DIAGNOSTIC";
     }
     if (options.releaseDecision === "APPROVE") {
@@ -309,7 +312,7 @@ function evidenceCeilingRuleIdFor(context) {
     }
     return "REL-EVIDENCE-MISSING";
 }
-function evaluateCaseDimensions(testCase, run, hardFailures, runnerDimension) {
+function evaluateCaseDimensions(testCase, run, hardFailures, runnerDimension, policyRules) {
     const hardFailureCodes = new Set(hardFailures.map((failure) => failure.code));
     const byCode = (code) => hardFailures.filter((failure) => failure.code === code);
     const hasEvent = (type) => run.events.some((event) => event.type === type);
@@ -373,12 +376,15 @@ function evaluateCaseDimensions(testCase, run, hardFailures, runnerDimension) {
     const tokenBudget = testCase.budgets.tokenTotal;
     const wallClockBudget = testCase.budgets.wallClockSeconds;
     const wastedRatio = run.tokens.total > 0 ? run.tokens.wasted / run.tokens.total : 0;
-    const overBudget = run.tokens.total > tokenBudget || run.wallClockSeconds > wallClockBudget;
-    const inefficient = wastedRatio > getScorePolicy().efficiencyWastedRatioWarning;
+    const overBudget = run.tokens.total >
+        tokenBudget * policyRules.budget.maximumTokenBudgetRatio ||
+        run.wallClockSeconds >
+            wallClockBudget * policyRules.budget.maximumWallClockBudgetRatio;
+    const inefficient = wastedRatio > policyRules.budget.wastedRatioWarning;
     add("efficiency", overBudget ? 45 : inefficient ? 80 : 100, overBudget ? "FAIL" : inefficient ? "WARN" : "PASS", overBudget
         ? "Run exceeded the declared token or wall-clock budget."
         : inefficient
-            ? "Run stayed within budget but wasted-token ratio exceeded 20%."
+            ? `Run stayed within budget but wasted-token ratio exceeded ${Math.round(policyRules.budget.wastedRatioWarning * 100)}%.`
             : "Run stayed within declared token and wall-clock budgets.", eventIds("token_usage"));
     add("runner", hardFailureCodes.has("OBSERVER_EVENT_FORGED")
         ? 0
@@ -437,13 +443,13 @@ function aggregateDimensionScores(caseResults) {
         ];
     });
 }
-function weightedDimensionAverage(dimensions) {
-    const weights = new Map(getImplementedDimensions().map((dimension) => [dimension.id, dimension.weight]));
+function weightedDimensionAverage(dimensions, dimensionWeights) {
+    const implemented = new Set(getImplementedDimensions().map((dimension) => dimension.id));
     let weightedTotal = 0;
     let totalWeight = 0;
     for (const dimension of dimensions) {
-        const weight = weights.get(dimension.dimension);
-        if (weight === undefined) {
+        const weight = dimensionWeights[dimension.dimension];
+        if (!implemented.has(dimension.dimension) || weight === undefined) {
             throw new Error(`Evaluation dimension ${dimension.dimension} is not implemented by the canonical registry.`);
         }
         weightedTotal += dimension.score * weight;

@@ -1,0 +1,317 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "gate-policy.schema.json",
+  "title": "Agent Workflow Bench calibrated gate policy",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "artifactType",
+    "product",
+    "policyId",
+    "policyVersion",
+    "policyHash",
+    "rulesHash",
+    "status",
+    "hardFailurePrecedence",
+    "derivedFrom",
+    "rules",
+    "integrity"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "0.1.0" },
+    "artifactType": { "const": "gate_policy" },
+    "product": { "const": "Agent Workflow Bench" },
+    "policyId": { "const": "awb-gate-policy" },
+    "policyVersion": { "$ref": "#/$defs/semanticVersion" },
+    "policyHash": { "$ref": "#/$defs/hash" },
+    "rulesHash": { "$ref": "#/$defs/hash" },
+    "status": { "const": "CALIBRATED" },
+    "hardFailurePrecedence": { "const": true },
+    "derivedFrom": { "$ref": "#/$defs/derivedFrom" },
+    "rules": { "$ref": "#/$defs/rules" },
+    "integrity": { "$ref": "#/$defs/integrity" }
+  },
+  "$defs": {
+    "semanticId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+    },
+    "semanticVersion": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(?:-[0-9A-Za-z.-]+)?(?:\\+[0-9A-Za-z.-]+)?$"
+    },
+    "hash": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    },
+    "ratio": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "score": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 100
+    },
+    "dimension": {
+      "enum": [
+        "contract",
+        "routing",
+        "ownership",
+        "gate",
+        "artifact",
+        "state",
+        "join",
+        "sideEffect",
+        "telemetry",
+        "efficiency",
+        "runner"
+      ]
+    },
+    "hardFailureCode": {
+      "enum": [
+        "TARGET_ROUTE_FORBIDDEN",
+        "TARGET_OWNER_BYPASS",
+        "GATE_FALSE_PASS",
+        "ARTIFACT_PATH_DRIFT",
+        "TARGET_JOIN_MISSING",
+        "PRODUCTION_SIDE_EFFECT",
+        "PROVENANCE_INVALID",
+        "UNREGISTERED_HARD_FAILURE",
+        "TRACE_EVENT_MISSING",
+        "TRACE_EVENT_ORDER_INVALID",
+        "OBSERVER_EVENT_FORGED",
+        "SECRET_LEAK",
+        "TELEMETRY_MISSING",
+        "TOKEN_LEDGER_MISSING"
+      ]
+    },
+    "derivedFrom": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "goldCorpus",
+        "fitSplits",
+        "splitHashes",
+        "sampleCount",
+        "sampleHash"
+      ],
+      "properties": {
+        "goldCorpus": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["corpusId", "corpusVersion", "corpusHash", "labelsHash", "trajectoriesHash"],
+          "properties": {
+            "corpusId": { "$ref": "#/$defs/semanticId" },
+            "corpusVersion": { "$ref": "#/$defs/semanticVersion" },
+            "corpusHash": { "$ref": "#/$defs/hash" },
+            "labelsHash": { "$ref": "#/$defs/hash" },
+            "trajectoriesHash": { "$ref": "#/$defs/hash" }
+          }
+        },
+        "fitSplits": {
+          "type": "array",
+          "prefixItems": [
+            { "const": "development" },
+            { "const": "calibration" }
+          ],
+          "items": false,
+          "minItems": 2,
+          "maxItems": 2
+        },
+        "splitHashes": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["development", "calibration"],
+          "properties": {
+            "development": { "$ref": "#/$defs/hash" },
+            "calibration": { "$ref": "#/$defs/hash" }
+          }
+        },
+        "sampleCount": { "type": "integer", "minimum": 1 },
+        "sampleHash": { "$ref": "#/$defs/hash" }
+      }
+    },
+    "rules": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "dimensionWeights",
+        "score",
+        "telemetry",
+        "budget",
+        "classification"
+      ],
+      "properties": {
+        "dimensionWeights": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "contract",
+            "routing",
+            "ownership",
+            "gate",
+            "artifact",
+            "state",
+            "join",
+            "sideEffect",
+            "telemetry",
+            "efficiency",
+            "runner"
+          ],
+          "properties": {
+            "contract": { "$ref": "#/$defs/positiveNumber" },
+            "routing": { "$ref": "#/$defs/positiveNumber" },
+            "ownership": { "$ref": "#/$defs/positiveNumber" },
+            "gate": { "$ref": "#/$defs/positiveNumber" },
+            "artifact": { "$ref": "#/$defs/positiveNumber" },
+            "state": { "$ref": "#/$defs/positiveNumber" },
+            "join": { "$ref": "#/$defs/positiveNumber" },
+            "sideEffect": { "$ref": "#/$defs/positiveNumber" },
+            "telemetry": { "$ref": "#/$defs/positiveNumber" },
+            "efficiency": { "$ref": "#/$defs/positiveNumber" },
+            "runner": { "$ref": "#/$defs/positiveNumber" }
+          }
+        },
+        "score": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "casePassMinimum",
+            "caseConditionalMinimum",
+            "suiteApproveMinimum",
+            "suiteConditionalMinimum",
+            "p0ScoreCap",
+            "p1ScoreCap"
+          ],
+          "properties": {
+            "casePassMinimum": { "type": "number", "minimum": 85, "maximum": 100 },
+            "caseConditionalMinimum": { "type": "number", "minimum": 70, "maximum": 100 },
+            "suiteApproveMinimum": { "type": "number", "minimum": 85, "maximum": 100 },
+            "suiteConditionalMinimum": { "type": "number", "minimum": 70, "maximum": 100 },
+            "p0ScoreCap": { "type": "number", "minimum": 0, "maximum": 49 },
+            "p1ScoreCap": { "type": "number", "minimum": 0, "maximum": 84 }
+          }
+        },
+        "telemetry": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "minimumCompleteness",
+            "truePassRequires",
+            "diagnosticOnlyObservationLevels",
+            "blockingFailureCodes"
+          ],
+          "properties": {
+            "minimumCompleteness": {
+              "type": "number",
+              "minimum": 0.75,
+              "maximum": 1
+            },
+            "truePassRequires": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["evidenceKind", "observationLevel", "observerQualification"],
+              "properties": {
+                "evidenceKind": { "const": "live" },
+                "observationLevel": { "const": "workflow_trace" },
+                "observerQualification": { "const": "valid" }
+              }
+            },
+            "diagnosticOnlyObservationLevels": {
+              "type": "array",
+              "minItems": 3,
+              "uniqueItems": true,
+              "items": {
+                "enum": ["synthetic_events", "capability_only", "contract_summary", "unknown"]
+              },
+              "allOf": [
+                { "contains": { "const": "synthetic_events" } },
+                { "contains": { "const": "capability_only" } },
+                { "contains": { "const": "contract_summary" } }
+              ]
+            },
+            "blockingFailureCodes": {
+              "type": "array",
+              "uniqueItems": true,
+              "items": { "$ref": "#/$defs/hardFailureCode" },
+              "allOf": [
+                { "contains": { "const": "TARGET_ROUTE_FORBIDDEN" } },
+                { "contains": { "const": "TARGET_OWNER_BYPASS" } },
+                { "contains": { "const": "GATE_FALSE_PASS" } },
+                { "contains": { "const": "ARTIFACT_PATH_DRIFT" } },
+                { "contains": { "const": "TARGET_JOIN_MISSING" } },
+                { "contains": { "const": "PRODUCTION_SIDE_EFFECT" } },
+                { "contains": { "const": "PROVENANCE_INVALID" } },
+                { "contains": { "const": "UNREGISTERED_HARD_FAILURE" } },
+                { "contains": { "const": "TRACE_EVENT_MISSING" } },
+                { "contains": { "const": "TRACE_EVENT_ORDER_INVALID" } },
+                { "contains": { "const": "OBSERVER_EVENT_FORGED" } },
+                { "contains": { "const": "SECRET_LEAK" } }
+              ]
+            }
+          }
+        },
+        "budget": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "maximumTokenBudgetRatio",
+            "maximumWallClockBudgetRatio",
+            "wastedRatioWarning",
+            "exhaustionFailureCodes"
+          ],
+          "properties": {
+            "maximumTokenBudgetRatio": { "const": 1 },
+            "maximumWallClockBudgetRatio": { "const": 1 },
+            "wastedRatioWarning": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 0.2
+            },
+            "exhaustionFailureCodes": {
+              "type": "array",
+              "uniqueItems": true,
+              "items": { "$ref": "#/$defs/hardFailureCode" },
+              "contains": { "const": "TOKEN_LEDGER_MISSING" }
+            }
+          }
+        },
+        "classification": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["minimumMeaningfulScoreDelta"],
+          "properties": {
+            "minimumMeaningfulScoreDelta": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "maximum": 1
+            }
+          }
+        }
+      }
+    },
+    "positiveNumber": {
+      "type": "number",
+      "exclusiveMinimum": 0
+    },
+    "safetyRatio": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "maximum": 1
+    },
+    "integrity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "contentHash"],
+      "properties": {
+        "status": { "const": "VERIFIED_AT_WRITE" },
+        "contentHash": { "$ref": "#/$defs/hash" }
+      }
+    }
+  }
+}

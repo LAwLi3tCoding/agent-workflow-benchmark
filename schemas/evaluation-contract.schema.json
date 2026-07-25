@@ -11,6 +11,7 @@
     "scorePolicy",
     "reliabilityPolicy",
     "criterionValidityPolicy",
+    "gatePolicy",
     "coverageTargets",
     "events",
     "oracles",
@@ -168,6 +169,32 @@
         "maximumFalsePassCount": { "const": 0 },
         "overallAgreementMinimum": { "const": 0.85 },
         "cohenKappaMinimum": { "const": 0.8 }
+      }
+    },
+    "gatePolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "policyId",
+        "canonicalRef",
+        "schemaRef",
+        "calibrationReportSchemaRef",
+        "fitSplits",
+        "holdoutSplit",
+        "publicFixtureReleaseEligible"
+      ],
+      "properties": {
+        "policyId": { "const": "awb-gate-policy" },
+        "canonicalRef": {
+          "const": "configs/evaluation/gate-policy.json"
+        },
+        "schemaRef": { "const": "schemas/gate-policy.schema.json" },
+        "calibrationReportSchemaRef": {
+          "const": "schemas/calibration-report.schema.json"
+        },
+        "fitSplits": { "const": ["development", "calibration"] },
+        "holdoutSplit": { "const": "holdout" },
+        "publicFixtureReleaseEligible": { "const": false }
       }
     },
     "coverageTargets": { "$ref": "#/$defs/registry" },

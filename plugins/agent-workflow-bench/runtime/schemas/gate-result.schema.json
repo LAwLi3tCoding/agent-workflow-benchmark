@@ -11,6 +11,7 @@
     "suite",
     "comparisonClassification",
     "comparisonIntegrity",
+    "gatePolicy",
     "reasons",
     "evidenceRefs"
   ],
@@ -22,6 +23,7 @@
       "enum": [
         "GATE-HARD-FAILURE",
         "GATE-COMPARISON-INTEGRITY",
+        "GATE-POLICY-INCOMPARABLE",
         "GATE-REGRESSION",
         "GATE-CANDIDATE-BLOCK",
         "GATE-INCOMPARABLE",
@@ -38,7 +40,30 @@
       "enum": ["IMPROVED", "REGRESSED", "UNCHANGED", "MIXED", "HARD_FAILURE", "INCOMPARABLE"]
     },
     "comparisonIntegrity": { "enum": ["VALID", "INVALID"] },
+    "gatePolicy": { "$ref": "#/$defs/gatePolicyBinding" },
     "reasons": { "type": "array", "items": { "type": "string" } },
     "evidenceRefs": { "type": "array", "items": { "type": "string" } }
+  },
+  "$defs": {
+    "gatePolicyBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["policyId", "policyVersion", "policyHash", "rulesHash"],
+      "properties": {
+        "policyId": { "const": "awb-gate-policy" },
+        "policyVersion": {
+          "type": "string",
+          "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(?:-[0-9A-Za-z.-]+)?(?:\\+[0-9A-Za-z.-]+)?$"
+        },
+        "policyHash": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "rulesHash": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        }
+      }
+    }
   }
 }

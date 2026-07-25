@@ -209,18 +209,32 @@ The bundled reference boundary is Darwin-only and requires `/usr/bin/sandbox-exe
 ### Validate the benchmark Gold Corpus
 
 ```bash
-awb gold-corpus validate \
-  --corpus fixtures/gold-corpus/v1/manifest.yaml
-
-awb debug reverse-validate \
-  --corpus fixtures/gold-corpus/v1/manifest.yaml \
-  --runner simulated \
-  --out reports/gold-corpus
+awb gold-corpus validate --corpus fixtures/gold-corpus/v1/manifest.yaml
+awb debug reverse-validate --corpus fixtures/gold-corpus/v1/manifest.yaml --runner simulated --out reports/gold-corpus
 ```
 
 This is harness-only synthetic evidence. The report always records
 `releaseEligible: false`; it cannot produce a real workflow release PASS. See
 the [Gold Corpus contract](docs/gold-corpus.md).
+
+### Calibrate the gate policy
+
+Use only development/calibration Gold Corpus data to fit a versioned policy:
+
+```bash
+awb gate-policy calibrate --corpus fixtures/gold-corpus/v1/manifest.yaml --policy-version 1.0.0 --out reports/gate-policy/v1/fit
+```
+
+The command writes `gate-policy.json`, `calibration-report.json`, and
+`calibration-report.md`, then exits `2` because the fit report is
+`PENDING_HOLDOUT`. It exits `1` without a policy if no candidate preserves P0 recall
+`1` and false PASS `0`. Validate the frozen policy separately on the unseen holdout:
+
+```bash
+awb gate-policy validate-holdout --corpus fixtures/gold-corpus/v1/manifest.yaml --policy reports/gate-policy/v1/fit/gate-policy.json --calibration-report reports/gate-policy/v1/fit/calibration-report.json --out reports/gate-policy/v1/holdout
+```
+
+Holdout validation exits `0` for `PASS` and `1` for `FAIL`. Its stability metric is deterministic full-harness replay, not live-run reliability. Public Gold Corpus PASS remains harness-diagnostic with `releaseEligible: false`; real criterion validity, human labels, qualified live traces, and production-blocking authorization remain separate. See [gate policy calibration](docs/gate-policy-calibration.md); committed synthetic evidence is under `fixtures/calibration/v1/{fit,holdout}`.
 
 ### Matched baseline/candidate regression
 
@@ -228,43 +242,23 @@ Use isolated checkouts and keep target contract, case set, runner, permissions,
 budgets, and validation conditions aligned:
 
 ```bash
-awb run \
-  --target my-workflow \
-  --target-root <baseline-checkout> \
-  --runner codex \
-  --execution live \
-  --mode diagnostic \
-  --out reports/regression/baseline
-
-awb run \
-  --target my-workflow \
-  --target-root <candidate-checkout> \
-  --runner codex \
-  --execution live \
-  --mode diagnostic \
-  --out reports/regression/candidate
-
-awb compare \
-  --baseline reports/regression/baseline \
-  --candidate reports/regression/candidate \
-  --out reports/regression/comparison
+awb run --target my-workflow --target-root <baseline-checkout> --runner codex --execution live --mode diagnostic --out reports/regression/baseline
+awb run --target my-workflow --target-root <candidate-checkout> --runner codex --execution live --mode diagnostic --out reports/regression/candidate
+awb compare --baseline reports/regression/baseline --candidate reports/regression/candidate --gate-policy configs/evaluation/gate-policy.json --out reports/regression/comparison
 ```
 
 Use `--runner claude` for Claude Code. Built-in live adapters remain
 diagnostic-only until their runs are admitted through trusted workflow-trace
 evidence.
 
+Use the same `--gate-policy` when running `awb gate` to recompute historical
+results. Missing or mismatched policy version, rules hash, or policy hash makes
+the result incomparable instead of silently mixing policies.
+
 ### One-command evaluation
 
 ```bash
-awb evaluate \
-  --target my-workflow \
-  --target-root <candidate-checkout> \
-  --planner-runner codex \
-  --runner codex \
-  --coverage-mode full \
-  --execution live \
-  --out reports/evaluations/my-workflow
+awb evaluate --target my-workflow --target-root <candidate-checkout> --planner-runner codex --runner codex --coverage-mode full --execution live --out reports/evaluations/my-workflow
 ```
 
 Use `smoke` for fast feedback, `full` for broad contract coverage, and
@@ -319,6 +313,7 @@ target source and do not prove live runner behavior.
 | `ingest-trace` | Verify and score an independently signed live trace |
 | `compare` | Compare matched baseline and candidate evidence |
 | `gate` | Apply deterministic CI release policy |
+| `gate-policy ...` | Calibrate or holdout-validate a versioned scoring and gate policy |
 | `score` / `report` | Inspect or render an existing run |
 | `criterion-validity ...` | Package blinded external studies or analyze independent labels |
 | `debug ...` | Reverse-validate the harness or analyze repeated-run reliability |
@@ -334,6 +329,7 @@ target source and do not prove live runner behavior.
 | `workflow-trace.json` | Independently signed normalized live trace |
 | `comparison-result.json` | Integrity-bound paired classification |
 | `gate-result.json` | Deterministic release decision |
+| `gate-policy.json` / `calibration-report.*` | Versioned policy, fit evidence, and holdout diagnostics |
 | `report.md` / `reliability-report.*` / `validity-report.*` | Diagnosis, reliability, quarantine, and external-validity evidence |
 
 Unsigned simulated repeats can report `DIAGNOSTIC_REPRODUCIBLE`, but only stable qualified live `workflow_trace` studies can report a strong `RELIABLE` conclusion.
@@ -390,6 +386,7 @@ followed by `npm run plugin:build`.
 - [Plugin guide](docs/agent-workflow-bench-plugin-guide.md)
 - [Evaluation methodology](docs/ai-workflow-evaluation-methodology.md)
 - [Workflow-trace observer contract](docs/workflow-trace-observer-contract.md)
+- [Gate policy calibration](docs/gate-policy-calibration.md)
 - [简体中文 README](README.zh-CN.md)
 - [日本語 README](README.ja.md)
 

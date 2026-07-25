@@ -83,6 +83,15 @@ interface EvaluationContractFixture {
     overallAgreementMinimum: number;
     cohenKappaMinimum: number;
   };
+  gatePolicy: {
+    policyId: "awb-gate-policy";
+    canonicalRef: "configs/evaluation/gate-policy.json";
+    schemaRef: "schemas/gate-policy.schema.json";
+    calibrationReportSchemaRef: "schemas/calibration-report.schema.json";
+    fitSplits: ["development", "calibration"];
+    holdoutSplit: "holdout";
+    publicFixtureReleaseEligible: false;
+  };
 }
 
 describe("canonical evaluation contract", () => {
@@ -170,6 +179,15 @@ describe("canonical evaluation contract", () => {
         ])
       )
     ).toEqual(frozenCriterionValidityPolicy);
+    expect(contract.gatePolicy).toEqual({
+      policyId: "awb-gate-policy",
+      canonicalRef: "configs/evaluation/gate-policy.json",
+      schemaRef: "schemas/gate-policy.schema.json",
+      calibrationReportSchemaRef: "schemas/calibration-report.schema.json",
+      fitSplits: ["development", "calibration"],
+      holdoutSplit: "holdout",
+      publicFixtureReleaseEligible: false
+    });
     expectUnique(contract.events.map((item) => item.id));
     expectUnique(contract.oracles.map((item) => item.id));
     expectUnique(contract.hardFailures.map((item) => item.code));

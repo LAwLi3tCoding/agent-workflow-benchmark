@@ -259,6 +259,40 @@ awb debug reverse-validate \
 Mutation overlay 用于验证 scorer 和 oracle，不会修改目标源码，也不能证明 live
 runner 的真实行为。
 
+### 校准 Gate Policy
+
+只用 Gold Corpus 的 development/calibration 数据拟合版本化策略：
+
+```bash
+awb gate-policy calibrate \
+  --corpus fixtures/gold-corpus/v1/manifest.yaml \
+  --policy-version 1.0.0 \
+  --out reports/gate-policy/v1/fit
+```
+
+该命令写入 `gate-policy.json`、`calibration-report.json` 和
+`calibration-report.md`，并返回退出码 `2`，因为报告状态是
+`PENDING_HOLDOUT`，holdout 标签没有参与拟合。如果没有 candidate 同时保持
+P0 recall 为 `1` 且 false PASS 为 `0`，命令返回 `1` 且不生成策略。随后用冻结
+策略验证未见过的 holdout：
+
+```bash
+awb gate-policy validate-holdout \
+  --corpus fixtures/gold-corpus/v1/manifest.yaml \
+  --policy reports/gate-policy/v1/fit/gate-policy.json \
+  --calibration-report reports/gate-policy/v1/fit/calibration-report.json \
+  --out reports/gate-policy/v1/holdout
+```
+
+holdout 验证返回 `0` 表示 `PASS`，返回 `1` 表示 `FAIL`。其中 stability 只表示
+完整 synthetic harness 的确定性重放，不代表 live-run 可靠性。公共 Gold Corpus
+PASS 仍然只是 harness 诊断，`releaseEligible: false`；真实 criterion validity、
+人工标签、已认证 live trace 和生产阻断授权仍需另行完成。详情见
+[Gate Policy Calibration](docs/gate-policy-calibration.md)。
+
+已提交的公共 synthetic 证据位于 `fixtures/calibration/v1/fit` 和
+`fixtures/calibration/v1/holdout`。
+
 ## 命令与制品
 
 | 命令 | 用途 |
@@ -273,6 +307,7 @@ runner 的真实行为。
 | `ingest-trace` | 验证并评分独立签名的 live trace |
 | `compare` | 比较匹配的 baseline/candidate 证据 |
 | `gate` | 执行确定性 CI 发布策略 |
+| `gate-policy ...` | 校准或 holdout 验证版本化评分和 Gate 策略 |
 | `score` / `report` | 查看或渲染已有运行 |
 | `criterion-validity ...` | 生成盲化外部研究包或分析独立人工标签 |
 | `debug ...` | 反向验证并诊断 benchmark harness |
@@ -288,9 +323,13 @@ runner 的真实行为。
 | `workflow-trace.json` | 独立签名的标准化 live trace |
 | `comparison-result.json` | 完整性绑定的配对比较 |
 | `gate-result.json` | 确定性发布结论 |
+| `gate-policy.json` / `calibration-report.*` | 版本化策略、拟合证据和 holdout 诊断 |
 | `report.md` / `validity-report.*` | 人读诊断与外部效度证据 |
 
 完整参数请执行 `awb <command> --help`。
+
+`compare` 和 `gate` 都支持 `--gate-policy <path>`。重新计算历史结果时必须使用同一
+policy；缺失或不匹配的 policy version、rules hash、policy hash 会被标记为不可比较。
 
 ## 安全与隐私
 

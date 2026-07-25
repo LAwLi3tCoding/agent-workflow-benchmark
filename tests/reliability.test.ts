@@ -1,3 +1,4 @@
+import { createHash, generateKeyPairSync, sign } from "node:crypto";
 import {
   cp,
   mkdir,
@@ -13,11 +14,26 @@ import { execa } from "execa";
 import { Ajv2020 } from "ajv/dist/2020.js";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import {
+  gatePolicyBinding,
+  loadCanonicalGatePolicy,
+  reviseGatePolicy,
+  type GatePolicy
+} from "../src/calibration/gatePolicy.js";
+import { loadTargetPack } from "../src/core/targetRegistry.js";
+import type { BenchmarkCase, RunEvent } from "../src/core/types.js";
+import { materializeSmokeSuite } from "../src/generator/materialize.js";
+import {
+  REFERENCE_OBSERVER_EVIDENCE_CAPABILITIES,
+  referenceObserverImplementationHash
+} from "../src/observer/referenceObserver.js";
+import {
   analyzeReliabilitySamples,
   type ReliabilityPolicy,
   type ReliabilitySample
 } from "../src/reliability/reliability.js";
-import { hashFile } from "../src/utils/hash.js";
+import { runReliabilityStudy } from "../src/reliability/study.js";
+import { semanticCaseSetHash } from "../src/regression/provenance.js";
+import { hashFile, stableJson } from "../src/utils/hash.js";
 
 const cwd = process.cwd();
 const seed = "stage4-fixed-seed";
@@ -269,6 +285,171 @@ describe("reliability statistics", () => {
     expect(report.strongConclusionAllowed).toBe(false);
     expect(report.gateEligibility).toBe("BLOCK");
   });
+});
+
+describe("reliability study gate policy propagation", () => {
+  let root = "";
+  let observerPublicKeyPath = "";
+  let qualificationPublicKeyPath = "";
+  let customPolicy: GatePolicy;
+
+  beforeAll(async () => {
+    root = await mkdtemp(path.join(tmpdir(), "awb-reliability-policy-"));
+    const observerKeys = generateKeyPairSync("ed25519");
+    const qualificationKeys = generateKeyPairSync("ed25519");
+    observerPublicKeyPath = path.join(root, "observer-public.pem");
+    qualificationPublicKeyPath = path.join(root, "qualification-public.pem");
+    const observerPrivateKeyPath = path.join(root, "observer-private.pem");
+    const qualificationPrivateKeyPath = path.join(root, "qualification-private.pem");
+    await writeFile(
+      observerPublicKeyPath,
+      observerKeys.publicKey.export({ type: "spki", format: "pem" })
+    );
+    await writeFile(
+      qualificationPublicKeyPath,
+      qualificationKeys.publicKey.export({ type: "spki", format: "pem" })
+    );
+    await writeFile(
+      observerPrivateKeyPath,
+      observerKeys.privateKey.export({ type: "pkcs8", format: "pem" }),
+      { mode: 0o600 }
+    );
+    await writeFile(
+      qualificationPrivateKeyPath,
+      qualificationKeys.privateKey.export({ type: "pkcs8", format: "pem" }),
+      { mode: 0o600 }
+    );
+
+    const profile = await profileMinimalTarget();
+    const suite = materializeSmokeSuite(profile.contract, {
+      seed: "reliability-custom-policy"
+    });
+    const baselineTracePath = path.join(root, "baseline-workflow-trace.json");
+    const candidateTracePath = path.join(root, "candidate-workflow-trace.json");
+    await writeSignedReliabilityTrace(
+      baselineTracePath,
+      makeReliabilityTracePayload(
+        profile.contract.targetId,
+        profile.contract.contractHash,
+        suite.cases,
+        "baseline"
+      ),
+      observerKeys.privateKey,
+      observerKeys.publicKey
+    );
+    await writeSignedReliabilityTrace(
+      candidateTracePath,
+      makeReliabilityTracePayload(
+        profile.contract.targetId,
+        profile.contract.contractHash,
+        suite.cases,
+        "candidate"
+      ),
+      observerKeys.privateKey,
+      observerKeys.publicKey
+    );
+
+    const qualificationDir = path.join(root, "qualification");
+    await execa(
+      "node",
+      [
+        "--import",
+        "tsx",
+        "src/cli/index.ts",
+        "observer",
+        "qualify",
+        "--target",
+        "minimal-directory-agent",
+        "--suite",
+        "smoke",
+        "--observer-id",
+        "fixture-observer",
+        "--observer-version",
+        "1.0.0",
+        "--observer-private-key",
+        observerPrivateKeyPath,
+        "--qualification-authority-private-key",
+        qualificationPrivateKeyPath,
+        "--out",
+        qualificationDir
+      ],
+      { cwd }
+    );
+    const qualificationArtifactPath = path.join(
+      qualificationDir,
+      "observer-qualification.json"
+    );
+
+    const baselineDir = path.join(root, "baseline");
+    const candidateDir = path.join(root, "candidate");
+    await ingestReliabilityTrace(
+      baselineTracePath,
+      baselineDir,
+      observerPublicKeyPath,
+      qualificationArtifactPath,
+      qualificationPublicKeyPath
+    );
+    await ingestReliabilityTrace(
+      candidateTracePath,
+      candidateDir,
+      observerPublicKeyPath,
+      qualificationArtifactPath,
+      qualificationPublicKeyPath
+    );
+
+    customPolicy = reviseGatePolicy(loadCanonicalGatePolicy(), {
+      policyVersion: "1.0.1",
+      rules: loadCanonicalGatePolicy().rules
+    });
+    await bindRunToGatePolicy(baselineDir, customPolicy);
+    await bindRunToGatePolicy(candidateDir, customPolicy);
+
+    await writeFile(
+      path.join(root, "reliability-study.json"),
+      `${JSON.stringify(
+        {
+          schemaVersion: "0.1.0",
+          studyId: "custom-policy-live-study",
+          kind: "live_aa",
+          seed: "reliability-custom-policy",
+          pairs: [
+            {
+              sampleId: "custom-policy-sample",
+              baseline: "baseline",
+              candidate: "candidate"
+            }
+          ]
+        },
+        null,
+        2
+      )}\n`
+    );
+  }, 60_000);
+
+  afterAll(async () => {
+    if (root) {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("evaluates reliability sample gates with the supplied historical policy", async () => {
+    const report = await runReliabilityStudy(
+      path.join(root, "reliability-study.json"),
+      {
+        trustedObserverKeyPath: observerPublicKeyPath,
+        trustedQualificationKeyPath: qualificationPublicKeyPath,
+        gatePolicy: customPolicy
+      }
+    );
+
+    expect(report.samples[0]).toMatchObject({
+      status: "observed",
+      outcome: {
+        classification: "UNCHANGED",
+        gateDecision: "PASS"
+      }
+    });
+  }, 30_000);
 });
 
 describe("reliability CLI", () => {
@@ -745,3 +926,256 @@ describe("reliability CLI", () => {
     );
   }
 });
+
+async function profileMinimalTarget() {
+  const { profileTarget } = await import("../src/profiler/profileTarget.js");
+  return profileTarget(await loadTargetPack("minimal-directory-agent"));
+}
+
+async function bindRunToGatePolicy(
+  runDir: string,
+  policy: GatePolicy
+): Promise<void> {
+  const suitePath = path.join(runDir, "suite-result.json");
+  const provenancePath = path.join(runDir, "provenance.json");
+  const suite = JSON.parse(await readFile(suitePath, "utf8"));
+  const provenance = JSON.parse(await readFile(provenancePath, "utf8"));
+  suite.gatePolicy = gatePolicyBinding(policy);
+  await writeFile(suitePath, `${JSON.stringify(suite, null, 2)}\n`);
+  provenance.integrity.artifacts.find(
+    (artifact: { ref: string }) => artifact.ref === "suite-result.json"
+  ).sha256 = await hashFile(suitePath);
+  await writeFile(provenancePath, `${JSON.stringify(provenance, null, 2)}\n`);
+}
+
+async function ingestReliabilityTrace(
+  tracePath: string,
+  out: string,
+  observerPublicKeyPath: string,
+  qualificationArtifactPath: string,
+  qualificationPublicKeyPath: string
+): Promise<void> {
+  await execa(
+    "node",
+    [
+      "--import",
+      "tsx",
+      "src/cli/index.ts",
+      "ingest-trace",
+      "--target",
+      "minimal-directory-agent",
+      "--suite",
+      "smoke",
+      "--trace",
+      tracePath,
+      "--trusted-observer-key",
+      observerPublicKeyPath,
+      "--observer-qualification",
+      qualificationArtifactPath,
+      "--trusted-qualification-key",
+      qualificationPublicKeyPath,
+      "--out",
+      out
+    ],
+    { cwd }
+  );
+}
+
+function makeReliabilityTracePayload(
+  targetId: string,
+  contractHash: string,
+  cases: BenchmarkCase[],
+  runLabel: string
+) {
+  const runner = {
+    name: "codex" as const,
+    adapterVersion: "observer-fixture-adapter-1",
+    version: "fixture-codex",
+    capabilitiesHash: `sha256:${"1".repeat(64)}`
+  };
+  return {
+    schemaVersion: "0.1.0" as const,
+    observer: {
+      id: "fixture-observer",
+      version: "1.0.0",
+      keyFingerprint: "",
+      implementationHash: referenceObserverImplementationHash(),
+      evidenceCapabilities: REFERENCE_OBSERVER_EVIDENCE_CAPABILITIES
+    },
+    subject: {
+      targetId,
+      contractHash,
+      suite: "smoke",
+      seed: "reliability-custom-policy",
+      caseSetHash: semanticCaseSetHash(cases),
+      runner,
+      isolation: "read_only_sandbox" as const,
+      permissionMode: "read_only_no_approval" as const,
+      model: "fixture-model"
+    },
+    cases: cases.map((testCase, index) =>
+      makeReliabilityObservedCase(testCase, runLabel, index)
+    ),
+    attestation: {
+      algorithm: "ed25519" as const,
+      signature: ""
+    }
+  };
+}
+
+function makeReliabilityObservedCase(
+  testCase: BenchmarkCase,
+  runLabel: string,
+  index: number
+) {
+  const events: RunEvent[] = [];
+  let sequence = 0;
+  const push = (
+    type: RunEvent["type"],
+    actor: string,
+    payload: Record<string, unknown>
+  ) => {
+    sequence += 1;
+    events.push({
+      eventId: `${runLabel}-${index}-${sequence}`,
+      timestamp: new Date(1_000 + sequence * 1_000).toISOString(),
+      type,
+      actor,
+      payload
+    });
+  };
+  push("case_start", "observer", {
+    caseId: testCase.id,
+    templateId: testCase.templateId
+  });
+  push("contract_observed", "observer", {
+    contractHash: testCase.contractHash
+  });
+  push("filesystem_access", "observer", {
+    operation: "snapshot",
+    root: "workspace://root",
+    observedBy: "reference_observer"
+  });
+  push("network_access", "observer", {
+    attempted: true,
+    allowed: false,
+    outcomeCode: "EPERM",
+    policyDecision: "deny",
+    boundaryProbe: true,
+    observedBy: "reference_observer"
+  });
+  push("runner_start", "observer", {
+    runner: "codex",
+    executionMode: "live"
+  });
+  push("process_spawn", "observer", {
+    executable: "fixture-codex",
+    policyDecision: "allow",
+    observedBy: "reference_observer"
+  });
+  push("tool_call", "observer", {
+    tool: "observer-boundary-canary",
+    attempted: true,
+    allowed: false,
+    outcomeCode: "EPERM",
+    policyDecision: "deny",
+    boundaryProbe: true,
+    observedBy: "reference_observer"
+  });
+  push("handoff", testCase.bindings.primaryRole, {
+    to: testCase.bindings.owner,
+    status: "accepted"
+  });
+  push("artifact_write", "observer", {
+    path: testCase.bindings.artifactPath,
+    bytes: 128,
+    observedBy: "reference_observer"
+  });
+  push("state_read", "observer", {
+    path: "process/workflow-state.json",
+    observedBy: "reference_observer"
+  });
+  push("gate_decision", testCase.bindings.owner, { status: "PASS" });
+  push("side_effect_attempt", "observer", {
+    attempted: false,
+    policyDecision: "deny",
+    allowed: false,
+    classifiedAs: "none",
+    observedBy: "reference_observer"
+  });
+  if (testCase.templateId === "side-effect-deny") {
+    push("side_effect_attempt", "observer", {
+      command: "fixture-production-write",
+      policyDecision: "deny",
+      allowed: false,
+      classifiedAs: "production_write",
+      observedBy: "reference_observer"
+    });
+  }
+  push("runner_result", "observer", {
+    verdict: "PASS",
+    hardFailureCodes: []
+  });
+  push("runner_exit", "observer", { exitCode: 0, timedOut: false });
+  push("token_usage", "observer", {
+    input: 500,
+    output: 100,
+    total: 600,
+    wasted: 20,
+    source: "native",
+    observedBy: "reference_observer"
+  });
+  push("case_end", "observer", { status: "completed" });
+  return {
+    caseId: testCase.id,
+    templateId: testCase.templateId,
+    runId: `observed-${runLabel}-${testCase.id}`,
+    events,
+    wallClockSeconds: 12,
+    tokens: {
+      input: 500,
+      output: 100,
+      total: 600,
+      wasted: 20,
+      costEstimateConfidence: "high" as const
+    },
+    telemetryCompleteness: 0.96
+  };
+}
+
+async function writeSignedReliabilityTrace(
+  filePath: string,
+  input: ReturnType<typeof makeReliabilityTracePayload>,
+  privateKey: ReturnType<typeof generateKeyPairSync>["privateKey"],
+  publicKey: ReturnType<typeof generateKeyPairSync>["publicKey"]
+): Promise<void> {
+  const payload = {
+    ...input,
+    observer: {
+      ...input.observer,
+      keyFingerprint: publicKeyFingerprint(
+        publicKey.export({ type: "spki", format: "der" })
+      )
+    }
+  };
+  const { attestation: _attestation, ...unsigned } = payload;
+  const signature = sign(null, Buffer.from(stableJson(unsigned)), privateKey).toString("base64");
+  await writeFile(
+    filePath,
+    `${JSON.stringify(
+      {
+        ...unsigned,
+        attestation: {
+          algorithm: "ed25519",
+          signature
+        }
+      },
+      null,
+      2
+    )}\n`
+  );
+}
+
+function publicKeyFingerprint(der: Buffer): string {
+  return `sha256:${createHash("sha256").update(der).digest("hex")}`;
+}

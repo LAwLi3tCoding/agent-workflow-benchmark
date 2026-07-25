@@ -17,6 +17,13 @@ import { hashFile, sha256Text, stableJson } from "../utils/hash.js";
 import { readJson } from "../utils/io.js";
 import type { RunProvenance } from "./provenance.js";
 import { getHardFailureDefinition } from "../evaluation/evaluationContract.js";
+import {
+  compareGatePolicyBindings,
+  gatePolicyBinding,
+  loadCanonicalGatePolicy,
+  type GatePolicy,
+  type GatePolicyBinding
+} from "../calibration/policyArtifact.js";
 
 export type ComparisonClassification = "IMPROVED" | "REGRESSED" | "UNCHANGED" | "MIXED" | "HARD_FAILURE" | "INCOMPARABLE";
 export type ComparisonReason =
@@ -38,7 +45,11 @@ export type ComparisonReason =
   | "MODEL_MISMATCH"
   | "OBSERVER_MISMATCH"
   | "SEED_MISMATCH"
-  | "CONDITIONS_MISMATCH";
+  | "CONDITIONS_MISMATCH"
+  | "GATE_POLICY_MISSING"
+  | "GATE_POLICY_VERSION_MISMATCH"
+  | "GATE_POLICY_RULES_MISMATCH"
+  | "GATE_POLICY_HASH_MISMATCH";
 
 export interface ComparisonCaseDelta {
   caseId: string;
@@ -53,6 +64,7 @@ export interface ComparisonCaseDelta {
 export interface ComparisonContent {
   schemaVersion: "0.1.0";
   product: typeof PRODUCT_NAME;
+  gatePolicy?: GatePolicyBinding;
   baseline: ComparisonRunSummary;
   candidate: ComparisonRunSummary;
   comparability: {
@@ -112,6 +124,7 @@ interface ComparisonRunSummary {
   observerQualificationStatus: NonNullable<
     RunProvenance["conditions"]["observer"]
   >["qualificationStatus"] | "not_applicable";
+  gatePolicy?: GatePolicyBinding;
 }
 
 interface LoadedRun {
@@ -161,6 +174,7 @@ interface RuntimeManifest {
 export interface ObserverTrustOptions {
   trustedObserverKeyPath?: string;
   trustedQualificationKeyPath?: string;
+  gatePolicy?: GatePolicy;
 }
 
 export async function compareRunArtifacts(
@@ -170,12 +184,20 @@ export async function compareRunArtifacts(
 ): Promise<ComparisonContent> {
   const baseline = await loadRun(baselineInput, options);
   const candidate = await loadRun(candidateInput, options);
-  const reasons = comparisonReasons(baseline, candidate);
+  const policy = options.gatePolicy ?? loadCanonicalGatePolicy();
+  const policyBinding = gatePolicyBinding(policy);
+  const reasons = comparisonReasons(baseline, candidate, policyBinding);
   const invalidProvenanceFailures = provenanceFailures(baseline, candidate);
   const candidateHardFailures = collectCandidateHardFailures(candidate.suite);
   const hardFailures = [...invalidProvenanceFailures, ...candidateHardFailures];
   const comparable = reasons.length === 0;
-  const caseDeltas = comparable ? compareCases(baseline.suite, candidate.suite) : incomparableCaseDeltas(baseline.suite, candidate.suite);
+  const caseDeltas = comparable
+    ? compareCases(
+        baseline.suite,
+        candidate.suite,
+        policy.rules.classification.minimumMeaningfulScoreDelta
+      )
+    : incomparableCaseDeltas(baseline.suite, candidate.suite);
   const summary = summarize(caseDeltas);
   const classification =
     invalidProvenanceFailures.length > 0 || candidateHardFailures.length > 0
@@ -187,6 +209,7 @@ export async function compareRunArtifacts(
   return {
     schemaVersion: "0.1.0",
     product: PRODUCT_NAME,
+    ...(comparable ? { gatePolicy: policyBinding } : {}),
     baseline: runSummary(baseline),
     candidate: runSummary(candidate),
     comparability: {
@@ -812,8 +835,28 @@ function isPortableArtifactRef(ref: string): boolean {
   return normalized !== ".." && !normalized.startsWith("../") && normalized === ref.replaceAll("\\", "/");
 }
 
-function comparisonReasons(baseline: LoadedRun, candidate: LoadedRun): ComparisonReason[] {
+function comparisonReasons(
+  baseline: LoadedRun,
+  candidate: LoadedRun,
+  policy: GatePolicyBinding
+): ComparisonReason[] {
   const reasons: ComparisonReason[] = [];
+  const baselinePolicy = compareGatePolicyBindings(
+    baseline.suite.gatePolicy,
+    policy
+  );
+  const candidatePolicy = compareGatePolicyBindings(
+    candidate.suite.gatePolicy,
+    policy
+  );
+  for (const comparison of [baselinePolicy, candidatePolicy]) {
+    if (
+      comparison.status === "INCOMPARABLE" &&
+      !reasons.includes(comparison.reasonCode)
+    ) {
+      reasons.push(comparison.reasonCode);
+    }
+  }
   if (baseline.provenanceStatus === "MISSING" || candidate.provenanceStatus === "MISSING") {
     reasons.push("PROVENANCE_MISSING");
   }
@@ -886,7 +929,11 @@ function collectCandidateHardFailures(candidate: SuiteResult): ComparisonContent
   );
 }
 
-function compareCases(baseline: SuiteResult, candidate: SuiteResult): ComparisonCaseDelta[] {
+function compareCases(
+  baseline: SuiteResult,
+  candidate: SuiteResult,
+  minimumMeaningfulScoreDelta: number
+): ComparisonCaseDelta[] {
   const baselineById = new Map(baseline.caseResults.map((item) => [item.caseId, item]));
   const candidateById = new Map(candidate.caseResults.map((item) => [item.caseId, item]));
   const caseIds = [...new Set([...baselineById.keys(), ...candidateById.keys()])].sort();
@@ -916,9 +963,12 @@ function compareCases(baseline: SuiteResult, candidate: SuiteResult): Comparison
     const classification =
       right.hardFailures.length > 0
         ? "HARD_FAILURE"
-        : resolvedHardFailures.length > 0 || verdictRank(right.verdict) > verdictRank(left.verdict) || scoreDelta > 0
+        : resolvedHardFailures.length > 0 ||
+            verdictRank(right.verdict) > verdictRank(left.verdict) ||
+            scoreDelta >= minimumMeaningfulScoreDelta
           ? "IMPROVED"
-          : verdictRank(right.verdict) < verdictRank(left.verdict) || scoreDelta < 0
+          : verdictRank(right.verdict) < verdictRank(left.verdict) ||
+              scoreDelta <= -minimumMeaningfulScoreDelta
             ? "REGRESSED"
             : "UNCHANGED";
     return {
@@ -973,7 +1023,8 @@ function runSummary(run: LoadedRun): ComparisonRunSummary {
     provenanceStatus: run.provenanceStatus,
     evidenceKind: run.provenance?.conditions.evidenceKind ?? "unknown",
     observationLevel: run.provenance?.conditions.observationLevel ?? "unknown",
-    observerQualificationStatus: observerQualificationStatus(run)
+    observerQualificationStatus: observerQualificationStatus(run),
+    ...(run.suite.gatePolicy ? { gatePolicy: run.suite.gatePolicy } : {})
   };
 }
 

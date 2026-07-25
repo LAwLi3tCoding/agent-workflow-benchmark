@@ -68,6 +68,8 @@ describe("agent workflow bench plugin package", () => {
     expect(command).toContain("--trusted-qualification-key");
     expect(command).toContain("compare");
     expect(command).toContain("gate");
+    expect(command).toContain("gate-policy calibrate");
+    expect(command).toContain("gate-policy validate-holdout");
   });
 
   test("ships a self-contained plugin runtime for installs without a source checkout", async () => {
@@ -93,14 +95,49 @@ describe("agent workflow bench plugin package", () => {
     await expect(stat(path.join(runtimeRoot, "schemas", "external-validity-observations.schema.json"))).resolves.toBeTruthy();
     await expect(stat(path.join(runtimeRoot, "schemas", "external-validity-human-labels.schema.json"))).resolves.toBeTruthy();
     await expect(stat(path.join(runtimeRoot, "schemas", "validity-report.schema.json"))).resolves.toBeTruthy();
+    await expect(stat(path.join(runtimeRoot, "schemas", "gate-policy.schema.json"))).resolves.toBeTruthy();
+    await expect(stat(path.join(runtimeRoot, "schemas", "calibration-report.schema.json"))).resolves.toBeTruthy();
+    await expect(
+      stat(path.join(runtimeRoot, "configs", "evaluation", "gate-policy.json"))
+    ).resolves.toBeTruthy();
     await expect(stat(path.join(runtimeRoot, "fixtures", "mutations", "core.yaml"))).resolves.toBeTruthy();
     await expect(
       stat(path.join(runtimeRoot, "fixtures", "gold-corpus", "v1", "manifest.yaml"))
+    ).resolves.toBeTruthy();
+    await expect(
+      stat(
+        path.join(
+          runtimeRoot,
+          "fixtures",
+          "calibration",
+          "v1",
+          "fit",
+          "calibration-report.json"
+        )
+      )
+    ).resolves.toBeTruthy();
+    await expect(
+      stat(
+        path.join(
+          runtimeRoot,
+          "fixtures",
+          "calibration",
+          "v1",
+          "holdout",
+          "calibration-report.json"
+        )
+      )
     ).resolves.toBeTruthy();
     await expect(stat(path.join(runtimeRoot, "fixtures", "regression", "scenarios.yaml"))).resolves.toBeTruthy();
     await expect(stat(path.join(runtimeRoot, "dist", "src", "observer", "workflowTrace.js"))).resolves.toBeTruthy();
     await expect(stat(path.join(runtimeRoot, "dist", "src", "observer", "referenceObserver.js"))).resolves.toBeTruthy();
     await expect(stat(path.join(runtimeRoot, "dist", "src", "observer", "qualification.js"))).resolves.toBeTruthy();
+    await expect(
+      stat(path.join(runtimeRoot, "dist", "src", "calibration", "gatePolicy.js"))
+    ).resolves.toBeTruthy();
+    await expect(
+      stat(path.join(runtimeRoot, "dist", "src", "calibration", "policyArtifact.js"))
+    ).resolves.toBeTruthy();
 
     const wrapper = await readFile(path.join(pluginRoot, "bin", "awb"), "utf8");
     expect(wrapper).toContain("RUNTIME_DIR");
@@ -165,6 +202,87 @@ describe("agent workflow bench plugin package", () => {
       );
       expect(criterionAnalyzeHelp.stdout).toContain(
         "--trusted-qualification-key"
+      );
+      const gatePolicyHelp = await execa(
+        path.join(install.pluginPath, "bin", "awb"),
+        ["gate-policy", "--help"],
+        {
+          cwd: outsideCwd,
+          env: { ...process.env, AWB_PROJECT_ROOT: "" }
+        }
+      );
+      expect(gatePolicyHelp.stdout).toContain("calibrate");
+      expect(gatePolicyHelp.stdout).toContain("validate-holdout");
+      const fitOut = path.join(outsideCwd, "gate-policy-fit");
+      const fit = await execa(
+        path.join(install.pluginPath, "bin", "awb"),
+        [
+          "gate-policy",
+          "calibrate",
+          "--corpus",
+          "fixtures/gold-corpus/v1/manifest.yaml",
+          "--policy-version",
+          "1.0.0",
+          "--out",
+          fitOut
+        ],
+        {
+          cwd: outsideCwd,
+          env: { ...process.env, AWB_PROJECT_ROOT: "" },
+          reject: false
+        }
+      );
+      expect(fit.exitCode).toBe(2);
+      const calibratedPolicy = JSON.parse(
+        await readFile(path.join(fitOut, "gate-policy.json"), "utf8")
+      );
+      const calibrationReport = JSON.parse(
+        await readFile(
+          path.join(fitOut, "calibration-report.json"),
+          "utf8"
+        )
+      );
+      await expectValidPluginRuntimeSchema(
+        install.pluginPath,
+        "schemas/gate-policy.schema.json",
+        calibratedPolicy
+      );
+      await expectValidPluginRuntimeSchema(
+        install.pluginPath,
+        "schemas/calibration-report.schema.json",
+        calibrationReport
+      );
+      const holdoutOut = path.join(outsideCwd, "gate-policy-holdout");
+      const holdout = await execa(
+        path.join(install.pluginPath, "bin", "awb"),
+        [
+          "gate-policy",
+          "validate-holdout",
+          "--corpus",
+          "fixtures/gold-corpus/v1/manifest.yaml",
+          "--policy",
+          path.join(fitOut, "gate-policy.json"),
+          "--calibration-report",
+          path.join(fitOut, "calibration-report.json"),
+          "--out",
+          holdoutOut
+        ],
+        {
+          cwd: outsideCwd,
+          env: { ...process.env, AWB_PROJECT_ROOT: "" }
+        }
+      );
+      expect(holdout.stdout).toContain("holdout PASS");
+      const holdoutReport = JSON.parse(
+        await readFile(
+          path.join(holdoutOut, "calibration-report.json"),
+          "utf8"
+        )
+      );
+      await expectValidPluginRuntimeSchema(
+        install.pluginPath,
+        "schemas/calibration-report.schema.json",
+        holdoutReport
       );
 
       const observerKeys = generateKeyPairSync("ed25519");

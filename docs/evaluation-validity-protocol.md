@@ -108,6 +108,59 @@ refuse a strong conclusion. Unstable cases, repeated evidence, or context drift 
 without deleting failures. Any P0 that is not blocked makes the study `INVALID` and gate
 eligibility `BLOCK`.
 
+## Score and Gate Calibration
+
+Gate policy calibration uses only development and calibration Gold Corpus splits to
+evaluate bounded candidates for dimension weights, telemetry thresholds, budget thresholds,
+and classification rules. A candidate is eligible only with P0 recall `1` and false PASS
+`0`; if none qualifies, fitting fails without emitting a policy. The holdout split is loaded
+only by the separate validation command. Fit reports must carry
+`holdoutExcludedFromFit: true`; holdout labels must not enter planner prompts, repair
+context, candidate selection, or policy fitting.
+
+Use the calibration workflow:
+
+```bash
+awb gate-policy calibrate \
+  --corpus fixtures/gold-corpus/v1/manifest.yaml \
+  --policy-version 1.0.0 \
+  --out reports/gate-policy/v1/fit
+
+awb gate-policy validate-holdout \
+  --corpus fixtures/gold-corpus/v1/manifest.yaml \
+  --policy reports/gate-policy/v1/fit/gate-policy.json \
+  --calibration-report reports/gate-policy/v1/fit/calibration-report.json \
+  --out reports/gate-policy/v1/holdout
+```
+
+`calibrate` exits `2` with `PENDING_HOLDOUT`. `validate-holdout` exits `0` for PASS and
+`1` for FAIL. Both commands emit machine-readable JSON and Markdown. Reports prioritize
+dimension evidence, paired effects, bootstrap intervals, telemetry support, budget support,
+candidate selection, and policy hashes rather than a single aggregate score.
+Telemetry and budget support in the public synthetic corpus is descriptive; it does not
+independently establish a safely superior threshold, and tied candidates retain the
+canonical baseline.
+
+The committed public synthetic evidence is
+`fixtures/calibration/v1/fit/{gate-policy.json,calibration-report.json,calibration-report.md}`
+and `fixtures/calibration/v1/holdout/{calibration-report.json,calibration-report.md}`. It is
+harness-diagnostic evidence only and records `releaseEligible: false`.
+
+Acceptance threshold on holdout: P0 recall 100%, false PASS 0, overall agreement at least
+0.85, Cohen kappa at least 0.8, and gate-decision stability at least 95%. Any missing,
+tampered, or mismatched fit report, corpus hash, policy hash, rules hash, data boundary, or
+policy version fails closed.
+
+The holdout stability metric is scoped to `deterministic_harness_replay` and repeats the
+full synthetic trajectory materialization, detector, and scoring path. It is not evidence
+of live Runner or Observer stability; live stability remains governed by the reliability
+study.
+
+Rule changes require a `policyVersion` change. Historical runs are recomputable only when
+their `policyId`, `policyVersion`, `rulesHash`, and `policyHash` match the selected policy;
+otherwise compare/gate results are explicitly incomparable. Deterministic hard failures
+continue to dominate calibrated scores.
+
 ## Observer Qualification
 
 A signature proves origin and post-signing integrity, not observation completeness. A public key
@@ -155,8 +208,8 @@ Deterministic P0 hard failures dominate scores and AI judgments. Current evidenc
 | signed workflow trace without valid Observer qualification | DIAGNOSTIC_ONLY |
 | qualified independent signed workflow trace | eligible for PASS after all other gates |
 
-Later empirical thresholds are frozen in their versioned protocol/policy artifacts before
-holdout evaluation. A sample below its required size cannot support a strong conclusion.
+Empirical thresholds are frozen in their versioned protocol/policy artifacts before holdout
+evaluation. A sample below its required size cannot support a strong conclusion.
 
 ## Failure Conditions
 
@@ -165,7 +218,7 @@ qualification is missing or invalid, P0 evidence exists, privacy or isolation po
 violated, holdout leakage occurs, deterministic replay diverges, or a required schema cannot be
 validated. AI semantic judgment and aggregate scores cannot override any of these conditions.
 
-## Stage 5 Status
+## Stage 6 Status
 
 Proven for the harness: canonical vocabulary, contract hashing boundary, owner-review admission
 boundary, deterministic hard-failure precedence, diagnostic evidence ceilings, content-hashed
@@ -181,14 +234,18 @@ and undersized or unstable studies fail closed.
 Implemented mechanism: external validity study/package/observation/label/report schemas,
 blinded labeling package generation, human-label/adjudication analysis, confusion matrix,
 P0 precision/recall, false-PASS counting, exact agreement, Cohen kappa, public-ref privacy
-checks, cryptographic comparison-bundle revalidation, policy/input-bound report hashes, and the
-criterion-validity CLI surface.
+checks, cryptographic comparison-bundle revalidation, policy/input-bound report hashes, the
+criterion-validity CLI surface, versioned gate-policy artifacts, calibration reports,
+development/calibration-only fitting, holdout-only validation, policy-bound suite/comparison/gate
+artifacts, and policy mismatch incomparability.
 
 Diagnostic only: signed but unqualified traces and all built-in live contract summaries.
+Public Gold Corpus policy PASS is also harness-diagnostic and records `releaseEligible: false`;
+it does not establish production criterion validity.
 
 Requires human input before an external-validity PASS: a completed 120-item private study with
 owner-reviewed real external contracts (the public template is 112 items short and is not
 evidence), qualified independent Codex and Claude live traces, two-rater labels, adjudication for
 disagreements, and production blocking authorization.
 
-Deferred by protocol: calibration, CI canary, trends, and adapter conformance.
+Deferred by protocol: CI canary, trends, and adapter conformance.

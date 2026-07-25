@@ -50,7 +50,14 @@ export async function verifyExternalValidityComparisonEvidence(
       return invalid("Comparison bundle could not be verified against its bundled evidence.");
     }
 
-    const gate = evaluateGate(comparison, verification);
+    const gate = options.gatePolicy
+      ? evaluateGate(
+          comparison,
+          verification,
+          options.gatePolicy,
+          gatePolicyEvidenceRef(options.gatePolicy)
+        )
+      : evaluateGate(comparison, verification);
     const summaryIssue = validateComparisonSummary(comparison);
     if (summaryIssue) {
       return invalid(summaryIssue);
@@ -192,4 +199,10 @@ async function readBoundProvenance(
 
 function invalid(reason: string): ExternalValidityComparisonEvidenceVerification {
   return { status: "INVALID", reason };
+}
+
+function gatePolicyEvidenceRef(
+  policy: NonNullable<ObserverTrustOptions["gatePolicy"]>
+): string {
+  return `${policy.policyId}@${policy.policyVersion}#${policy.policyHash}`;
 }

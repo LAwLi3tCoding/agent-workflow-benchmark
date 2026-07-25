@@ -243,6 +243,45 @@ Gate exit code 固定为：
 
 `DIAGNOSTIC_ONLY` 不是通过，也不是失败准入结论；它表示本次证据不足以做准入或排名判断，只能用于定位问题。进入准入判断前必须补齐缺失 telemetry、oracle 或 runner 可比性。
 
+Gate 使用版本化 `gate-policy.json`。`suite-result.json`、`comparison-result.json` 和
+`gate-result.json` 都记录 `policyId`、`policyVersion`、`rulesHash`、`policyHash`。
+重新计算历史结果时，`compare` 和 `gate` 都可以显式传入同一策略：
+
+```bash
+awb compare --baseline <baseline-run> --candidate <candidate-run> --gate-policy <gate-policy.json> --out <comparison-dir>
+awb gate --comparison <comparison-dir>/comparison-result.json --gate-policy <gate-policy.json> --out <gate-dir>
+```
+
+缺少策略绑定，或 version、rules hash、policy hash 不一致时，结果会被标记为不可比较，
+不能把不同规则下的结果放在一起排名或画趋势。策略规则变化必须提升 `policyVersion`；
+同一版本下偷改规则会被拒绝。
+
+策略校准分两步。第一步只读取 Gold Corpus 的 development/calibration split：
+
+```bash
+awb gate-policy calibrate --corpus fixtures/gold-corpus/v1/manifest.yaml --policy-version 1.0.0 --out reports/gate-policy/v1/fit
+```
+
+该命令返回 `2`，因为报告状态是 `PENDING_HOLDOUT`。如果所有 candidate 都无法
+同时保持 P0 recall 为 `1`、false PASS 为 `0`，则返回 `1` 且不生成策略。第二步
+才加载未见过的 holdout：
+
+```bash
+awb gate-policy validate-holdout --corpus fixtures/gold-corpus/v1/manifest.yaml --policy reports/gate-policy/v1/fit/gate-policy.json --calibration-report reports/gate-policy/v1/fit/calibration-report.json --out reports/gate-policy/v1/holdout
+```
+
+holdout PASS 返回 `0`，FAIL 返回 `1`。报告展示维度 evidence、safe/risk 均分、
+paired effect、bootstrap interval、telemetry/budget 支持度、candidate selection 和
+policy hash，而不是只给一个总分。公共 Gold Corpus 是 synthetic harness 诊断，报告
+`releaseEligible: false`；即使 holdout PASS，也不能替代真实 target 的 owner review、
+独立 live trace、双人盲审标签、adjudication 和生产阻断授权。
+报告中的 stability 明确限定为完整 synthetic harness 的确定性重放，不代表 live
+Runner 或 Observer 的稳定性；后者必须由 reliability study 证明。
+
+已提交的公共 synthetic 证据在
+`fixtures/calibration/v1/fit/{gate-policy.json,calibration-report.json,calibration-report.md}`
+和 `fixtures/calibration/v1/holdout/{calibration-report.json,calibration-report.md}`。
+
 ## 9. 安全边界
 
 当前可验证的安全边界是：

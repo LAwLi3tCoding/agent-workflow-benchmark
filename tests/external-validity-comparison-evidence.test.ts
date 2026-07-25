@@ -8,6 +8,11 @@ import { loadTargetPack } from "../src/core/targetRegistry.js";
 import type { BenchmarkCase, RunEvent } from "../src/core/types.js";
 import { materializeSmokeSuite } from "../src/generator/materialize.js";
 import {
+  loadCanonicalGatePolicy,
+  reviseGatePolicy,
+  type GatePolicy
+} from "../src/calibration/gatePolicy.js";
+import {
   REFERENCE_OBSERVER_EVIDENCE_CAPABILITIES,
   referenceObserverImplementationHash
 } from "../src/observer/referenceObserver.js";
@@ -19,7 +24,7 @@ import {
   type ExternalValidityStudy
 } from "../src/validity/externalValidity.js";
 import { semanticCaseSetHash } from "../src/regression/provenance.js";
-import { sha256Text, stableJson } from "../src/utils/hash.js";
+import { hashFile, sha256Text, stableJson } from "../src/utils/hash.js";
 
 const cwd = process.cwd();
 let root = "";
@@ -28,7 +33,10 @@ let qualificationPublicKeyPath = "";
 let observerPrivateKeyPath = "";
 let qualificationPrivateKeyPath = "";
 let qualifiedComparisonPath = "";
+let customPolicyQualifiedComparisonPath = "";
 let unqualifiedComparisonPath = "";
+let customPolicy: GatePolicy;
+let customPolicyPath = "";
 
 describe("external validity comparison evidence verification", () => {
   beforeAll(async () => {
@@ -88,6 +96,12 @@ describe("external validity comparison evidence verification", () => {
       { cwd }
     );
     const qualificationArtifactPath = path.join(qualificationDir, "observer-qualification.json");
+    customPolicy = reviseGatePolicy(loadCanonicalGatePolicy(), {
+      policyVersion: "1.0.1",
+      rules: loadCanonicalGatePolicy().rules
+    });
+    customPolicyPath = path.join(root, "gate-policy-1.0.1.json");
+    await writeFile(customPolicyPath, `${JSON.stringify(customPolicy, null, 2)}\n`);
 
     const baselineQualified = path.join(root, "baseline-qualified");
     const candidateQualified = path.join(root, "candidate-qualified");
@@ -96,6 +110,21 @@ describe("external validity comparison evidence verification", () => {
     const qualifiedComparisonDir = path.join(root, "comparison-qualified");
     await compareRuns(baselineQualified, candidateQualified, qualifiedComparisonDir, true);
     qualifiedComparisonPath = path.join(qualifiedComparisonDir, "comparison-result.json");
+
+    await bindRunToGatePolicy(baselineQualified, customPolicy);
+    await bindRunToGatePolicy(candidateQualified, customPolicy);
+    const customPolicyComparisonDir = path.join(root, "comparison-qualified-custom-policy");
+    await compareRuns(
+      baselineQualified,
+      candidateQualified,
+      customPolicyComparisonDir,
+      true,
+      customPolicyPath
+    );
+    customPolicyQualifiedComparisonPath = path.join(
+      customPolicyComparisonDir,
+      "comparison-result.json"
+    );
 
     const baselineUnqualified = path.join(root, "baseline-unqualified");
     const candidateUnqualified = path.join(root, "candidate-unqualified");
@@ -274,6 +303,22 @@ describe("external validity comparison evidence verification", () => {
     });
   });
 
+  test("uses the verified comparison gate policy when extracting gate evidence", async () => {
+    await expect(
+      verifyExternalValidityComparisonEvidence(customPolicyQualifiedComparisonPath, {
+        trustedObserverKeyPath: observerPublicKeyPath,
+        trustedQualificationKeyPath: qualificationPublicKeyPath,
+        gatePolicy: customPolicy
+      })
+    ).resolves.toMatchObject({
+      status: "VALID",
+      evidence: {
+        classification: "UNCHANGED",
+        gateDecision: "PASS"
+      }
+    });
+  });
+
   test("rejects otherwise verified workflow-trace comparisons without qualified observer evidence", async () => {
     await expect(
       verifyExternalValidityComparisonEvidence(unqualifiedComparisonPath, {
@@ -337,7 +382,8 @@ async function compareRuns(
   baseline: string,
   candidate: string,
   out: string,
-  qualified: boolean
+  qualified: boolean,
+  gatePolicyPath?: string
 ): Promise<void> {
   await execa(
     "node",
@@ -353,6 +399,7 @@ async function compareRuns(
       "--trusted-observer-key",
       observerPublicKeyPath,
       ...(qualified ? ["--trusted-qualification-key", qualificationPublicKeyPath] : []),
+      ...(gatePolicyPath ? ["--gate-policy", gatePolicyPath] : []),
       "--out",
       out
     ],
@@ -531,4 +578,25 @@ async function writeSignedTrace(
 
 function publicKeyFingerprint(der: Buffer): string {
   return `sha256:${createHash("sha256").update(der).digest("hex")}`;
+}
+
+async function bindRunToGatePolicy(
+  runDir: string,
+  policy: GatePolicy
+): Promise<void> {
+  const suitePath = path.join(runDir, "suite-result.json");
+  const provenancePath = path.join(runDir, "provenance.json");
+  const suite = JSON.parse(await readFile(suitePath, "utf8"));
+  const provenance = JSON.parse(await readFile(provenancePath, "utf8"));
+  suite.gatePolicy = {
+    policyId: policy.policyId,
+    policyVersion: policy.policyVersion,
+    rulesHash: policy.rulesHash,
+    policyHash: policy.policyHash
+  };
+  await writeFile(suitePath, `${JSON.stringify(suite, null, 2)}\n`);
+  provenance.integrity.artifacts.find(
+    (artifact: { ref: string }) => artifact.ref === "suite-result.json"
+  ).sha256 = await hashFile(suitePath);
+  await writeFile(provenancePath, `${JSON.stringify(provenance, null, 2)}\n`);
 }

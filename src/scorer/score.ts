@@ -15,10 +15,15 @@ import type {
 import {
   getEvaluationContract,
   getHardFailureDefinition,
-  getImplementedDimensions,
-  getScorePolicy
+  getImplementedDimensions
 } from "../evaluation/evaluationContract.js";
 import type { EvidenceKind, ObservationLevel } from "../doctor/doctor.js";
+import {
+  gatePolicyBinding,
+  loadCanonicalGatePolicy,
+  type GatePolicy,
+  type GatePolicyRules
+} from "../calibration/policyArtifact.js";
 
 export interface SuiteEvidenceContext {
   evidenceKind: EvidenceKind;
@@ -26,17 +31,27 @@ export interface SuiteEvidenceContext {
   observerQualification?: "missing" | "valid" | "invalid";
 }
 
-export function scoreCase(testCase: BenchmarkCase, run: CaseRun): CaseResult {
+export function scoreCase(
+  testCase: BenchmarkCase,
+  run: CaseRun,
+  policyRules: GatePolicyRules = loadCanonicalGatePolicy().rules
+): CaseResult {
   const hardFailures = collectHardFailures(run);
   const runnerFailure = hasRunnerFailure(run);
   const runnerDiagnostic = getRunnerDiagnosticReason(run);
   const runnerFail = hasRunnerFailResult(run);
   const runner = runnerForRun(run);
   if (runnerFail) {
-    const evaluationDimensions = evaluateCaseDimensions(testCase, run, hardFailures, {
-      status: "FAIL",
-      why: "Runner returned FAIL for the provided oracle evidence."
-    });
+    const evaluationDimensions = evaluateCaseDimensions(
+      testCase,
+      run,
+      hardFailures,
+      {
+        status: "FAIL",
+        why: "Runner returned FAIL for the provided oracle evidence."
+      },
+      policyRules
+    );
     return {
       schemaVersion: "0.1.0",
       resultType: "case",
@@ -74,10 +89,16 @@ export function scoreCase(testCase: BenchmarkCase, run: CaseRun): CaseResult {
     const reason = runnerFailure
       ? "Runner exited unsuccessfully; workflow result is not comparable."
       : `Runner result was ${runnerDiagnostic}; workflow result is not comparable.`;
-    const evaluationDimensions = evaluateCaseDimensions(testCase, run, hardFailures, {
-      status: "DIAGNOSTIC_ONLY",
-      why: reason
-    });
+    const evaluationDimensions = evaluateCaseDimensions(
+      testCase,
+      run,
+      hardFailures,
+      {
+        status: "DIAGNOSTIC_ONLY",
+        why: reason
+      },
+      policyRules
+    );
     return {
       schemaVersion: "0.1.0",
       resultType: "case",
@@ -115,12 +136,26 @@ export function scoreCase(testCase: BenchmarkCase, run: CaseRun): CaseResult {
       }
     };
   }
-  const evaluationDimensions = evaluateCaseDimensions(testCase, run, hardFailures, {
-    status: "PASS",
-    why: "Runner produced comparable PASS evidence."
-  });
-  const policy = getScorePolicy();
-  const rawScore = Math.max(0, Math.round(weightedDimensionAverage(evaluationDimensions)));
+  const evaluationDimensions = evaluateCaseDimensions(
+    testCase,
+    run,
+    hardFailures,
+    {
+      status: "PASS",
+      why: "Runner produced comparable PASS evidence."
+    },
+    policyRules
+  );
+  const policy = policyRules.score;
+  const rawScore = Math.max(
+    0,
+    Math.round(
+      weightedDimensionAverage(
+        evaluationDimensions,
+        policyRules.dimensionWeights
+      )
+    )
+  );
   const hasP0 = hardFailures.some((failure) => failure.severity === "P0");
   const hasP1 = hardFailures.some((failure) => failure.severity === "P1");
   const hasDiagnosticOnlyDimension = evaluationDimensions.some(
@@ -209,9 +244,10 @@ export function scoreSuite(
   contract: ContractModel,
   suite: string,
   caseResults: CaseResult[],
-  evidenceContext?: SuiteEvidenceContext
+  evidenceContext?: SuiteEvidenceContext,
+  gatePolicy: GatePolicy = loadCanonicalGatePolicy()
 ): SuiteResult {
-  const policy = getScorePolicy();
+  const policy = gatePolicy.rules.score;
   const rawSuiteScore = Math.round(avg(caseResults.map((result) => result.rawScore)));
   const cappedSuiteScore = Math.round(avg(caseResults.map((result) => result.cappedScore)));
   const telemetryCompleteness = Number(avg(caseResults.map((result) => result.telemetryCompleteness)).toFixed(2));
@@ -230,7 +266,7 @@ export function scoreSuite(
     : evidenceCeilingRuleId ||
         hasDiagnosticOnly ||
         hasNotComparableWorkflow ||
-        telemetryCompleteness < policy.telemetryMinimum
+        telemetryCompleteness < gatePolicy.rules.telemetry.minimumCompleteness
       ? "DIAGNOSTIC_ONLY"
       : cappedSuiteScore >= policy.suiteApproveMinimum
         ? "APPROVE"
@@ -243,6 +279,7 @@ export function scoreSuite(
     targetId: contract.targetId,
     suite,
     runId,
+    gatePolicy: gatePolicyBinding(gatePolicy),
     caseResults: caseResults.map((result) => ({
       caseId: result.caseId,
       verdict: result.verdict,
@@ -263,7 +300,8 @@ export function scoreSuite(
       evidenceCeilingRuleId,
       hasDiagnosticOnly,
       hasNotComparableWorkflow,
-      telemetryCompleteness
+      telemetryCompleteness,
+      telemetryMinimum: gatePolicy.rules.telemetry.minimumCompleteness
     }),
     telemetryCompleteness,
     debugHealth: {
@@ -286,6 +324,7 @@ function releaseRuleIdFor(options: {
   hasDiagnosticOnly: boolean;
   hasNotComparableWorkflow: boolean;
   telemetryCompleteness: number;
+  telemetryMinimum: number;
 }): string {
   if (options.hasHardFailure) {
     return "REL-P0-WORKFLOW-HARD-FAIL";
@@ -302,7 +341,7 @@ function releaseRuleIdFor(options: {
   if (options.hasNotComparableWorkflow) {
     return "REL-RUNNER-NOT-COMPARABLE";
   }
-  if (options.telemetryCompleteness < getScorePolicy().telemetryMinimum) {
+  if (options.telemetryCompleteness < options.telemetryMinimum) {
     return "REL-TELEMETRY-DIAGNOSTIC";
   }
   if (options.releaseDecision === "APPROVE") {
@@ -370,7 +409,8 @@ function evaluateCaseDimensions(
   testCase: BenchmarkCase,
   run: CaseRun,
   hardFailures: HardFailure[],
-  runnerDimension: { status: EvaluationStatus; why: string }
+  runnerDimension: { status: EvaluationStatus; why: string },
+  policyRules: GatePolicyRules
 ): CaseEvaluationDimension[] {
   const hardFailureCodes = new Set(hardFailures.map((failure) => failure.code));
   const byCode = (code: string) => hardFailures.filter((failure) => failure.code === code);
@@ -520,8 +560,13 @@ function evaluateCaseDimensions(
   const tokenBudget = testCase.budgets.tokenTotal;
   const wallClockBudget = testCase.budgets.wallClockSeconds;
   const wastedRatio = run.tokens.total > 0 ? run.tokens.wasted / run.tokens.total : 0;
-  const overBudget = run.tokens.total > tokenBudget || run.wallClockSeconds > wallClockBudget;
-  const inefficient = wastedRatio > getScorePolicy().efficiencyWastedRatioWarning;
+  const overBudget =
+    run.tokens.total >
+      tokenBudget * policyRules.budget.maximumTokenBudgetRatio ||
+    run.wallClockSeconds >
+      wallClockBudget * policyRules.budget.maximumWallClockBudgetRatio;
+  const inefficient =
+    wastedRatio > policyRules.budget.wastedRatioWarning;
   add(
     "efficiency",
     overBudget ? 45 : inefficient ? 80 : 100,
@@ -529,7 +574,9 @@ function evaluateCaseDimensions(
     overBudget
       ? "Run exceeded the declared token or wall-clock budget."
       : inefficient
-        ? "Run stayed within budget but wasted-token ratio exceeded 20%."
+        ? `Run stayed within budget but wasted-token ratio exceeded ${Math.round(
+            policyRules.budget.wastedRatioWarning * 100
+          )}%.`
         : "Run stayed within declared token and wall-clock budgets.",
     eventIds("token_usage")
   );
@@ -622,15 +669,18 @@ function aggregateDimensionScores(caseResults: CaseResult[]): SuiteDimensionScor
   });
 }
 
-function weightedDimensionAverage(dimensions: CaseEvaluationDimension[]): number {
-  const weights = new Map(
-    getImplementedDimensions().map((dimension) => [dimension.id, dimension.weight])
+function weightedDimensionAverage(
+  dimensions: CaseEvaluationDimension[],
+  dimensionWeights: GatePolicyRules["dimensionWeights"]
+): number {
+  const implemented = new Set(
+    getImplementedDimensions().map((dimension) => dimension.id)
   );
   let weightedTotal = 0;
   let totalWeight = 0;
   for (const dimension of dimensions) {
-    const weight = weights.get(dimension.dimension);
-    if (weight === undefined) {
+    const weight = dimensionWeights[dimension.dimension];
+    if (!implemented.has(dimension.dimension) || weight === undefined) {
       throw new Error(
         `Evaluation dimension ${dimension.dimension} is not implemented by the canonical registry.`
       );

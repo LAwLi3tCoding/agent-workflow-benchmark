@@ -23,6 +23,7 @@ rows are not product capability claims.
 | observer-qualification | entrypoints, commandPolicy | static-contract | filesystem_access, tool_call, process_spawn, network_access, artifact_write, state_read, side_effect_attempt, token_usage | oracle-static-contract | runner, telemetry, GATE-PASS | tests/reference-observer.test.ts; tests/observer-qualification.test.ts; tests/workflow-trace.test.ts |
 | reliability-statistics | budgets, commandPolicy | static-contract | runner_start, runner_result, case_end | oracle-static-contract | telemetry, runner, GATE-INCOMPARABLE, GATE-EVIDENCE-NOT-WORKFLOW-TRACE, GATE-PASS | tests/reliability.test.ts; tests/reliability-statistics.test.ts; tests/reliability-evidence-boundary.test.ts; tests/reliability-schema.test.ts |
 | external-criterion-validity-mechanism | criterionValidityPolicy | directory, cli, hybrid external study items | cryptographically reverified workflow_trace comparison bundles, blinded labels, adjudications | owner-reviewed reference label comparison | validity status, confusion matrix, P0 recall, false PASS, exact agreement, Cohen kappa | tests/external-validity.test.ts; tests/external-validity-verified.test.ts; tests/external-validity-comparison-evidence.test.ts; tests/external-validity-schema.test.ts; tests/external-validity-cli.test.ts |
+| calibrated-score-gate | gatePolicy | static-contract, Gold Corpus development/calibration/holdout cases | lifecycle, handoff, artifact, state, gate, side-effect, token events | canonical deterministic oracles and frozen holdout metrics | gate-policy binding, GATE-POLICY-INCOMPARABLE, calibrated thresholds | tests/calibration-policy.test.ts; tests/calibration-schema.test.ts; tests/gate-policy-versioning.test.ts; tests/stage6-gate.test.ts; tests/calibration-cli.test.ts |
 
 ## Backlog boundary
 
@@ -32,7 +33,11 @@ and remains `pending_human_input`; a PASS requires the frozen 120-item reviewed 
 qualified Codex and Claude live traces, two independent blinded raters, adjudication, P0 recall
 1.0, false PASS 0, overall agreement at least 0.85, and Cohen kappa at least 0.8.
 
-Calibrated policy performance, trend analysis, and adapter conformance remain later-stage
-claims. Reliability statistics are implemented, but deterministic or unqualified studies remain
-`DIAGNOSTIC_ONLY`; only stable qualified independent live `workflow_trace` samples can become
-gate-eligible.
+Calibrated policy mechanics are implemented for the public synthetic Gold Corpus, including
+development/calibration-only fitting, holdout validation, policy version/hash binding, and
+incomparable-result handling. The committed evidence lives under `fixtures/calibration/v1/fit`
+and `fixtures/calibration/v1/holdout`. That PASS remains harness-diagnostic and
+`releaseEligible: false`.
+Trend analysis and adapter conformance remain later-stage claims. Reliability statistics are
+implemented, but deterministic or unqualified studies remain `DIAGNOSTIC_ONLY`; only stable
+qualified independent live `workflow_trace` samples can become gate-eligible.

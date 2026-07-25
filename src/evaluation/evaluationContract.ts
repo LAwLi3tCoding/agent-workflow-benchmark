@@ -68,6 +68,15 @@ export interface EvaluationContract {
     overallAgreementMinimum: number;
     cohenKappaMinimum: number;
   };
+  gatePolicy: {
+    policyId: "awb-gate-policy";
+    canonicalRef: "configs/evaluation/gate-policy.json";
+    schemaRef: "schemas/gate-policy.schema.json";
+    calibrationReportSchemaRef: "schemas/calibration-report.schema.json";
+    fitSplits: ["development", "calibration"];
+    holdoutSplit: "holdout";
+    publicFixtureReleaseEligible: false;
+  };
   coverageTargets: Array<{
     id: string;
     label: string;
@@ -164,6 +173,10 @@ export function getCriterionValidityPolicy(): EvaluationContract["criterionValid
   return getEvaluationContract().criterionValidityPolicy;
 }
 
+export function getGatePolicyContract(): EvaluationContract["gatePolicy"] {
+  return getEvaluationContract().gatePolicy;
+}
+
 export function getHardFailureDefinition(
   code: string
 ): EvaluationContract["hardFailures"][number] | undefined {
@@ -237,6 +250,23 @@ function assertEvaluationContract(contract: EvaluationContract): void {
   ) {
     throw new Error(
       "Canonical evaluation contract criterion validity policy is invalid or weakens frozen thresholds."
+    );
+  }
+  const gatePolicy = contract.gatePolicy;
+  if (
+    !gatePolicy ||
+    gatePolicy.policyId !== "awb-gate-policy" ||
+    gatePolicy.canonicalRef !== "configs/evaluation/gate-policy.json" ||
+    gatePolicy.schemaRef !== "schemas/gate-policy.schema.json" ||
+    gatePolicy.calibrationReportSchemaRef !==
+      "schemas/calibration-report.schema.json" ||
+    JSON.stringify(gatePolicy.fitSplits) !==
+      JSON.stringify(["development", "calibration"]) ||
+    gatePolicy.holdoutSplit !== "holdout" ||
+    gatePolicy.publicFixtureReleaseEligible !== false
+  ) {
+    throw new Error(
+      "Canonical evaluation contract gate-policy boundary is missing or unsafe."
     );
   }
   for (const [label, ids] of [

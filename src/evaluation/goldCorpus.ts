@@ -13,6 +13,7 @@ import { getBenchmarkRoot } from "../core/targetRegistry.js";
 import { deriveWorkflowCoverageTargets } from "../generator/coverage.js";
 import { semanticCaseSetHash } from "../regression/provenance.js";
 import { scoreCase } from "../scorer/score.js";
+import { baselineGatePolicyRules } from "../calibration/policyArtifact.js";
 import { hashFile } from "../utils/hash.js";
 import { getScorePolicy } from "./evaluationContract.js";
 
@@ -174,6 +175,12 @@ export interface LoadedGoldCorpus {
   cases: LoadedGoldCorpusCase[];
 }
 
+export interface ScoredGoldCorpusCase {
+  corpusCase: LoadedGoldCorpusCase;
+  caseResult: CaseResult;
+  observedFailureCodes: string[];
+}
+
 export interface GoldCorpusPlannerView {
   schemaVersion: "0.1.0";
   corpusId: "awb-gold-corpus";
@@ -252,10 +259,24 @@ export interface GoldCorpusReport {
 export async function loadGoldCorpus(
   manifestPath = DEFAULT_GOLD_CORPUS_PATH
 ): Promise<LoadedGoldCorpus> {
+  const corpus = await loadGoldCorpusSplits(manifestPath, [
+    "development",
+    "calibration",
+    "holdout"
+  ]);
+  assertRequiredControls(corpus.cases);
+  return corpus;
+}
+
+export async function loadGoldCorpusSplits(
+  manifestPath = DEFAULT_GOLD_CORPUS_PATH,
+  splits: GoldCorpusSplit[]
+): Promise<LoadedGoldCorpus> {
   const resolvedManifestPath = path.resolve(manifestPath);
   const manifestHash = await hashFile(resolvedManifestPath);
   const manifest = await readYaml<GoldCorpusManifest>(resolvedManifestPath);
   assertManifest(manifest);
+  assertRequestedSplits(splits);
   const corpusRoot = path.dirname(resolvedManifestPath);
   const basePath = resolveCorpusPath(corpusRoot, manifest.baseTrajectory.path);
   await assertContentHash(basePath, manifest.baseTrajectory.contentHash);
@@ -264,7 +285,8 @@ export async function loadGoldCorpus(
 
   const cases: LoadedGoldCorpusCase[] = [];
   const seenTrajectoryIds = new Set<string>();
-  for (const splitRef of manifest.splits) {
+  const selectedSplits = new Set(splits);
+  for (const splitRef of manifest.splits.filter((split) => selectedSplits.has(split.id))) {
     const trajectoriesPath = resolveCorpusPath(corpusRoot, splitRef.trajectoriesPath);
     const labelsPath = resolveCorpusPath(corpusRoot, splitRef.labelsPath);
     await assertContentHash(trajectoriesPath, splitRef.trajectoriesHash);
@@ -303,7 +325,6 @@ export async function loadGoldCorpus(
       );
     }
   }
-  assertRequiredControls(cases);
   return {
     manifestPath: resolvedManifestPath,
     manifestHash,
@@ -373,11 +394,12 @@ export function evaluateGoldCorpus(
         `Gold Corpus trajectory ${item.trajectory.id} references unknown benchmark case ${item.trajectory.benchmarkCaseId}.`
       );
     }
-    const rawRun = materializeGoldTrajectory(corpus.base, item.trajectory, contract, testCase);
-    const detectedFailures = detectTrajectoryFailures(rawRun, contract, testCase);
-    const scoredRun = appendDetectedFailures(rawRun, detectedFailures);
-    const scored = scoreCase(testCase, scoredRun);
-    const observedFailureCodes = [...new Set(scored.hardFailures.map((failure) => failure.code))].sort();
+    const { caseResult: scored, observedFailureCodes } = scoreGoldCorpusCase(
+      corpus,
+      item,
+      contract,
+      testCase
+    );
     const expectedFailureMatched = item.label.expectedFailureCodes.every((code) =>
       observedFailureCodes.includes(code)
     );
@@ -548,6 +570,34 @@ export function evaluateGoldCorpus(
     },
     blindSpots,
     results
+  };
+}
+
+export function scoreGoldCorpusCase(
+  corpus: Pick<LoadedGoldCorpus, "base">,
+  corpusCase: LoadedGoldCorpusCase,
+  contract: ContractModel,
+  benchmarkCase: BenchmarkCase
+): ScoredGoldCorpusCase {
+  const rawRun = materializeGoldTrajectory(
+    corpus.base,
+    corpusCase.trajectory,
+    contract,
+    benchmarkCase
+  );
+  const detectedFailures = detectTrajectoryFailures(rawRun, contract, benchmarkCase);
+  const scoredRun = appendDetectedFailures(rawRun, detectedFailures);
+  const caseResult = scoreCase(
+    benchmarkCase,
+    scoredRun,
+    baselineGatePolicyRules()
+  );
+  return {
+    corpusCase,
+    caseResult,
+    observedFailureCodes: [
+      ...new Set(caseResult.hardFailures.map((failure) => failure.code))
+    ].sort()
   };
 }
 
@@ -1143,6 +1193,27 @@ function assertRequiredControls(cases: LoadedGoldCorpusCase[]): void {
         `Gold Corpus ${code} must have exactly one boundary, known_bad, and known_good trajectory.`
       );
     }
+  }
+}
+
+function assertRequestedSplits(splits: GoldCorpusSplit[]): void {
+  if (!Array.isArray(splits) || splits.length === 0) {
+    throw new Error("Gold Corpus split selection must include at least one split.");
+  }
+  const validSplits = new Set<GoldCorpusSplit>([
+    "development",
+    "calibration",
+    "holdout"
+  ]);
+  const seen = new Set<GoldCorpusSplit>();
+  for (const split of splits) {
+    if (!validSplits.has(split)) {
+      throw new Error(`Gold Corpus split selection is invalid: ${split}.`);
+    }
+    if (seen.has(split)) {
+      throw new Error(`Gold Corpus split selection is duplicated: ${split}.`);
+    }
+    seen.add(split);
   }
 }
 

@@ -1,0 +1,477 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "calibration-report.schema.json",
+  "title": "Agent Workflow Bench gate policy calibration report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "reportType",
+    "assessmentType",
+    "releaseEligible",
+    "status",
+    "policy",
+    "dataBoundary",
+    "fit",
+    "blockers",
+    "integrity"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "0.1.0" },
+    "reportType": { "const": "gate_policy_calibration" },
+    "assessmentType": { "const": "harness_diagnostic" },
+    "releaseEligible": { "const": false },
+    "status": { "enum": ["PENDING_HOLDOUT", "PASS", "FAIL"] },
+    "policy": { "$ref": "#/$defs/policyBinding" },
+    "dataBoundary": { "$ref": "#/$defs/dataBoundary" },
+    "fit": { "$ref": "#/$defs/fit" },
+    "holdout": { "$ref": "#/$defs/holdout" },
+    "blockers": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/blocker" }
+    },
+    "integrity": { "$ref": "#/$defs/integrity" }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": { "status": { "const": "PENDING_HOLDOUT" } },
+        "required": ["status"]
+      },
+      "then": {
+        "not": { "required": ["holdout"] }
+      }
+    },
+    {
+      "if": {
+        "properties": { "status": { "enum": ["PASS", "FAIL"] } },
+        "required": ["status"]
+      },
+      "then": {
+        "required": ["holdout"]
+      }
+    },
+    {
+      "if": {
+        "properties": { "status": { "const": "PASS" } },
+        "required": ["status"]
+      },
+      "then": {
+        "properties": {
+          "blockers": { "maxItems": 0 }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "status": { "const": "FAIL" } },
+        "required": ["status"]
+      },
+      "then": {
+        "properties": {
+          "blockers": { "minItems": 1 }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "semanticId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+    },
+    "semanticVersion": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(?:-[0-9A-Za-z.-]+)?(?:\\+[0-9A-Za-z.-]+)?$"
+    },
+    "hash": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    },
+    "ratio": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "nullableRatio": {
+      "anyOf": [
+        { "$ref": "#/$defs/ratio" },
+        { "type": "null" }
+      ]
+    },
+    "score": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 100
+    },
+    "classification": {
+      "enum": [
+        "IMPROVED",
+        "UNCHANGED",
+        "REGRESSED",
+        "MIXED",
+        "HARD_FAILURE",
+        "INCOMPARABLE"
+      ]
+    },
+    "gateDecision": {
+      "enum": ["PASS", "BLOCK", "DIAGNOSTIC_ONLY"]
+    },
+    "dimension": {
+      "enum": [
+        "contract",
+        "routing",
+        "ownership",
+        "gate",
+        "artifact",
+        "state",
+        "join",
+        "sideEffect",
+        "telemetry",
+        "efficiency",
+        "runner"
+      ]
+    },
+    "policyBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["policyId", "policyVersion", "policyHash", "rulesHash"],
+      "properties": {
+        "policyId": { "const": "awb-gate-policy" },
+        "policyVersion": { "$ref": "#/$defs/semanticVersion" },
+        "policyHash": { "$ref": "#/$defs/hash" },
+        "rulesHash": { "$ref": "#/$defs/hash" }
+      }
+    },
+    "dataBoundary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "goldCorpus",
+        "fitSplits",
+        "splitHashes",
+        "sampleCount",
+        "sampleHash",
+        "holdoutExcludedFromFit"
+      ],
+      "properties": {
+        "goldCorpus": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["corpusId", "corpusVersion", "corpusHash", "labelsHash", "trajectoriesHash"],
+          "properties": {
+            "corpusId": { "$ref": "#/$defs/semanticId" },
+            "corpusVersion": { "$ref": "#/$defs/semanticVersion" },
+            "corpusHash": { "$ref": "#/$defs/hash" },
+            "labelsHash": { "$ref": "#/$defs/hash" },
+            "trajectoriesHash": { "$ref": "#/$defs/hash" }
+          }
+        },
+        "fitSplits": {
+          "type": "array",
+          "prefixItems": [
+            { "const": "development" },
+            { "const": "calibration" }
+          ],
+          "items": false,
+          "minItems": 2,
+          "maxItems": 2
+        },
+        "splitHashes": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["development", "calibration"],
+          "properties": {
+            "development": { "$ref": "#/$defs/hash" },
+            "calibration": { "$ref": "#/$defs/hash" },
+            "holdout": { "$ref": "#/$defs/hash" }
+          }
+        },
+        "sampleCount": { "type": "integer", "minimum": 1 },
+        "sampleHash": { "$ref": "#/$defs/hash" },
+        "holdoutExcludedFromFit": { "const": true }
+      }
+    },
+    "fit": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "metrics",
+        "candidateSelection",
+        "dimensionEvidence",
+        "thresholdEvidence"
+      ],
+      "properties": {
+        "metrics": { "$ref": "#/$defs/fitMetrics" },
+        "candidateSelection": { "$ref": "#/$defs/candidateSelection" },
+        "dimensionEvidence": {
+          "type": "array",
+          "minItems": 11,
+          "items": { "$ref": "#/$defs/dimensionEvidence" }
+        },
+        "thresholdEvidence": { "$ref": "#/$defs/thresholdEvidence" }
+      }
+    },
+    "fitMetrics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sampleSize",
+        "p0Recall",
+        "falsePassCount",
+        "overallAgreement",
+        "cohenKappa"
+      ],
+      "properties": {
+        "sampleSize": { "type": "integer", "minimum": 1 },
+        "p0Recall": { "$ref": "#/$defs/nullableRatio" },
+        "falsePassCount": { "type": "integer", "minimum": 0 },
+        "overallAgreement": { "$ref": "#/$defs/nullableRatio" },
+        "cohenKappa": {
+          "anyOf": [
+            { "type": "number", "minimum": -1, "maximum": 1 },
+            { "type": "null" }
+          ]
+        }
+      }
+    },
+    "candidateSelection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["selectedCandidateId", "selectionRule", "candidateCount", "candidateHash"],
+      "properties": {
+        "selectedCandidateId": { "$ref": "#/$defs/semanticId" },
+        "selectionRule": { "type": "string", "minLength": 1, "maxLength": 512 },
+        "candidateCount": { "type": "integer", "minimum": 1 },
+        "candidateHash": { "$ref": "#/$defs/hash" }
+      }
+    },
+    "dimensionEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "dimension",
+        "weight",
+        "supportCount",
+        "safeMeanScore",
+        "riskMeanScore",
+        "pairedEffect",
+        "interval",
+        "status"
+      ],
+      "properties": {
+        "dimension": { "$ref": "#/$defs/dimension" },
+        "weight": { "type": "number", "exclusiveMinimum": 0 },
+        "supportCount": { "type": "integer", "minimum": 0 },
+        "safeMeanScore": { "$ref": "#/$defs/score" },
+        "riskMeanScore": { "$ref": "#/$defs/score" },
+        "pairedEffect": { "type": "number" },
+        "interval": { "$ref": "#/$defs/bootstrapInterval" },
+        "status": { "enum": ["SUPPORTED", "WEAK", "UNSUPPORTED"] }
+      }
+    },
+    "thresholdEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "caseThresholds",
+        "suiteThresholds",
+        "scoreCaps",
+        "telemetry",
+        "budget",
+        "classification"
+      ],
+      "properties": {
+        "caseThresholds": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["passMinimum", "conditionalMinimum"],
+          "properties": {
+            "passMinimum": { "$ref": "#/$defs/score" },
+            "conditionalMinimum": { "$ref": "#/$defs/score" }
+          }
+        },
+        "suiteThresholds": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["approveMinimum", "conditionalMinimum"],
+          "properties": {
+            "approveMinimum": { "$ref": "#/$defs/score" },
+            "conditionalMinimum": { "$ref": "#/$defs/score" }
+          }
+        },
+        "scoreCaps": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["p0", "p1"],
+          "properties": {
+            "p0": { "$ref": "#/$defs/score" },
+            "p1": { "$ref": "#/$defs/score" }
+          }
+        },
+        "telemetry": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["minimumCompleteness", "supportCount", "status"],
+          "properties": {
+            "minimumCompleteness": { "$ref": "#/$defs/ratio" },
+            "supportCount": { "type": "integer", "minimum": 0 },
+            "status": { "enum": ["SUPPORTED", "WEAK", "UNSUPPORTED"] }
+          }
+        },
+        "budget": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "maximumTokenBudgetRatio",
+            "maximumWallClockBudgetRatio",
+            "wastedRatioWarning",
+            "supportCount",
+            "status"
+          ],
+          "properties": {
+            "maximumTokenBudgetRatio": { "$ref": "#/$defs/safetyRatio" },
+            "maximumWallClockBudgetRatio": { "$ref": "#/$defs/safetyRatio" },
+            "wastedRatioWarning": { "$ref": "#/$defs/ratio" },
+            "supportCount": { "type": "integer", "minimum": 0 },
+            "status": { "enum": ["SUPPORTED", "WEAK", "UNSUPPORTED"] }
+          }
+        },
+        "classification": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["minimumMeaningfulScoreDelta"],
+          "properties": {
+            "minimumMeaningfulScoreDelta": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "maximum": 1
+            }
+          }
+        }
+      }
+    },
+    "holdout": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sampleSize",
+        "p0Recall",
+        "falsePassCount",
+        "overallAgreement",
+        "cohenKappa",
+        "stability"
+      ],
+      "properties": {
+        "sampleSize": { "type": "integer", "minimum": 1 },
+        "p0Recall": { "$ref": "#/$defs/metricWithInterval" },
+        "falsePassCount": { "type": "integer", "minimum": 0 },
+        "overallAgreement": { "$ref": "#/$defs/metricWithInterval" },
+        "cohenKappa": { "$ref": "#/$defs/kappaMetricWithInterval" },
+        "stability": { "$ref": "#/$defs/stability" }
+      }
+    },
+    "metricWithInterval": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["pointEstimate", "interval"],
+      "properties": {
+        "pointEstimate": { "$ref": "#/$defs/ratio" },
+        "interval": { "$ref": "#/$defs/interval" }
+      }
+    },
+    "kappaMetricWithInterval": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["pointEstimate", "interval"],
+      "properties": {
+        "pointEstimate": { "type": "number", "minimum": -1, "maximum": 1 },
+        "interval": { "$ref": "#/$defs/interval" }
+      }
+    },
+    "stability": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scope", "sampleSize", "confidenceLevel", "classificationStability", "gateDecisionStability"],
+      "properties": {
+        "scope": { "const": "deterministic_harness_replay" },
+        "sampleSize": { "type": "integer", "minimum": 1 },
+        "confidenceLevel": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "exclusiveMaximum": 1
+        },
+        "classificationStability": { "$ref": "#/$defs/metricWithInterval" },
+        "gateDecisionStability": { "$ref": "#/$defs/metricWithInterval" }
+      }
+    },
+    "interval": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "confidenceLevel", "lower", "upper"],
+      "properties": {
+        "kind": { "enum": ["wilson", "bootstrap"] },
+        "confidenceLevel": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "exclusiveMaximum": 1
+        },
+        "lower": { "type": "number" },
+        "upper": { "type": "number" }
+      }
+    },
+    "bootstrapInterval": {
+      "allOf": [
+        { "$ref": "#/$defs/interval" },
+        {
+          "type": "object",
+          "properties": {
+            "kind": { "const": "bootstrap" }
+          }
+        }
+      ]
+    },
+    "safetyRatio": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "maximum": 1
+    },
+    "blocker": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "severity", "why"],
+      "properties": {
+        "code": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Z0-9][A-Z0-9_-]*$"
+        },
+        "severity": { "enum": ["P0", "P1", "P2"] },
+        "why": { "type": "string", "minLength": 1, "maxLength": 1024 },
+        "evidenceHash": { "$ref": "#/$defs/hash" }
+      }
+    },
+    "integrity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "contentHash",
+        "policyHash",
+        "rulesHash",
+        "dataHash",
+        "reportHash"
+      ],
+      "properties": {
+        "status": { "const": "VERIFIED_AT_WRITE" },
+        "contentHash": { "$ref": "#/$defs/hash" },
+        "policyHash": { "$ref": "#/$defs/hash" },
+        "rulesHash": { "$ref": "#/$defs/hash" },
+        "dataHash": { "$ref": "#/$defs/hash" },
+        "reportHash": { "$ref": "#/$defs/hash" }
+      }
+    }
+  }
+}

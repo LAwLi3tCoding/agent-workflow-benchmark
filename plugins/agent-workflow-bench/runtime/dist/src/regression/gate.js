@@ -1,5 +1,7 @@
 import { PRODUCT_NAME } from "../core/product.js";
-export function evaluateGate(comparison, verification) {
+import { compareGatePolicyBindings, gatePolicyBinding, loadCanonicalGatePolicy } from "../calibration/policyArtifact.js";
+export function evaluateGate(comparison, verification, policy = loadCanonicalGatePolicy(), policyEvidenceRef = "configs/evaluation/gate-policy.json") {
+    const policyBinding = gatePolicyBinding(policy);
     const base = {
         schemaVersion: "0.1.0",
         product: PRODUCT_NAME,
@@ -7,8 +9,10 @@ export function evaluateGate(comparison, verification) {
         suite: comparison.candidate.suite,
         comparisonClassification: comparison.classification,
         comparisonIntegrity: verification.status,
+        gatePolicy: policyBinding,
         evidenceRefs: [
             "comparison:comparison-result.json",
+            `policy:${policyEvidenceRef}`,
             ...comparison.evidenceRefs.baseline,
             ...comparison.evidenceRefs.candidate
         ]
@@ -29,6 +33,17 @@ export function evaluateGate(comparison, verification) {
             decision: "BLOCK",
             ruleId: "GATE-HARD-FAILURE",
             reasons: comparison.hardFailures.map((failure) => `${failure.source}:${failure.code} - ${failure.why}`)
+        };
+    }
+    const policyCompatibility = compareGatePolicyBindings(comparison.gatePolicy, policyBinding);
+    if (policyCompatibility.status === "INCOMPARABLE") {
+        return {
+            ...base,
+            decision: "DIAGNOSTIC_ONLY",
+            ruleId: "GATE-POLICY-INCOMPARABLE",
+            reasons: [
+                `Comparison policy is not recomputable under the selected gate policy: ${policyCompatibility.reasonCode}.`
+            ]
         };
     }
     if (comparison.classification === "REGRESSED" || comparison.classification === "MIXED") {
@@ -126,6 +141,7 @@ export function renderGateReport(result) {
         `Rule: ${result.ruleId}`,
         `Comparison: ${result.comparisonClassification}`,
         `Comparison integrity: ${result.comparisonIntegrity}`,
+        `Gate policy: ${result.gatePolicy.policyVersion} (${result.gatePolicy.policyHash})`,
         "",
         "## Reasons",
         ...result.reasons.map((reason) => `- ${reason}`),

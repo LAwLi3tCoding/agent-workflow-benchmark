@@ -1,5 +1,12 @@
 import { PRODUCT_NAME } from "../core/product.js";
 import type { ComparisonContent, ComparisonVerification } from "./compare.js";
+import {
+  compareGatePolicyBindings,
+  gatePolicyBinding,
+  loadCanonicalGatePolicy,
+  type GatePolicy,
+  type GatePolicyBinding
+} from "../calibration/policyArtifact.js";
 
 export interface GateResult {
   schemaVersion: "0.1.0";
@@ -8,6 +15,7 @@ export interface GateResult {
   ruleId:
     | "GATE-HARD-FAILURE"
     | "GATE-COMPARISON-INTEGRITY"
+    | "GATE-POLICY-INCOMPARABLE"
     | "GATE-REGRESSION"
     | "GATE-CANDIDATE-BLOCK"
     | "GATE-INCOMPARABLE"
@@ -20,11 +28,18 @@ export interface GateResult {
   suite: string;
   comparisonClassification: ComparisonContent["classification"];
   comparisonIntegrity: ComparisonVerification["status"];
+  gatePolicy: GatePolicyBinding;
   reasons: string[];
   evidenceRefs: string[];
 }
 
-export function evaluateGate(comparison: ComparisonContent, verification: ComparisonVerification): GateResult {
+export function evaluateGate(
+  comparison: ComparisonContent,
+  verification: ComparisonVerification,
+  policy: GatePolicy = loadCanonicalGatePolicy(),
+  policyEvidenceRef = "configs/evaluation/gate-policy.json"
+): GateResult {
+  const policyBinding = gatePolicyBinding(policy);
   const base: Omit<GateResult, "decision" | "ruleId" | "reasons"> = {
     schemaVersion: "0.1.0" as const,
     product: PRODUCT_NAME,
@@ -32,8 +47,10 @@ export function evaluateGate(comparison: ComparisonContent, verification: Compar
     suite: comparison.candidate.suite,
     comparisonClassification: comparison.classification,
     comparisonIntegrity: verification.status,
+    gatePolicy: policyBinding,
     evidenceRefs: [
       "comparison:comparison-result.json",
+      `policy:${policyEvidenceRef}`,
       ...comparison.evidenceRefs.baseline,
       ...comparison.evidenceRefs.candidate
     ]
@@ -56,6 +73,20 @@ export function evaluateGate(comparison: ComparisonContent, verification: Compar
       decision: "BLOCK",
       ruleId: "GATE-HARD-FAILURE",
       reasons: comparison.hardFailures.map((failure) => `${failure.source}:${failure.code} - ${failure.why}`)
+    };
+  }
+  const policyCompatibility = compareGatePolicyBindings(
+    comparison.gatePolicy,
+    policyBinding
+  );
+  if (policyCompatibility.status === "INCOMPARABLE") {
+    return {
+      ...base,
+      decision: "DIAGNOSTIC_ONLY",
+      ruleId: "GATE-POLICY-INCOMPARABLE",
+      reasons: [
+        `Comparison policy is not recomputable under the selected gate policy: ${policyCompatibility.reasonCode}.`
+      ]
     };
   }
   if (comparison.classification === "REGRESSED" || comparison.classification === "MIXED") {
@@ -160,6 +191,7 @@ export function renderGateReport(result: GateResult): string {
     `Rule: ${result.ruleId}`,
     `Comparison: ${result.comparisonClassification}`,
     `Comparison integrity: ${result.comparisonIntegrity}`,
+    `Gate policy: ${result.gatePolicy.policyVersion} (${result.gatePolicy.policyHash})`,
     "",
     "## Reasons",
     ...result.reasons.map((reason) => `- ${reason}`),

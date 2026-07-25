@@ -19,6 +19,7 @@
   "properties": {
     "schemaVersion": { "type": "string" },
     "product": { "const": "Agent Workflow Bench" },
+    "gatePolicy": { "$ref": "#/$defs/gatePolicyBinding" },
     "baseline": { "$ref": "#/$defs/runSummary" },
     "candidate": { "$ref": "#/$defs/runSummary" },
     "comparability": {
@@ -49,7 +50,11 @@
               "MODEL_MISMATCH",
               "OBSERVER_MISMATCH",
               "SEED_MISMATCH",
-              "CONDITIONS_MISMATCH"
+              "CONDITIONS_MISMATCH",
+              "GATE_POLICY_MISSING",
+              "GATE_POLICY_VERSION_MISMATCH",
+              "GATE_POLICY_RULES_MISMATCH",
+              "GATE_POLICY_HASH_MISMATCH"
             ]
           }
         }
@@ -146,6 +151,26 @@
     }
   },
   "$defs": {
+    "gatePolicyBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["policyId", "policyVersion", "policyHash", "rulesHash"],
+      "properties": {
+        "policyId": { "const": "awb-gate-policy" },
+        "policyVersion": {
+          "type": "string",
+          "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(?:-[0-9A-Za-z.-]+)?(?:\\+[0-9A-Za-z.-]+)?$"
+        },
+        "policyHash": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "rulesHash": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        }
+      }
+    },
     "runSummary": {
       "type": "object",
       "required": [
@@ -169,6 +194,8 @@
         "evidenceKind": { "enum": ["live", "simulated", "unknown"] },
         "observationLevel": { "enum": ["workflow_trace", "contract_summary", "synthetic_events", "capability_only", "unknown"] },
         "observerQualificationStatus": { "enum": ["missing", "valid", "invalid", "not_applicable"] }
+        ,
+        "gatePolicy": { "$ref": "#/$defs/gatePolicyBinding" }
       }
     }
   }

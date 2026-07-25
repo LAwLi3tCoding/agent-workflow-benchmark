@@ -149,12 +149,14 @@ awb compare \
   --candidate <candidate-observed-run> \
   --trusted-observer-key <observer-public.pem> \
   --trusted-qualification-key <qualification-authority-public.pem> \
+  --gate-policy <gate-policy.json> \
   --out <comparison>
 
 awb gate \
   --comparison <comparison>/comparison-result.json \
   --trusted-observer-key <observer-public.pem> \
   --trusted-qualification-key <qualification-authority-public.pem> \
+  --gate-policy <gate-policy.json> \
   --out <gate>
 ```
 
@@ -173,6 +175,16 @@ evaluation-contract content hash, workflow-trace Schema, and qualification
 suite. The qualification-authority key must be distinct from the Observer
 signing key. Comparison ignores
 self-asserted `valid` values in editable provenance or runtime metadata.
+
+Gate-policy calibration is separate from Observer truth. `--gate-policy` lets
+`compare` and `gate` recompute historical artifacts under the exact same
+`policyVersion`, `rulesHash`, and `policyHash`; a missing or mismatched binding is
+incomparable. The committed public synthetic reports under
+`fixtures/calibration/v1/fit` and `fixtures/calibration/v1/holdout` are
+`releaseEligible: false` harness diagnostics. They do not qualify an Observer,
+change signature validity, or let calibrated scores override P0 hard failures,
+invalid provenance, missing evidence, Observer qualification failure, or safety
+violations.
 
 ## Observer Qualification
 
