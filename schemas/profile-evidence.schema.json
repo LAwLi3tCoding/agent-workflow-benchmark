@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "profile-evidence.schema.json",
+  "title": "Agent Workflow Bench public profile evidence",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "artifactType",
+    "targetId",
+    "root",
+    "scannedFiles",
+    "missingFiles",
+    "warnings"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "0.1.0" },
+    "artifactType": { "const": "profile_evidence" },
+    "targetId": { "$ref": "#/$defs/nonEmptyString" },
+    "root": { "const": "target://root" },
+    "scannedFiles": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/scannedFile" }
+    },
+    "missingFiles": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/portablePath" }
+    },
+    "warnings": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/publicText" }
+    }
+  },
+  "$defs": {
+    "nonEmptyString": {
+      "type": "string",
+      "minLength": 1
+    },
+    "portablePath": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?!/)(?![A-Za-z][A-Za-z0-9+.-]*:)(?!.*\\\\)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*(?:/\u0055sers/|/\u0068ome/|/private/|@))[^\\u0000]+$"
+    },
+    "hash": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    },
+    "publicText": {
+      "type": "string",
+      "pattern": "^[^/@\\\\\\u0000]*$"
+    },
+    "scannedFile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256", "bytes"],
+      "properties": {
+        "path": { "$ref": "#/$defs/portablePath" },
+        "sha256": { "$ref": "#/$defs/hash" },
+        "bytes": { "type": "integer", "minimum": 0 }
+      }
+    }
+  }
+}

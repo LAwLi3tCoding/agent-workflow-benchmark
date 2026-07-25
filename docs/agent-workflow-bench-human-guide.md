@@ -239,6 +239,20 @@ Gate exit code 固定为：
 
 如果触发 P0 hard failure，即使 rawScore 很高，也会被 cap，并进入 `BLOCK`。如果 telemetry 不足但同时触发 P0 hard failure，最终仍是 `BLOCK`，报告会额外说明观测缺口。
 
+## 9. Schema 和历史制品迁移
+
+AWB 的机器制品由 `schemas/*.schema.json`、`configs/artifacts/schema-registry.json` 和 `configs/artifacts/compatibility-matrix.json` 共同约束。当前正式 schema 覆盖 `ContractModel`、profile evidence、generation manifest、runtime manifest、Observer qualification、reliability report、validity report、suite、comparison、gate 和 provenance。
+
+历史制品复用前先运行：
+
+```bash
+awb artifact migrate --input <artifact.json> --out reports/artifact-migration
+```
+
+如果文件名不是标准名称，补充 `--artifact-type <type>`。命令固定写出 `migration-result.json`；可安全迁移时再写出 `migrated-artifact.json`。退出码为：`0` 表示 `CURRENT` 或 `MIGRATED`，`2` 表示 `DIAGNOSTIC_ONLY`，`1` 表示 `INCOMPATIBLE`。
+
+迁移不会发明信任字段。缺少 Observer attestation、policy hash、integrity hash、provenance binding、runtime identity 或 conditions identity 的旧制品，只能作为诊断证据，不能让 gate PASS，也不能证明生产阻断可用。详细规则见 `docs/artifact-schema-compatibility.md`。
+
 人工 override 只影响人工阅读解释，不改变默认 CI gate，不删除 hard failure，不提高 score cap。若业务必须例外放行，只能生成单独的 `manualReleaseException`，并写清 scope、过期时间和风险接受，不回写机器评分。
 
 `DIAGNOSTIC_ONLY` 不是通过，也不是失败准入结论；它表示本次证据不足以做准入或排名判断，只能用于定位问题。进入准入判断前必须补齐缺失 telemetry、oracle 或 runner 可比性。

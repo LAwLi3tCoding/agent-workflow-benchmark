@@ -1,0 +1,135 @@
+{
+  "schemaVersion": "0.1.0",
+  "artifactType": "artifact_schema_registry",
+  "registryVersion": "1.0.0",
+  "schemaFiles": [
+    "artifact-compatibility-matrix.schema.json",
+    "artifact-migration-result.schema.json",
+    "artifact-schema-registry.schema.json",
+    "calibration-report.schema.json",
+    "case.schema.json",
+    "comparison-result.schema.json",
+    "contract-model.schema.json",
+    "contract-validity.schema.json",
+    "debug-dossier.schema.json",
+    "debug-environment.schema.json",
+    "doctor-result.schema.json",
+    "evaluation-contract.schema.json",
+    "external-validity-human-labels.schema.json",
+    "external-validity-labeling-package.schema.json",
+    "external-validity-observations.schema.json",
+    "external-validity-study.schema.json",
+    "gate-policy.schema.json",
+    "gate-result.schema.json",
+    "generation-manifest.schema.json",
+    "gold-corpus-base.schema.json",
+    "gold-corpus-labels.schema.json",
+    "gold-corpus-report.schema.json",
+    "gold-corpus-trajectories.schema.json",
+    "gold-corpus.schema.json",
+    "mutation.schema.json",
+    "observer-qualification.schema.json",
+    "profile-evidence.schema.json",
+    "provenance.schema.json",
+    "regression-scenarios.schema.json",
+    "reliability-report.schema.json",
+    "reliability-study.schema.json",
+    "repair-plan.schema.json",
+    "runner.schema.json",
+    "runtime-manifest.schema.json",
+    "suite-result.schema.json",
+    "target-pack.schema.json",
+    "validity-report.schema.json",
+    "workflow-trace.schema.json"
+  ],
+  "entries": [
+    {
+      "artifactType": "contract_model",
+      "fileNames": ["contract-model.json"],
+      "schemaFile": "contract-model.schema.json",
+      "currentVersion": "0.1.0",
+      "compatibilityPolicyRef": "compatibility-matrix.json#contract_model",
+      "migrationSupported": true
+    },
+    {
+      "artifactType": "profile_evidence",
+      "fileNames": ["profile-evidence.json"],
+      "schemaFile": "profile-evidence.schema.json",
+      "currentVersion": "0.1.0",
+      "compatibilityPolicyRef": "compatibility-matrix.json#profile_evidence",
+      "migrationSupported": true
+    },
+    {
+      "artifactType": "generation_manifest",
+      "fileNames": ["manifest.json"],
+      "schemaFile": "generation-manifest.schema.json",
+      "currentVersion": "0.1.0",
+      "compatibilityPolicyRef": "compatibility-matrix.json#generation_manifest",
+      "migrationSupported": true
+    },
+    {
+      "artifactType": "runtime_manifest",
+      "fileNames": ["runtime-manifest.json"],
+      "schemaFile": "runtime-manifest.schema.json",
+      "currentVersion": "0.1.0",
+      "compatibilityPolicyRef": "compatibility-matrix.json#runtime_manifest",
+      "migrationSupported": true
+    },
+    {
+      "artifactType": "observer-qualification",
+      "fileNames": ["observer-qualification.json"],
+      "schemaFile": "observer-qualification.schema.json",
+      "currentVersion": "0.1.0",
+      "compatibilityPolicyRef": "compatibility-matrix.json#observer-qualification",
+      "migrationSupported": true
+    },
+    {
+      "artifactType": "reliability_report",
+      "fileNames": ["reliability-report.json"],
+      "schemaFile": "reliability-report.schema.json",
+      "currentVersion": "0.1.0",
+      "compatibilityPolicyRef": "compatibility-matrix.json#reliability_report",
+      "migrationSupported": true
+    },
+    {
+      "artifactType": "external_validity_report",
+      "fileNames": ["validity-report.json"],
+      "schemaFile": "validity-report.schema.json",
+      "currentVersion": "0.1.0",
+      "compatibilityPolicyRef": "compatibility-matrix.json#external_validity_report",
+      "migrationSupported": true
+    },
+    {
+      "artifactType": "suite",
+      "fileNames": ["suite-result.json"],
+      "schemaFile": "suite-result.schema.json",
+      "currentVersion": "0.1.0",
+      "compatibilityPolicyRef": "compatibility-matrix.json#suite",
+      "migrationSupported": true
+    },
+    {
+      "artifactType": "comparison_result",
+      "fileNames": ["comparison-result.json"],
+      "schemaFile": "comparison-result.schema.json",
+      "currentVersion": "0.1.0",
+      "compatibilityPolicyRef": "compatibility-matrix.json#comparison_result",
+      "migrationSupported": true
+    },
+    {
+      "artifactType": "gate_result",
+      "fileNames": ["gate-result.json"],
+      "schemaFile": "gate-result.schema.json",
+      "currentVersion": "0.1.0",
+      "compatibilityPolicyRef": "compatibility-matrix.json#gate_result",
+      "migrationSupported": true
+    },
+    {
+      "artifactType": "provenance",
+      "fileNames": ["provenance.json"],
+      "schemaFile": "provenance.schema.json",
+      "currentVersion": "0.1.0",
+      "compatibilityPolicyRef": "compatibility-matrix.json#provenance",
+      "migrationSupported": true
+    }
+  ]
+}

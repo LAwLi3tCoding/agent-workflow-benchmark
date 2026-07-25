@@ -104,6 +104,11 @@ async function makeBenchmarkRoot(contractReview: Record<string, unknown>): Promi
   await cp(path.join(cwd, "configs/evaluation"), path.join(root, "configs/evaluation"), {
     recursive: true
   });
+  await cp(
+    path.join(cwd, "configs/artifacts"),
+    path.join(root, "configs/artifacts"),
+    { recursive: true }
+  );
   await cp(path.join(cwd, "configs/runners"), path.join(root, "configs/runners"), { recursive: true });
   await mkdir(path.join(root, "configs/targets/reviews"), { recursive: true });
   const target = YAML.parse(

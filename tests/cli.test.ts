@@ -93,6 +93,36 @@ describe("benchmark CLI", () => {
     expect(result.stdout).toContain("runner configs valid");
   });
 
+  test("run rejects an unsupported mode before writing artifacts", async () => {
+    const out = await tmp("awb-invalid-mode-");
+    try {
+      const result = await execa(
+        "npm",
+        [
+          "run",
+          "benchmark",
+          "--",
+          "run",
+          "--target",
+          "minimal-directory-agent",
+          "--runner",
+          "simulated",
+          "--mode",
+          "advisory",
+          "--out",
+          out
+        ],
+        { cwd, reject: false }
+      );
+
+      expect(result.exitCode).not.toBe(0);
+      expect(result.stderr).toContain("Unsupported run mode: advisory");
+      await expect(stat(path.join(out, "runtime-manifest.json"))).rejects.toThrow();
+    } finally {
+      await rm(out, { recursive: true, force: true });
+    }
+  });
+
   test("suite-result schema rejects incomplete case result records", async () => {
     await expectInvalidSchema("schemas/suite-result.schema.json", {
       schemaVersion: "0.1.0",
@@ -129,6 +159,8 @@ describe("benchmark CLI", () => {
       await expect(stat(path.join(out, "profile-evidence.json"))).resolves.toBeTruthy();
       const evidence = JSON.parse(await readFile(path.join(out, "profile-evidence.json"), "utf8"));
       const contract = JSON.parse(await readFile(path.join(out, "contract-model.json"), "utf8"));
+      await expectValidSchema("schemas/profile-evidence.schema.json", evidence);
+      await expectValidSchema("schemas/contract-model.schema.json", contract);
       expect(contract.targetId).toBe("minimal-directory-agent");
       expect(contract.contractHash).toMatch(/^sha256:/);
       expect(contract.root).toBe("target://root");
@@ -559,6 +591,7 @@ describe("benchmark CLI", () => {
 
       const manifest = JSON.parse(await readFile(path.join(runOut, "runtime-manifest.json"), "utf8"));
       const suite = JSON.parse(await readFile(path.join(runOut, "suite-result.json"), "utf8"));
+      await expectValidSchema("schemas/runtime-manifest.schema.json", manifest);
       expect(manifest.caseCount).toBe(1);
       expect(suite.caseResults[0].caseId).toBe("minimal-directory-agent-ai-001-owner-artifact-gate");
     } finally {
@@ -634,6 +667,7 @@ describe("benchmark CLI", () => {
       );
 
       const runtime = JSON.parse(await readFile(path.join(out, "runtime-manifest.json"), "utf8"));
+      await expectValidSchema("schemas/runtime-manifest.schema.json", runtime);
       const persisted = JSON.stringify({ provenance, runtime });
       expect(persisted).not.toContain(cwd);
       expect(persisted).not.toContain(out);

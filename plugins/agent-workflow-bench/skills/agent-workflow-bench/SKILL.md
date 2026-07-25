@@ -53,6 +53,14 @@ awb gate-policy validate-holdout --corpus fixtures/gold-corpus/v1/manifest.yaml 
 
 Committed public synthetic evidence lives under `fixtures/calibration/v1/fit` and `fixtures/calibration/v1/holdout`; use it for harness/schema/policy regression checks only.
 
+For artifact compatibility, validate the registry with `awb validate-schema` and migrate historical JSON with:
+
+```bash
+awb artifact migrate --input <artifact.json> --out <migration-dir>
+```
+
+Add `--artifact-type <type>` for non-canonical filenames. Migration writes `migration-result.json` and, only when safe, `migrated-artifact.json`; exits are `0` for `CURRENT`/`MIGRATED`, `2` for `DIAGNOSTIC_ONLY`, and `1` for `INCOMPATIBLE`. It never invents trust: missing Observer attestation, policy hashes, integrity hashes, provenance bindings, runtime identity, or conditions identity stay diagnostic-only. See `docs/artifact-schema-compatibility.md`.
+
 Qualify the reference Observer without changing any trust root:
 
 ```bash

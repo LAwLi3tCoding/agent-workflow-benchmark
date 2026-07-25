@@ -34,6 +34,8 @@ import { runReliabilityStudy } from "../reliability/study.js";
 import { analyzeExternalValidity, analyzeExternalValidityFromComparisons, createExternalValidityLabelingPackage, renderExternalValidityMarkdown } from "../validity/externalValidity.js";
 import { loadExternalValidityHumanLabels, loadExternalValidityObservations, loadExternalValidityStudy, validateExternalValidityPackage, validateExternalValidityReport } from "../validity/io.js";
 import { assertCalibrationReportIntegrity, fitGatePolicy, loadCanonicalGatePolicy, loadGatePolicy, renderCalibrationMarkdown, validateGatePolicyHoldout } from "../calibration/gatePolicy.js";
+import { artifactMigrationExitCode, migrateArtifact, writeArtifactMigration } from "../artifacts/migration.js";
+import { assertArtifactRegistryComplete } from "../artifacts/registry.js";
 const program = new Command();
 program.name(CLI_NAME).description(`${PRODUCT_NAME} — ${PRODUCT_TAGLINE}`).version(AWB_VERSION);
 program
@@ -55,6 +57,21 @@ program.command("validate-schema").action(async () => {
     await validateSchemasAndTargets();
     console.log("schemas valid");
     console.log("runner configs valid");
+});
+const artifactCommands = program.command("artifact");
+artifactCommands
+    .command("migrate")
+    .description("Migrate a compatible 0.1.x artifact or emit a fail-closed compatibility result")
+    .requiredOption("--input <path>", "JSON artifact to inspect and migrate")
+    .option("--artifact-type <type>", "registered artifact type when filename/discriminator inference is unavailable")
+    .requiredOption("--out <dir>", "migration output directory")
+    .action(async (options) => {
+    const migration = await migrateArtifact(await resolveExistingPath(options.input), {
+        artifactType: options.artifactType
+    });
+    await writeArtifactMigration(options.out, migration);
+    console.log(`artifact migration ${migration.result.status}: ${options.out}`);
+    process.exitCode = artifactMigrationExitCode(migration.result);
 });
 const observer = program.command("observer");
 observer
@@ -238,6 +255,7 @@ program
     .action(async (options) => {
     const runDir = options.out ?? path.join("reports/runs", `run-${Date.now()}`);
     const attemptId = `attempt-${randomUUID()}`;
+    const mode = normalizeRunMode(options.mode);
     await ensureDir(runDir);
     const { target, profile, contract, cases } = await resolveRunInputs(options);
     const runnerCapability = await detectRunnerCapability(normalizeRunnerName(options.runner));
@@ -256,12 +274,14 @@ program
         await writeP0CaseArtifacts(runDir, suiteResult, options.p0CaseLog);
         const runtimeManifestPath = path.join(runDir, "runtime-manifest.json");
         await writeJson(runtimeManifestPath, {
+            schemaVersion: "0.1.0",
+            artifactType: "runtime_manifest",
             attemptId,
             runner: {
                 ...publicRunnerCapability(runnerCapability),
                 executionMode
             },
-            mode: options.mode,
+            mode,
             dryRun: true,
             seed: options.seed,
             contractHash: contract.contractHash,
@@ -288,7 +308,7 @@ program
             dryRun: true
         }));
         console.log(`run written: ${runDir}`);
-        enforceGateMode(options.mode, suiteResult);
+        enforceGateMode(mode, suiteResult);
         return;
     }
     const caseResults = [];
@@ -314,12 +334,14 @@ program
     await writeP0CaseArtifacts(runDir, suiteResult, options.p0CaseLog);
     const runtimeManifestPath = path.join(runDir, "runtime-manifest.json");
     await writeJson(runtimeManifestPath, {
+        schemaVersion: "0.1.0",
+        artifactType: "runtime_manifest",
         attemptId,
         runner: {
             ...publicRunnerCapability(runnerCapability),
             executionMode
         },
-        mode: options.mode,
+        mode,
         dryRun: options.dryRun,
         seed: options.seed,
         contractHash: contract.contractHash,
@@ -345,7 +367,7 @@ program
         targetRoot: target.root
     }));
     console.log(`run written: ${runDir}`);
-    enforceGateMode(options.mode, suiteResult);
+    enforceGateMode(mode, suiteResult);
 });
 program
     .command("ingest-trace")
@@ -407,6 +429,8 @@ program
     }
     const runtimeManifestPath = path.join(options.out, "runtime-manifest.json");
     await writeJson(runtimeManifestPath, {
+        schemaVersion: "0.1.0",
+        artifactType: "runtime_manifest",
         attemptId,
         runner: {
             ...publicRunnerCapability(runnerCapability),
@@ -568,6 +592,8 @@ program
     await writeP0CaseArtifacts(runDir, suiteResult, options.p0CaseLog ?? path.join(outDir, "p0-cases.jsonl"));
     const runtimeManifestPath = path.join(runDir, "runtime-manifest.json");
     await writeJson(runtimeManifestPath, {
+        schemaVersion: "0.1.0",
+        artifactType: "runtime_manifest",
         attemptId,
         runner: {
             ...publicRunnerCapability(runnerCapability),
@@ -1248,6 +1274,12 @@ function normalizeExecutionMode(value) {
     }
     throw new Error(`Unsupported execution mode: ${value}`);
 }
+function normalizeRunMode(value) {
+    if (value === "diagnostic" || value === "gate") {
+        return value;
+    }
+    throw new Error(`Unsupported run mode: ${value}`);
+}
 function normalizeMaterializeStrategy(value) {
     if (value === "template" || value === "ai") {
         return value;
@@ -1304,6 +1336,7 @@ async function resolveObserverQualification(options, verifiedTrace, contractHash
     return verifiedQualification;
 }
 async function validateSchemasAndTargets() {
+    await assertArtifactRegistryComplete();
     const ajv = new Ajv2020({ strict: false });
     const benchmarkRoot = getBenchmarkRoot();
     const schemaDir = path.join(benchmarkRoot, "schemas");
@@ -1321,6 +1354,10 @@ async function validateSchemasAndTargets() {
     let validateReliabilityReport;
     let validateGatePolicyArtifact;
     let validateCalibrationReportArtifact;
+    let validateContractModel;
+    let validateProfileEvidence;
+    let validateGenerationManifest;
+    let validateRuntimeManifest;
     for (const file of schemaFiles) {
         const schema = JSON.parse(await readFile(path.join(schemaDir, file), "utf8"));
         const validate = ajv.compile(schema);
@@ -1363,6 +1400,18 @@ async function validateSchemasAndTargets() {
         if (file === "calibration-report.schema.json") {
             validateCalibrationReportArtifact = validate;
         }
+        if (file === "contract-model.schema.json") {
+            validateContractModel = validate;
+        }
+        if (file === "profile-evidence.schema.json") {
+            validateProfileEvidence = validate;
+        }
+        if (file === "generation-manifest.schema.json") {
+            validateGenerationManifest = validate;
+        }
+        if (file === "runtime-manifest.schema.json") {
+            validateRuntimeManifest = validate;
+        }
     }
     if (!validateTarget) {
         throw new Error("target-pack.schema.json missing");
@@ -1384,6 +1433,12 @@ async function validateSchemasAndTargets() {
     }
     if (!validateGatePolicyArtifact || !validateCalibrationReportArtifact) {
         throw new Error("Gate-policy calibration schemas are missing.");
+    }
+    if (!validateContractModel ||
+        !validateProfileEvidence ||
+        !validateGenerationManifest ||
+        !validateRuntimeManifest) {
+        throw new Error("Core machine-artifact schemas are missing.");
     }
     const externalValiditySchemaFiles = [
         "external-validity-study.schema.json",
@@ -1458,6 +1513,18 @@ async function validateSchemasAndTargets() {
         const contractValidity = await readJson(path.join(benchmarkRoot, target.contractReview.artifactPath));
         if (!validateContractValidity(contractValidity)) {
             throw new Error(`Target ${id} contract-validity artifact failed schema validation: ${ajv.errorsText(validateContractValidity.errors)}`);
+        }
+        const profile = await profileTarget(target);
+        if (!validateContractModel(profile.contract)) {
+            throw new Error(`Target ${id} ContractModel failed schema validation: ${ajv.errorsText(validateContractModel.errors)}`);
+        }
+        const publicEvidence = publicProfileEvidence(profile.evidence);
+        if (!validateProfileEvidence(publicEvidence)) {
+            throw new Error(`Target ${id} public profile evidence failed schema validation: ${ajv.errorsText(validateProfileEvidence.errors)}`);
+        }
+        const generationManifest = materializeSmokeSuite(profile.contract).manifest;
+        if (!validateGenerationManifest(generationManifest)) {
+            throw new Error(`Target ${id} generation manifest failed schema validation: ${ajv.errorsText(validateGenerationManifest.errors)}`);
         }
     }
     const runnerDir = path.join(benchmarkRoot, "configs/runners");

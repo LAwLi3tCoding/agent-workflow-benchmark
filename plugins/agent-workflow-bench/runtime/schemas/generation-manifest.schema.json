@@ -1,0 +1,104 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "generation-manifest.schema.json",
+  "title": "Agent Workflow Bench generation manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "artifactType",
+    "targetId",
+    "suite",
+    "contractHash",
+    "generatedAt",
+    "seed",
+    "caseIds"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "0.1.0" },
+    "artifactType": { "const": "generation_manifest" },
+    "targetId": { "$ref": "#/$defs/nonEmptyString" },
+    "suite": { "$ref": "#/$defs/nonEmptyString" },
+    "contractHash": { "$ref": "#/$defs/hash" },
+    "generatedAt": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{3})?Z$"
+    },
+    "seed": { "$ref": "#/$defs/nonEmptyString" },
+    "caseIds": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/nonEmptyString" }
+    },
+    "generation": { "$ref": "#/$defs/generation" }
+  },
+  "$defs": {
+    "nonEmptyString": {
+      "type": "string",
+      "minLength": 1
+    },
+    "hash": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    },
+    "stringArray": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "coverageMode": {
+      "enum": ["smoke", "full", "adaptive"]
+    },
+    "aiPlanValidation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "coverageMode",
+        "status",
+        "recommendedCaseCount",
+        "coverageTargetCount",
+        "coveredCoverageTargetIds",
+        "missingCoverageTargetIds",
+        "unknownCoverageTags",
+        "invalidBindings",
+        "warnings"
+      ],
+      "properties": {
+        "schemaVersion": { "const": "0.1.0" },
+        "coverageMode": { "$ref": "#/$defs/coverageMode" },
+        "status": { "enum": ["PASS", "WARN", "FAIL"] },
+        "recommendedCaseCount": { "type": "integer", "minimum": 0 },
+        "coverageTargetCount": { "type": "integer", "minimum": 0 },
+        "coveredCoverageTargetIds": { "$ref": "#/$defs/stringArray" },
+        "missingCoverageTargetIds": { "$ref": "#/$defs/stringArray" },
+        "unknownCoverageTags": { "$ref": "#/$defs/stringArray" },
+        "invalidBindings": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["caseId", "field", "value", "why"],
+            "properties": {
+              "caseId": { "$ref": "#/$defs/nonEmptyString" },
+              "field": { "$ref": "#/$defs/nonEmptyString" },
+              "value": { "$ref": "#/$defs/nonEmptyString" },
+              "why": { "$ref": "#/$defs/nonEmptyString" }
+            }
+          }
+        },
+        "warnings": { "$ref": "#/$defs/stringArray" }
+      }
+    },
+    "generation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode", "planner", "targetUnderstanding"],
+      "properties": {
+        "mode": { "const": "ai-first" },
+        "planner": { "$ref": "#/$defs/nonEmptyString" },
+        "model": { "type": "string" },
+        "targetUnderstanding": { "$ref": "#/$defs/nonEmptyString" },
+        "validation": { "$ref": "#/$defs/aiPlanValidation" }
+      }
+    }
+  }
+}

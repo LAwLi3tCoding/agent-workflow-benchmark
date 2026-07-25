@@ -1,0 +1,187 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "contract-model.schema.json",
+  "title": "Agent Workflow Bench contract model",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "targetId",
+    "targetType",
+    "root",
+    "contractHash",
+    "entrypoints",
+    "roles",
+    "statuses",
+    "requiredOwners",
+    "routing",
+    "joins",
+    "artifacts",
+    "states",
+    "budgets",
+    "commandPolicy",
+    "evidenceRefs"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "0.1.0" },
+    "targetId": { "$ref": "#/$defs/nonEmptyString" },
+    "targetType": { "enum": ["directory", "cli", "hybrid"] },
+    "root": { "const": "target://root" },
+    "contractHash": { "$ref": "#/$defs/hash" },
+    "entrypoints": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/entrypoint" }
+    },
+    "roles": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/role" }
+    },
+    "statuses": { "$ref": "#/$defs/nonEmptyStringArray" },
+    "requiredOwners": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": { "$ref": "#/$defs/nonEmptyString" }
+    },
+    "routing": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["forbidden"],
+      "properties": {
+        "forbidden": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/forbiddenRoute" }
+        }
+      }
+    },
+    "joins": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/join" }
+    },
+    "artifacts": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/artifact" }
+    },
+    "states": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/state" }
+    },
+    "budgets": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["wallClockSeconds", "tokenTotal"],
+      "properties": {
+        "wallClockSeconds": { "type": "number", "minimum": 0 },
+        "tokenTotal": { "type": "number", "minimum": 0 }
+      }
+    },
+    "commandPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["allowedExecutables", "forbiddenArgs"],
+      "properties": {
+        "allowedExecutables": { "$ref": "#/$defs/nonEmptyStringArray" },
+        "forbiddenArgs": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "evidenceRefs": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/portablePath" }
+    }
+  },
+  "$defs": {
+    "nonEmptyString": {
+      "type": "string",
+      "minLength": 1
+    },
+    "nonEmptyStringArray": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/nonEmptyString" }
+    },
+    "hash": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    },
+    "portablePath": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?!/)(?![A-Za-z][A-Za-z0-9+.-]*:)(?!.*\\\\)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*(?:/\u0055sers/|/\u0068ome/|/private/|@))[^\\u0000]+$"
+    },
+    "entrypoint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind"],
+      "properties": {
+        "id": { "$ref": "#/$defs/nonEmptyString" },
+        "kind": { "enum": ["file", "cli"] },
+        "path": { "$ref": "#/$defs/portablePath" },
+        "command": { "$ref": "#/$defs/nonEmptyString" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "kind": { "const": "file" } }, "required": ["kind"] },
+          "then": { "required": ["path"] }
+        },
+        {
+          "if": { "properties": { "kind": { "const": "cli" } }, "required": ["kind"] },
+          "then": { "required": ["command"] }
+        }
+      ]
+    },
+    "role": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "path", "ownerScopes"],
+      "properties": {
+        "id": { "$ref": "#/$defs/nonEmptyString" },
+        "path": { "$ref": "#/$defs/portablePath" },
+        "ownerScopes": { "$ref": "#/$defs/nonEmptyStringArray" }
+      }
+    },
+    "forbiddenRoute": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "from", "to", "when"],
+      "properties": {
+        "id": { "$ref": "#/$defs/nonEmptyString" },
+        "from": { "$ref": "#/$defs/nonEmptyString" },
+        "to": { "$ref": "#/$defs/nonEmptyString" },
+        "when": { "$ref": "#/$defs/nonEmptyString" }
+      }
+    },
+    "join": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "producer", "consumer", "artifact"],
+      "properties": {
+        "id": { "$ref": "#/$defs/nonEmptyString" },
+        "producer": { "$ref": "#/$defs/nonEmptyString" },
+        "consumer": { "$ref": "#/$defs/nonEmptyString" },
+        "artifact": { "$ref": "#/$defs/portablePath" }
+      }
+    },
+    "artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "path", "owner"],
+      "properties": {
+        "id": { "$ref": "#/$defs/nonEmptyString" },
+        "path": { "$ref": "#/$defs/portablePath" },
+        "owner": { "$ref": "#/$defs/nonEmptyString" }
+      }
+    },
+    "state": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "path"],
+      "properties": {
+        "id": { "$ref": "#/$defs/nonEmptyString" },
+        "path": { "$ref": "#/$defs/portablePath" }
+      }
+    }
+  }
+}

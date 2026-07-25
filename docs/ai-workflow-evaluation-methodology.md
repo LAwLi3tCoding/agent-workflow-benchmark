@@ -56,10 +56,13 @@ Reference URLs:
 13. **Calibrate score and gate policy without changing evidence truth.**
    `awb gate-policy calibrate` evaluates bounded dimension-weight, telemetry-threshold, budget-threshold, and classification-delta candidates from development/calibration data, then `awb gate-policy validate-holdout` validates the frozen policy on holdout. No policy is emitted unless a candidate preserves P0 recall `1` and false PASS `0`. Public synthetic support is descriptive and does not by itself prove superior telemetry or budget settings. Calibration never changes whether Observer evidence is valid, and it cannot let aggregate scores or AI judgment override deterministic hard failures.
 
-14. **Persist P0 cases as local reusable regression evidence.**
+14. **Validate artifact schemas and compatibility before reuse.**
+   Machine artifacts are governed by the schema registry and compatibility matrix in `configs/artifacts/`. Current schemas cover `ContractModel`, public profile evidence, generation manifests, runtime manifests, Observer qualification, reliability reports, validity reports, run suites, comparisons, gates, and provenance. `awb artifact migrate` may read compatible `0.1.x` artifacts, but missing trust fields are downgraded to `DIAGNOSTIC_ONLY`; migration never invents Observer attestation, policy hashes, integrity hashes, provenance bindings, runtime identity, or conditions identity.
+
+15. **Persist P0 cases as local reusable regression evidence.**
    Every P0 hard failure must be recorded as structured local evidence, not only rendered in a report. AWB writes `p0-cases.json`, `p0-cases.md`, and can append durable JSONL records with `--p0-case-log`. These records identify the target, run, case, contract hash, failure code, evidence events, and recommended action so previously evaluated agent workflows can be retested against their most important failures.
 
-15. **Use reverse validation to test the benchmark itself.**
+16. **Use reverse validation to test the benchmark itself.**
    Overlay-only mutation reverse validation checks configured simulated mutations against the benchmark scorer and oracle fixtures without mutating the real target source. If a mutation survives, repair the benchmark oracle, fixture, observer, target pack, or scorer before trusting the suite. Live Codex/Claude runner behavior must be validated separately through live execution artifacts.
 
 ## Gate Policy Calibration
@@ -107,6 +110,17 @@ Missing or mismatched `policyVersion`, `rulesHash`, or `policyHash` makes the re
 incomparable. A policy version can change scoring thresholds and classification deltas, but
 hard failures, invalid provenance, evidence absence, Observer qualification failure, and
 safety violations still dominate all scores and AI judgments.
+
+## Artifact Schema Compatibility
+
+The schema registry and migration policy are documented in
+[`artifact-schema-compatibility.md`](artifact-schema-compatibility.md). The
+short operational rule is: validate new artifacts against their formal schema,
+use `awb artifact migrate --input <artifact.json> --out <dir>` before reusing
+old artifacts, and treat migration status `DIAGNOSTIC_ONLY` as non-gateable.
+Stable failures return typed reason codes such as
+`ARTIFACT_SCHEMA_VERSION_UNSUPPORTED` and an action hint instead of silently
+coercing historical evidence.
 
 ## Trusted Workflow-Trace Admission
 

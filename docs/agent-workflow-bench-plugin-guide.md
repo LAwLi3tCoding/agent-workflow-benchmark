@@ -72,6 +72,28 @@ awb gate --comparison <comparison-dir>/comparison-result.json --gate-policy <gat
 
 缺失或不匹配的 `policyVersion`、`rulesHash`、`policyHash` 会让结果不可比较。校准策略只改变分数权重、阈值和分类 delta；它不会改变 Observer evidence 的真伪，也不能让综合分数或 AI 判断覆盖 P0、无效 provenance、缺证据、Observer 资格失败或其他 hard failure。
 
+Stage 7 开始，插件 runtime 同步携带正式 artifact schema registry、兼容矩阵和迁移工具。复用旧制品前先运行：
+
+```bash
+awb artifact migrate --input <artifact.json> --out reports/artifact-migration
+```
+
+非标准文件名可加 `--artifact-type <type>`，类型取自 registry，例如
+`runtime_manifest`、`suite`、`comparison_result` 或 `provenance`。命令固定写出
+`migration-result.json`；安全迁移时写出 `migrated-artifact.json`。退出码为：
+`0` = `CURRENT`/`MIGRATED`，`2` = `DIAGNOSTIC_ONLY`，`1` =
+`INCOMPATIBLE`。稳定 reason code 包括
+`ARTIFACT_JSON_INVALID`、`ARTIFACT_TYPE_UNKNOWN`、
+`ARTIFACT_SCHEMA_VERSION_MISSING`、`ARTIFACT_SCHEMA_VERSION_INVALID`、
+`ARTIFACT_SCHEMA_VERSION_UNSUPPORTED`、`ARTIFACT_TRUST_FIELDS_MISSING`、
+`ARTIFACT_SCHEMA_INVALID` 和 `ARTIFACT_METADATA_ADDED`。
+
+迁移只能保留或补充 schema 元数据，不能发明信任。缺少 Observer attestation、
+gate-policy hash、integrity hash、provenance binding、runtime identity 或
+conditions identity 的旧制品保持 `DIAGNOSTIC_ONLY`，不能用于 CI PASS 或生产
+blocking。完整策略见
+[`artifact-schema-compatibility.md`](artifact-schema-compatibility.md)。
+
 ```bash
 awb ingest-trace \
   --cases-dir cases/generated/<target-id>/ai-smoke \

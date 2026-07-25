@@ -1,6 +1,11 @@
 import { access, copyFile, mkdir, rm } from "node:fs/promises";
 import path from "node:path";
-import type { HardFailure, MutationInput, RunnerCapability, SuiteResult } from "../core/types.js";
+import type {
+  HardFailure,
+  RunnerCapability,
+  RuntimeManifestInput,
+  SuiteResult
+} from "../core/types.js";
 import {
   verifyWorkflowTraceBundle,
   workflowTraceAttemptId,
@@ -132,43 +137,6 @@ interface LoadedRun {
   provenance?: RunProvenance;
   provenanceStatus: "VALID" | "MISSING" | "INVALID";
   provenanceWhy?: string;
-}
-
-interface RuntimeManifest {
-  attemptId: string;
-  runner: {
-    name: RunnerCapability["name"];
-    supported: boolean;
-    adapterVersion: string;
-    version?: string;
-    capabilitiesHash: string;
-    executionMode: RunnerCapability["executionMode"];
-  };
-  dryRun: boolean;
-  seed: string;
-  contractHash: string;
-  caseCount: number;
-  skippedCaseCount?: number;
-  liveTranscriptCount?: number;
-  mutation?: MutationInput;
-  workflowTrace?: {
-    verified: boolean;
-    ref: string;
-    sha256: string;
-    caseCount: number;
-    eventCount: number;
-    observer: {
-      id: string;
-      version: string;
-      keyFingerprint: string;
-      qualificationStatus: NonNullable<
-        RunProvenance["conditions"]["observer"]
-      >["qualificationStatus"];
-      qualificationRef?: "observer-qualification.json";
-      qualificationArtifactHash?: string;
-      qualificationAuthorityFingerprint?: string;
-    };
-  };
 }
 
 export interface ObserverTrustOptions {
@@ -542,9 +510,11 @@ async function validateProvenance(
   if (!suiteDigest || suiteDigest.sha256 !== (await hashFile(suitePath))) {
     return "suite-result.json digest does not match provenance.";
   }
-  let runtimeManifest: RuntimeManifest;
+  let runtimeManifest: RuntimeManifestInput;
   try {
-    runtimeManifest = await readJson<RuntimeManifest>(path.join(runDir, "runtime-manifest.json"));
+    runtimeManifest = await readJson<RuntimeManifestInput>(
+      path.join(runDir, "runtime-manifest.json")
+    );
   } catch {
     return "runtime-manifest.json is not valid JSON.";
   }
@@ -638,7 +608,7 @@ async function validateProvenance(
 }
 
 function validateRuntimeManifest(
-  runtime: RuntimeManifest,
+  runtime: RuntimeManifestInput,
   suite: SuiteResult,
   provenance: RunProvenance,
   verifiedTrace?: VerifiedWorkflowTrace,
@@ -647,19 +617,33 @@ function validateRuntimeManifest(
   if (
     !runtime ||
     !runtime.runner ||
+    (runtime.schemaVersion !== undefined &&
+      runtime.schemaVersion !== "0.1.0") ||
+    (runtime.artifactType !== undefined &&
+      runtime.artifactType !== "runtime_manifest") ||
+    runtime.runner.schemaVersion !== "0.1.0" ||
     !["codex", "claude", "opencode", "simulated"].includes(runtime.runner.name) ||
     typeof runtime.runner.supported !== "boolean" ||
     typeof runtime.runner.adapterVersion !== "string" ||
     typeof runtime.runner.capabilitiesHash !== "string" ||
     !["live", "simulated"].includes(runtime.runner.executionMode) ||
     typeof runtime.dryRun !== "boolean" ||
+    (runtime.mode !== undefined &&
+      !["diagnostic", "gate"].includes(runtime.mode)) ||
     typeof runtime.attemptId !== "string" ||
     !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u.test(runtime.attemptId) ||
     typeof runtime.seed !== "string" ||
     !runtime.seed ||
     typeof runtime.contractHash !== "string" ||
     !Number.isInteger(runtime.caseCount) ||
-    runtime.caseCount < 0
+    runtime.caseCount < 0 ||
+    (runtime.caseSource !== undefined &&
+      ![
+        "cases://provided",
+        "case://provided",
+        "target://materialized",
+        "evaluation://cases"
+      ].includes(runtime.caseSource))
   ) {
     return "runtime-manifest.json is missing required execution facts.";
   }

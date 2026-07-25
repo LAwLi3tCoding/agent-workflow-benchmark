@@ -70,6 +70,7 @@ describe("agent workflow bench plugin package", () => {
     expect(command).toContain("gate");
     expect(command).toContain("gate-policy calibrate");
     expect(command).toContain("gate-policy validate-holdout");
+    expect(command).toContain("artifact migrate");
   });
 
   test("ships a self-contained plugin runtime for installs without a source checkout", async () => {
@@ -97,6 +98,25 @@ describe("agent workflow bench plugin package", () => {
     await expect(stat(path.join(runtimeRoot, "schemas", "validity-report.schema.json"))).resolves.toBeTruthy();
     await expect(stat(path.join(runtimeRoot, "schemas", "gate-policy.schema.json"))).resolves.toBeTruthy();
     await expect(stat(path.join(runtimeRoot, "schemas", "calibration-report.schema.json"))).resolves.toBeTruthy();
+    await expect(stat(path.join(runtimeRoot, "schemas", "contract-model.schema.json"))).resolves.toBeTruthy();
+    await expect(stat(path.join(runtimeRoot, "schemas", "profile-evidence.schema.json"))).resolves.toBeTruthy();
+    await expect(stat(path.join(runtimeRoot, "schemas", "generation-manifest.schema.json"))).resolves.toBeTruthy();
+    await expect(stat(path.join(runtimeRoot, "schemas", "runtime-manifest.schema.json"))).resolves.toBeTruthy();
+    await expect(
+      stat(path.join(runtimeRoot, "schemas", "artifact-schema-registry.schema.json"))
+    ).resolves.toBeTruthy();
+    await expect(
+      stat(path.join(runtimeRoot, "schemas", "artifact-compatibility-matrix.schema.json"))
+    ).resolves.toBeTruthy();
+    await expect(
+      stat(path.join(runtimeRoot, "schemas", "artifact-migration-result.schema.json"))
+    ).resolves.toBeTruthy();
+    await expect(
+      stat(path.join(runtimeRoot, "configs", "artifacts", "schema-registry.json"))
+    ).resolves.toBeTruthy();
+    await expect(
+      stat(path.join(runtimeRoot, "configs", "artifacts", "compatibility-matrix.json"))
+    ).resolves.toBeTruthy();
     await expect(
       stat(path.join(runtimeRoot, "configs", "evaluation", "gate-policy.json"))
     ).resolves.toBeTruthy();
@@ -138,6 +158,12 @@ describe("agent workflow bench plugin package", () => {
     await expect(
       stat(path.join(runtimeRoot, "dist", "src", "calibration", "policyArtifact.js"))
     ).resolves.toBeTruthy();
+    await expect(
+      stat(path.join(runtimeRoot, "dist", "src", "artifacts", "migration.js"))
+    ).resolves.toBeTruthy();
+    await expect(
+      stat(path.join(runtimeRoot, "dist", "src", "artifacts", "registry.js"))
+    ).resolves.toBeTruthy();
 
     const wrapper = await readFile(path.join(pluginRoot, "bin", "awb"), "utf8");
     expect(wrapper).toContain("RUNTIME_DIR");
@@ -155,6 +181,95 @@ describe("agent workflow bench plugin package", () => {
 
       expect(result.stdout).toContain("schemas valid");
       expect(result.stdout).toContain("runner configs valid");
+      const artifactHelp = await execa(
+        path.join(install.pluginPath, "bin", "awb"),
+        ["artifact", "--help"],
+        {
+          cwd: outsideCwd,
+          env: { ...process.env, AWB_PROJECT_ROOT: "" }
+        }
+      );
+      expect(artifactHelp.stdout).toContain("migrate");
+      const legacyRuntimePath = path.join(
+        outsideCwd,
+        "runtime-manifest.json"
+      );
+      await writeFile(
+        legacyRuntimePath,
+        `${JSON.stringify(
+          {
+            attemptId: "attempt-plugin-stage7",
+            runner: {
+              schemaVersion: "0.1.0",
+              name: "simulated",
+              supported: true,
+              adapterVersion: "0.1.0",
+              executionMode: "simulated",
+              supportsEntrypointKinds: ["file", "cli"],
+              tokenSourceDetail: {
+                source: "estimated",
+                confidence: "medium"
+              },
+              comparability: {
+                workflowScore: "comparable",
+                efficiency: "directional_only",
+                tokenCost: "directional_only"
+              },
+              capabilitiesHash:
+                "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            },
+            mode: "diagnostic",
+            dryRun: false,
+            seed: "plugin-stage7-seed",
+            contractHash:
+              "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            caseCount: 1,
+            liveTranscriptCount: 0,
+            caseSource: "target://materialized"
+          },
+          null,
+          2
+        )}\n`
+      );
+      const migrationOut = path.join(outsideCwd, "artifact-migration");
+      const migration = await execa(
+        path.join(install.pluginPath, "bin", "awb"),
+        [
+          "artifact",
+          "migrate",
+          "--input",
+          legacyRuntimePath,
+          "--out",
+          migrationOut
+        ],
+        {
+          cwd: outsideCwd,
+          env: { ...process.env, AWB_PROJECT_ROOT: "" }
+        }
+      );
+      expect(migration.stdout).toContain("artifact migration MIGRATED");
+      const migrationResult = JSON.parse(
+        await readFile(
+          path.join(migrationOut, "migration-result.json"),
+          "utf8"
+        )
+      );
+      const migratedRuntime = JSON.parse(
+        await readFile(
+          path.join(migrationOut, "migrated-artifact.json"),
+          "utf8"
+        )
+      );
+      await expectValidPluginRuntimeSchema(
+        install.pluginPath,
+        "schemas/artifact-migration-result.schema.json",
+        migrationResult
+      );
+      await expectValidPluginRuntimeSchema(
+        install.pluginPath,
+        "schemas/runtime-manifest.schema.json",
+        migratedRuntime
+      );
       const corpus = await execa(
         path.join(install.pluginPath, "bin", "awb"),
         [

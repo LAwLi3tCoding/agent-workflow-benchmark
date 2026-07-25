@@ -1,0 +1,209 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "runtime-manifest.schema.json",
+  "title": "Agent Workflow Bench runtime manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "artifactType",
+    "attemptId",
+    "runner",
+    "mode",
+    "dryRun",
+    "seed",
+    "contractHash",
+    "caseCount",
+    "caseSource"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "0.1.0" },
+    "artifactType": { "const": "runtime_manifest" },
+    "attemptId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+    },
+    "runner": { "$ref": "#/$defs/runner" },
+    "mode": { "enum": ["diagnostic", "gate"] },
+    "dryRun": { "type": "boolean" },
+    "seed": { "$ref": "#/$defs/nonEmptyString" },
+    "contractHash": { "$ref": "#/$defs/hash" },
+    "caseCount": { "type": "integer", "minimum": 0 },
+    "skippedCaseCount": { "type": "integer", "minimum": 0 },
+    "liveTranscriptCount": { "type": "integer", "minimum": 0 },
+    "caseSource": {
+      "enum": [
+        "cases://provided",
+        "case://provided",
+        "target://materialized",
+        "evaluation://cases"
+      ]
+    },
+    "mutation": { "$ref": "#/$defs/mutation" },
+    "workflowTrace": { "$ref": "#/$defs/workflowTrace" }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "dryRun": { "const": true } }, "required": ["dryRun"] },
+      "then": {
+        "required": ["skippedCaseCount"],
+        "properties": {
+          "caseCount": { "const": 0 },
+          "liveTranscriptCount": { "maximum": 0 }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "runner": {
+            "properties": { "executionMode": { "const": "simulated" } },
+            "required": ["executionMode"]
+          },
+          "dryRun": { "const": false }
+        },
+        "required": ["runner", "dryRun"]
+      },
+      "then": {
+        "required": ["liveTranscriptCount"],
+        "properties": {
+          "liveTranscriptCount": { "const": 0 }
+        },
+        "not": { "required": ["workflowTrace"] }
+      }
+    },
+    {
+      "if": {
+        "properties": { "workflowTrace": { "type": "object" } },
+        "required": ["workflowTrace"]
+      },
+      "then": {
+        "properties": {
+          "runner": {
+            "properties": {
+              "executionMode": { "const": "live" },
+              "name": { "enum": ["codex", "claude", "opencode"] }
+            }
+          },
+          "liveTranscriptCount": { "const": 0 }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "nonEmptyString": {
+      "type": "string",
+      "minLength": 1
+    },
+    "hash": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    },
+    "runner": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "name",
+        "supported",
+        "adapterVersion",
+        "executionMode",
+        "supportsEntrypointKinds",
+        "tokenSourceDetail",
+        "comparability",
+        "capabilitiesHash"
+      ],
+      "properties": {
+        "schemaVersion": { "const": "0.1.0" },
+        "name": { "enum": ["codex", "claude", "opencode", "simulated"] },
+        "supported": { "type": "boolean" },
+        "disabledReason": { "type": "string", "minLength": 1 },
+        "executableRef": { "enum": ["codex", "claude", "opencode", "simulated"] },
+        "version": { "type": "string" },
+        "adapterVersion": { "$ref": "#/$defs/nonEmptyString" },
+        "executionMode": { "enum": ["live", "simulated", "disabled"] },
+        "supportsEntrypointKinds": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "enum": ["file", "cli"] }
+        },
+        "tokenSourceDetail": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["source", "confidence"],
+          "properties": {
+            "source": { "enum": ["native", "estimated", "unavailable"] },
+            "confidence": { "enum": ["high", "medium", "low", "unavailable"] }
+          }
+        },
+        "comparability": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["workflowScore", "efficiency", "tokenCost"],
+          "properties": {
+            "workflowScore": {
+              "enum": ["comparable", "directional_only", "not_comparable"]
+            },
+            "efficiency": {
+              "enum": ["comparable", "directional_only", "not_comparable"]
+            },
+            "tokenCost": {
+              "enum": ["comparable", "directional_only", "not_comparable"]
+            }
+          }
+        },
+        "capabilitiesHash": { "$ref": "#/$defs/hash" }
+      }
+    },
+    "mutation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "type"],
+      "properties": {
+        "id": { "$ref": "#/$defs/nonEmptyString" },
+        "type": { "$ref": "#/$defs/nonEmptyString" },
+        "scope": { "const": "overlay-only" },
+        "expectedVerdict": {
+          "enum": ["PASS", "PASS_WITH_WARNINGS", "FAIL", "DIAGNOSTIC_ONLY"]
+        },
+        "expectedHardFailureCode": { "$ref": "#/$defs/nonEmptyString" }
+      }
+    },
+    "workflowTrace": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "verified",
+        "ref",
+        "sha256",
+        "caseCount",
+        "eventCount",
+        "observer"
+      ],
+      "properties": {
+        "verified": { "const": true },
+        "ref": { "const": "workflow-trace.json" },
+        "sha256": { "$ref": "#/$defs/hash" },
+        "caseCount": { "type": "integer", "minimum": 1 },
+        "eventCount": { "type": "integer", "minimum": 1 },
+        "observer": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["id", "version", "keyFingerprint", "qualificationStatus"],
+          "properties": {
+            "id": { "$ref": "#/$defs/nonEmptyString" },
+            "version": { "$ref": "#/$defs/nonEmptyString" },
+            "keyFingerprint": { "$ref": "#/$defs/hash" },
+            "qualificationStatus": { "enum": ["missing", "valid", "invalid"] },
+            "qualificationRef": { "const": "observer-qualification.json" },
+            "qualificationArtifactHash": { "$ref": "#/$defs/hash" },
+            "qualificationAuthorityFingerprint": { "$ref": "#/$defs/hash" }
+          }
+        }
+      }
+    }
+  }
+}

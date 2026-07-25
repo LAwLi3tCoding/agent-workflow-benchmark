@@ -48,8 +48,13 @@ export function profileEvidenceSensitiveValues(evidence) {
 }
 export function publicProfileEvidence(evidence) {
     return {
-        ...evidence,
-        scannedFiles: evidence.scannedFiles.map(({ excerpt: _excerpt, ...file }) => file)
+        schemaVersion: "0.1.0",
+        artifactType: "profile_evidence",
+        targetId: evidence.targetId,
+        root: evidence.root,
+        scannedFiles: evidence.scannedFiles.map(({ excerpt: _excerpt, ...file }) => file),
+        missingFiles: evidence.missingFiles,
+        warnings: evidence.warnings
     };
 }
 function redactStructuredValue(value, options) {

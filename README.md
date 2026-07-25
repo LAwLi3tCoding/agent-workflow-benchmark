@@ -20,21 +20,8 @@ plugin, Skill, and command slug is `agent-workflow-bench`; the CLI is `awb`.
 AWB turns workflow expectations into a versioned contract, derives coverage,
 materializes executable cases, captures evidence, compares matched baseline and
 candidate runs, and produces a deterministic release decision.
-
-```mermaid
-flowchart LR
-  A["Discover<br/>doctor"] --> B["Model contract<br/>profile"]
-  B --> C["Generate cases<br/>plan-cases"]
-  C --> D["Materialize cases"]
-  D --> E["Run baseline"]
-  D --> F["Run candidate"]
-  E --> G["Compare"]
-  F --> G
-  G --> H["Gate"]
-  H --> I["PASS"]
-  H --> J["DIAGNOSTIC_ONLY"]
-  H --> K["BLOCK"]
-```
+The standard path is `doctor` -> `profile` -> `plan-cases` -> `materialize` ->
+matched baseline/candidate `run` -> `compare` -> `gate`.
 
 | Area | Examples |
 | --- | --- |
@@ -236,6 +223,23 @@ awb gate-policy validate-holdout --corpus fixtures/gold-corpus/v1/manifest.yaml 
 
 Holdout validation exits `0` for `PASS` and `1` for `FAIL`. Its stability metric is deterministic full-harness replay, not live-run reliability. Public Gold Corpus PASS remains harness-diagnostic with `releaseEligible: false`; real criterion validity, human labels, qualified live traces, and production-blocking authorization remain separate. See [gate policy calibration](docs/gate-policy-calibration.md); committed synthetic evidence is under `fixtures/calibration/v1/{fit,holdout}`.
 
+### Schema compatibility and migration
+
+AWB validates machine artifacts through `schemas/*.schema.json` and
+`configs/artifacts/schema-registry.json`. The current compatibility matrix reads
+registered `0.1.x` artifacts, treats `0.y.z` minor changes as breaking, and
+requires explicit migration or diagnostic downgrade for additive trust fields.
+Use `awb artifact migrate --input <artifact.json> --out reports/artifact-migration`
+before reusing historical artifacts.
+
+Pass `--artifact-type <type>` when the filename is non-canonical. The command
+writes `migration-result.json` and, when safe, `migrated-artifact.json`; exits
+are `0` for `CURRENT` or `MIGRATED`, `2` for `DIAGNOSTIC_ONLY`, and `1` for
+`INCOMPATIBLE`. Migration never invents trust: missing Observer attestation,
+policy hashes, integrity hashes, provenance bindings, runtime identity, or
+conditions identity keep the artifact diagnostic-only. See
+[artifact schema compatibility](docs/artifact-schema-compatibility.md).
+
 ### Matched baseline/candidate regression
 
 Use isolated checkouts and keep target contract, case set, runner, permissions,
@@ -314,6 +318,7 @@ target source and do not prove live runner behavior.
 | `compare` | Compare matched baseline and candidate evidence |
 | `gate` | Apply deterministic CI release policy |
 | `gate-policy ...` | Calibrate or holdout-validate a versioned scoring and gate policy |
+| `artifact migrate` | Read or migrate registered artifacts with stable status and reason codes |
 | `score` / `report` | Inspect or render an existing run |
 | `criterion-validity ...` | Package blinded external studies or analyze independent labels |
 | `debug ...` | Reverse-validate the harness or analyze repeated-run reliability |
@@ -326,6 +331,7 @@ target source and do not prove live runner behavior.
 | `suite-result.json` | Single-run aggregate |
 | `runtime-manifest.json` | Observed runner/runtime facts |
 | `provenance.json` | Target, case, environment, and integrity identity |
+| `schema-registry.json` / `compatibility-matrix.json` | Artifact schema inventory, semver policy, and migration rules |
 | `workflow-trace.json` | Independently signed normalized live trace |
 | `comparison-result.json` | Integrity-bound paired classification |
 | `gate-result.json` | Deterministic release decision |
@@ -369,17 +375,6 @@ The generated runtime under `plugins/agent-workflow-bench/runtime/` is
 committed. Changes to runtime behavior, schemas, configs, or fixtures must be
 followed by `npm run plugin:build`.
 
-```text
-.
-├── configs/                     # runner configs and target packs
-├── fixtures/                    # generic targets and mutation scenarios
-├── plugins/agent-workflow-bench # Codex/Claude plugin and bundled runtime
-├── schemas/                     # machine-readable artifact contracts
-├── src/                         # TypeScript CLI
-├── tests/                       # unit and end-to-end tests
-└── docs/                        # methodology and operational guides
-```
-
 ## Documentation
 
 - [Human guide](docs/agent-workflow-bench-human-guide.md)
@@ -387,6 +382,7 @@ followed by `npm run plugin:build`.
 - [Evaluation methodology](docs/ai-workflow-evaluation-methodology.md)
 - [Workflow-trace observer contract](docs/workflow-trace-observer-contract.md)
 - [Gate policy calibration](docs/gate-policy-calibration.md)
+- [Artifact schema compatibility](docs/artifact-schema-compatibility.md)
 - [简体中文 README](README.zh-CN.md)
 - [日本語 README](README.ja.md)
 

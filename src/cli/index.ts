@@ -108,6 +108,12 @@ import {
   type CalibrationReport,
   type GatePolicy
 } from "../calibration/gatePolicy.js";
+import {
+  artifactMigrationExitCode,
+  migrateArtifact,
+  writeArtifactMigration
+} from "../artifacts/migration.js";
+import { assertArtifactRegistryComplete } from "../artifacts/registry.js";
 
 const program = new Command();
 
@@ -134,6 +140,39 @@ program.command("validate-schema").action(async () => {
   console.log("schemas valid");
   console.log("runner configs valid");
 });
+
+const artifactCommands = program.command("artifact");
+
+artifactCommands
+  .command("migrate")
+  .description(
+    "Migrate a compatible 0.1.x artifact or emit a fail-closed compatibility result"
+  )
+  .requiredOption("--input <path>", "JSON artifact to inspect and migrate")
+  .option(
+    "--artifact-type <type>",
+    "registered artifact type when filename/discriminator inference is unavailable"
+  )
+  .requiredOption("--out <dir>", "migration output directory")
+  .action(
+    async (options: {
+      input: string;
+      artifactType?: string;
+      out: string;
+    }) => {
+      const migration = await migrateArtifact(
+        await resolveExistingPath(options.input),
+        {
+          artifactType: options.artifactType
+        }
+      );
+      await writeArtifactMigration(options.out, migration);
+      console.log(
+        `artifact migration ${migration.result.status}: ${options.out}`
+      );
+      process.exitCode = artifactMigrationExitCode(migration.result);
+    }
+  );
 
 const observer = program.command("observer");
 
@@ -410,6 +449,7 @@ program
     }) => {
     const runDir = options.out ?? path.join("reports/runs", `run-${Date.now()}`);
     const attemptId = `attempt-${randomUUID()}`;
+    const mode = normalizeRunMode(options.mode);
     await ensureDir(runDir);
     const { target, profile, contract, cases } = await resolveRunInputs(options);
     const runnerCapability = await detectRunnerCapability(normalizeRunnerName(options.runner));
@@ -434,12 +474,14 @@ program
       await writeP0CaseArtifacts(runDir, suiteResult, options.p0CaseLog);
       const runtimeManifestPath = path.join(runDir, "runtime-manifest.json");
       await writeJson(runtimeManifestPath, {
+        schemaVersion: "0.1.0",
+        artifactType: "runtime_manifest",
         attemptId,
         runner: {
           ...publicRunnerCapability(runnerCapability),
           executionMode
         },
-        mode: options.mode,
+        mode,
         dryRun: true,
         seed: options.seed,
         contractHash: contract.contractHash,
@@ -469,7 +511,7 @@ program
         })
       );
       console.log(`run written: ${runDir}`);
-      enforceGateMode(options.mode, suiteResult);
+      enforceGateMode(mode, suiteResult);
       return;
     }
     const caseResults: CaseResult[] = [];
@@ -502,12 +544,14 @@ program
     await writeP0CaseArtifacts(runDir, suiteResult, options.p0CaseLog);
     const runtimeManifestPath = path.join(runDir, "runtime-manifest.json");
     await writeJson(runtimeManifestPath, {
+      schemaVersion: "0.1.0",
+      artifactType: "runtime_manifest",
       attemptId,
       runner: {
         ...publicRunnerCapability(runnerCapability),
         executionMode
       },
-      mode: options.mode,
+      mode,
       dryRun: options.dryRun,
       seed: options.seed,
       contractHash: contract.contractHash,
@@ -536,7 +580,7 @@ program
       })
     );
     console.log(`run written: ${runDir}`);
-    enforceGateMode(options.mode, suiteResult);
+    enforceGateMode(mode, suiteResult);
     }
   );
 
@@ -634,6 +678,8 @@ program
       }
       const runtimeManifestPath = path.join(options.out, "runtime-manifest.json");
       await writeJson(runtimeManifestPath, {
+        schemaVersion: "0.1.0",
+        artifactType: "runtime_manifest",
         attemptId,
         runner: {
           ...publicRunnerCapability(runnerCapability),
@@ -833,6 +879,8 @@ program
       await writeP0CaseArtifacts(runDir, suiteResult, options.p0CaseLog ?? path.join(outDir, "p0-cases.jsonl"));
       const runtimeManifestPath = path.join(runDir, "runtime-manifest.json");
       await writeJson(runtimeManifestPath, {
+        schemaVersion: "0.1.0",
+        artifactType: "runtime_manifest",
         attemptId,
         runner: {
           ...publicRunnerCapability(runnerCapability),
@@ -1785,6 +1833,13 @@ function normalizeExecutionMode(value: string): "simulated" | "live" {
   throw new Error(`Unsupported execution mode: ${value}`);
 }
 
+function normalizeRunMode(value: string): "diagnostic" | "gate" {
+  if (value === "diagnostic" || value === "gate") {
+    return value;
+  }
+  throw new Error(`Unsupported run mode: ${value}`);
+}
+
 function normalizeMaterializeStrategy(value: string): "template" | "ai" {
   if (value === "template" || value === "ai") {
     return value;
@@ -1875,6 +1930,7 @@ async function resolveObserverQualification(
 }
 
 async function validateSchemasAndTargets(): Promise<void> {
+  await assertArtifactRegistryComplete();
   const ajv = new Ajv2020({ strict: false });
   const benchmarkRoot = getBenchmarkRoot();
   const schemaDir = path.join(benchmarkRoot, "schemas");
@@ -1892,6 +1948,10 @@ async function validateSchemasAndTargets(): Promise<void> {
   let validateReliabilityReport: ValidateFunction | undefined;
   let validateGatePolicyArtifact: ValidateFunction | undefined;
   let validateCalibrationReportArtifact: ValidateFunction | undefined;
+  let validateContractModel: ValidateFunction | undefined;
+  let validateProfileEvidence: ValidateFunction | undefined;
+  let validateGenerationManifest: ValidateFunction | undefined;
+  let validateRuntimeManifest: ValidateFunction | undefined;
   for (const file of schemaFiles) {
     const schema = JSON.parse(await readFile(path.join(schemaDir, file), "utf8")) as object;
     const validate = ajv.compile(schema);
@@ -1934,6 +1994,18 @@ async function validateSchemasAndTargets(): Promise<void> {
     if (file === "calibration-report.schema.json") {
       validateCalibrationReportArtifact = validate;
     }
+    if (file === "contract-model.schema.json") {
+      validateContractModel = validate;
+    }
+    if (file === "profile-evidence.schema.json") {
+      validateProfileEvidence = validate;
+    }
+    if (file === "generation-manifest.schema.json") {
+      validateGenerationManifest = validate;
+    }
+    if (file === "runtime-manifest.schema.json") {
+      validateRuntimeManifest = validate;
+    }
   }
   if (!validateTarget) {
     throw new Error("target-pack.schema.json missing");
@@ -1955,6 +2027,14 @@ async function validateSchemasAndTargets(): Promise<void> {
   }
   if (!validateGatePolicyArtifact || !validateCalibrationReportArtifact) {
     throw new Error("Gate-policy calibration schemas are missing.");
+  }
+  if (
+    !validateContractModel ||
+    !validateProfileEvidence ||
+    !validateGenerationManifest ||
+    !validateRuntimeManifest
+  ) {
+    throw new Error("Core machine-artifact schemas are missing.");
   }
   const externalValiditySchemaFiles = [
     "external-validity-study.schema.json",
@@ -2087,6 +2167,32 @@ async function validateSchemasAndTargets(): Promise<void> {
     if (!validateContractValidity(contractValidity)) {
       throw new Error(
         `Target ${id} contract-validity artifact failed schema validation: ${ajv.errorsText(validateContractValidity.errors)}`
+      );
+    }
+    const profile = await profileTarget(target);
+    if (!validateContractModel(profile.contract)) {
+      throw new Error(
+        `Target ${id} ContractModel failed schema validation: ${ajv.errorsText(
+          validateContractModel.errors
+        )}`
+      );
+    }
+    const publicEvidence = publicProfileEvidence(profile.evidence);
+    if (!validateProfileEvidence(publicEvidence)) {
+      throw new Error(
+        `Target ${id} public profile evidence failed schema validation: ${ajv.errorsText(
+          validateProfileEvidence.errors
+        )}`
+      );
+    }
+    const generationManifest = materializeSmokeSuite(
+      profile.contract
+    ).manifest;
+    if (!validateGenerationManifest(generationManifest)) {
+      throw new Error(
+        `Target ${id} generation manifest failed schema validation: ${ajv.errorsText(
+          validateGenerationManifest.errors
+        )}`
       );
     }
   }

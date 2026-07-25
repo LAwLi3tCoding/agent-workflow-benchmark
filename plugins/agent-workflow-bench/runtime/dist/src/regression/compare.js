@@ -392,19 +392,33 @@ async function validateProvenance(runDir, suitePath, suite, provenance, options)
 function validateRuntimeManifest(runtime, suite, provenance, verifiedTrace, verifiedQualification) {
     if (!runtime ||
         !runtime.runner ||
+        (runtime.schemaVersion !== undefined &&
+            runtime.schemaVersion !== "0.1.0") ||
+        (runtime.artifactType !== undefined &&
+            runtime.artifactType !== "runtime_manifest") ||
+        runtime.runner.schemaVersion !== "0.1.0" ||
         !["codex", "claude", "opencode", "simulated"].includes(runtime.runner.name) ||
         typeof runtime.runner.supported !== "boolean" ||
         typeof runtime.runner.adapterVersion !== "string" ||
         typeof runtime.runner.capabilitiesHash !== "string" ||
         !["live", "simulated"].includes(runtime.runner.executionMode) ||
         typeof runtime.dryRun !== "boolean" ||
+        (runtime.mode !== undefined &&
+            !["diagnostic", "gate"].includes(runtime.mode)) ||
         typeof runtime.attemptId !== "string" ||
         !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u.test(runtime.attemptId) ||
         typeof runtime.seed !== "string" ||
         !runtime.seed ||
         typeof runtime.contractHash !== "string" ||
         !Number.isInteger(runtime.caseCount) ||
-        runtime.caseCount < 0) {
+        runtime.caseCount < 0 ||
+        (runtime.caseSource !== undefined &&
+            ![
+                "cases://provided",
+                "case://provided",
+                "target://materialized",
+                "evaluation://cases"
+            ].includes(runtime.caseSource))) {
         return "runtime-manifest.json is missing required execution facts.";
     }
     if (runtime.attemptId !== provenance.subject.attemptId ||

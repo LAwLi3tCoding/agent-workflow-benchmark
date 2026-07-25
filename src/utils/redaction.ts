@@ -1,4 +1,4 @@
-import type { AiCasePlan, ProfileEvidence } from "../core/types.js";
+import type { AiCasePlan, ProfileEvidence, PublicProfileEvidence } from "../core/types.js";
 
 const SECRET_VALUE = "<redacted>";
 const EMAIL_VALUE = "<email>";
@@ -68,10 +68,15 @@ export function profileEvidenceSensitiveValues(evidence: ProfileEvidence | undef
   return [...values];
 }
 
-export function publicProfileEvidence(evidence: ProfileEvidence): ProfileEvidence {
+export function publicProfileEvidence(evidence: ProfileEvidence): PublicProfileEvidence {
   return {
-    ...evidence,
-    scannedFiles: evidence.scannedFiles.map(({ excerpt: _excerpt, ...file }) => file)
+    schemaVersion: "0.1.0",
+    artifactType: "profile_evidence",
+    targetId: evidence.targetId,
+    root: evidence.root,
+    scannedFiles: evidence.scannedFiles.map(({ excerpt: _excerpt, ...file }) => file),
+    missingFiles: evidence.missingFiles,
+    warnings: evidence.warnings
   };
 }
 

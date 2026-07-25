@@ -1,0 +1,123 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "artifact-migration-result.schema.json",
+  "title": "Agent Workflow Bench artifact migration result",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "artifactType",
+    "migrationId",
+    "status",
+    "trustDisposition",
+    "source",
+    "target",
+    "reasonCodes",
+    "actions",
+    "integrity"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "0.1.0" },
+    "artifactType": { "const": "artifact_migration_result" },
+    "migrationId": { "$ref": "#/$defs/hash" },
+    "status": {
+      "enum": ["CURRENT", "MIGRATED", "DIAGNOSTIC_ONLY", "INCOMPATIBLE"]
+    },
+    "trustDisposition": {
+      "enum": ["PRESERVED", "DIAGNOSTIC_ONLY", "REJECTED"]
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ref",
+        "contentHash",
+        "artifactType",
+        "schemaVersion",
+        "versionInferred"
+      ],
+      "properties": {
+        "ref": {
+          "type": "string",
+          "pattern": "^artifact://[A-Za-z0-9][A-Za-z0-9._-]*$"
+        },
+        "contentHash": { "$ref": "#/$defs/hash" },
+        "artifactType": { "type": "string", "minLength": 1 },
+        "schemaVersion": { "$ref": "#/$defs/nullableSemver" },
+        "versionInferred": { "type": "boolean" }
+      }
+    },
+    "target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "schemaFile"],
+      "properties": {
+        "schemaVersion": { "$ref": "#/$defs/nullableSemver" },
+        "schemaFile": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[a-z0-9][a-z0-9-]*\\.schema\\.json$"
+            },
+            { "type": "null" }
+          ]
+        }
+      }
+    },
+    "reasonCodes": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "ARTIFACT_JSON_INVALID",
+          "ARTIFACT_TYPE_UNKNOWN",
+          "ARTIFACT_SCHEMA_VERSION_MISSING",
+          "ARTIFACT_SCHEMA_VERSION_INVALID",
+          "ARTIFACT_SCHEMA_VERSION_UNSUPPORTED",
+          "ARTIFACT_TRUST_FIELDS_MISSING",
+          "ARTIFACT_SCHEMA_INVALID",
+          "ARTIFACT_METADATA_ADDED"
+        ]
+      }
+    },
+    "actions": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "type": "string", "minLength": 1, "maxLength": 500 }
+    },
+    "output": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["artifactRef", "contentHash"],
+      "properties": {
+        "artifactRef": { "const": "migrated-artifact.json" },
+        "contentHash": { "$ref": "#/$defs/hash" }
+      }
+    },
+    "integrity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "contentHash"],
+      "properties": {
+        "status": { "const": "VERIFIED_AT_WRITE" },
+        "contentHash": { "$ref": "#/$defs/hash" }
+      }
+    }
+  },
+  "$defs": {
+    "hash": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    },
+    "semver": {
+      "type": "string",
+      "pattern": "^(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)$"
+    },
+    "nullableSemver": {
+      "anyOf": [
+        { "$ref": "#/$defs/semver" },
+        { "type": "null" }
+      ]
+    }
+  }
+}

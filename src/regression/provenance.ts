@@ -1,5 +1,5 @@
 import { execa } from "execa";
-import type { BenchmarkCase, MutationInput, ProfileResult, RunnerCapability } from "../core/types.js";
+import type { BenchmarkCase, MutationInput, ProfileResult, PublicRunnerCapability, RunnerCapability } from "../core/types.js";
 import { PRODUCT_NAME } from "../core/product.js";
 import { evidenceBoundary, type EvidenceKind, type ObservationLevel } from "../doctor/doctor.js";
 import type { VerifiedWorkflowTrace } from "../observer/workflowTrace.js";
@@ -206,7 +206,7 @@ export function semanticCaseSetHash(cases: BenchmarkCase[]): string {
   return sha256Text(stableJson(semanticCases));
 }
 
-export function publicRunnerCapability(capability: RunnerCapability): Omit<RunnerCapability, "executable"> & { executableRef?: string } {
+export function publicRunnerCapability(capability: RunnerCapability): PublicRunnerCapability {
   const { executable: _executable, disabledReason, ...portable } = capability;
   return {
     ...portable,

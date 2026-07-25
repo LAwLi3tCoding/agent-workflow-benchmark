@@ -1,0 +1,90 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "artifact-compatibility-matrix.schema.json",
+  "title": "Agent Workflow Bench artifact compatibility matrix",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "artifactType",
+    "matrixVersion",
+    "semverPolicy",
+    "policies"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "0.1.0" },
+    "artifactType": { "const": "artifact_compatibility_matrix" },
+    "matrixVersion": { "$ref": "#/$defs/semver" },
+    "semverPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["patch", "minor", "major", "zeroMajor"],
+      "properties": {
+        "patch": { "const": "backward-compatible fixes only" },
+        "minor": { "const": "additive fields require migration or diagnostic downgrade" },
+        "major": { "const": "breaking and never auto-migrated" },
+        "zeroMajor": { "const": "0.y.z minor changes are treated as breaking" }
+      }
+    },
+    "policies": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/policy" }
+    }
+  },
+  "$defs": {
+    "semver": {
+      "type": "string",
+      "pattern": "^(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)$"
+    },
+    "policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "artifactType",
+        "currentVersion",
+        "readableVersions",
+        "migrationMode",
+        "requiredTrustFields",
+        "missingTrustDisposition",
+        "unsupportedCode",
+        "action"
+      ],
+      "properties": {
+        "artifactType": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]*$"
+        },
+        "currentVersion": { "$ref": "#/$defs/semver" },
+        "readableVersions": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)\\.x$"
+          }
+        },
+        "migrationMode": {
+          "enum": [
+            "identity",
+            "add_metadata",
+            "diagnostic_on_missing_trust"
+          ]
+        },
+        "inferUnversionedAs": { "$ref": "#/$defs/semver" },
+        "requiredTrustFields": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z][A-Za-z0-9]*(?:\\.[A-Za-z][A-Za-z0-9]*)*$"
+          }
+        },
+        "missingTrustDisposition": { "const": "DIAGNOSTIC_ONLY" },
+        "unsupportedCode": { "const": "ARTIFACT_SCHEMA_VERSION_UNSUPPORTED" },
+        "action": { "type": "string", "minLength": 1, "maxLength": 500 }
+      }
+    }
+  }
+}

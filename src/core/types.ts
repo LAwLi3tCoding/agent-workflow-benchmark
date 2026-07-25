@@ -74,6 +74,16 @@ export interface ProfileEvidence {
   warnings: string[];
 }
 
+export interface PublicProfileEvidence {
+  schemaVersion: "0.1.0";
+  artifactType: "profile_evidence";
+  targetId: string;
+  root: string;
+  scannedFiles: Array<{ path: string; sha256: string; bytes: number }>;
+  missingFiles: string[];
+  warnings: string[];
+}
+
 export interface ContractModel {
   schemaVersion: string;
   targetId: string;
@@ -157,7 +167,8 @@ export interface MaterializedSuite {
     reason?: string;
   }>;
   manifest: {
-    schemaVersion: string;
+    schemaVersion: "0.1.0";
+    artifactType: "generation_manifest";
     targetId: string;
     suite: string;
     contractHash: string;
@@ -267,6 +278,53 @@ export interface RunnerCapability {
     tokenCost: "comparable" | "directional_only" | "not_comparable";
   };
   capabilitiesHash: string;
+}
+
+export type PublicRunnerCapability = Omit<RunnerCapability, "executable"> & {
+  executableRef?: string;
+};
+
+export interface RuntimeManifest {
+  schemaVersion: "0.1.0";
+  artifactType: "runtime_manifest";
+  attemptId: string;
+  runner: PublicRunnerCapability;
+  mode: "diagnostic" | "gate";
+  dryRun: boolean;
+  seed: string;
+  contractHash: string;
+  caseCount: number;
+  skippedCaseCount?: number;
+  liveTranscriptCount?: number;
+  caseSource: "cases://provided" | "case://provided" | "target://materialized" | "evaluation://cases";
+  mutation?: MutationInput;
+  workflowTrace?: {
+    verified: boolean;
+    ref: "workflow-trace.json";
+    sha256: string;
+    caseCount: number;
+    eventCount: number;
+    observer: {
+      id: string;
+      version: string;
+      keyFingerprint: string;
+      qualificationStatus: "missing" | "valid" | "invalid";
+      qualificationRef?: "observer-qualification.json";
+      qualificationArtifactHash?: string;
+      qualificationAuthorityFingerprint?: string;
+    };
+  };
+}
+
+export interface RuntimeManifestInput
+  extends Omit<
+    RuntimeManifest,
+    "schemaVersion" | "artifactType" | "mode" | "caseSource"
+  > {
+  schemaVersion?: string;
+  artifactType?: string;
+  mode?: string;
+  caseSource?: string;
 }
 
 export interface HardFailure {

@@ -18,6 +18,7 @@ export function materializeSmokeSuite(contract, options = {}) {
         })),
         manifest: {
             schemaVersion: "0.1.0",
+            artifactType: "generation_manifest",
             targetId: contract.targetId,
             suite: suiteName,
             contractHash: contract.contractHash,
@@ -47,6 +48,7 @@ export function materializeAiSuite(contract, options) {
         })),
         manifest: {
             schemaVersion: "0.1.0",
+            artifactType: "generation_manifest",
             targetId: contract.targetId,
             suite: suiteName,
             contractHash: contract.contractHash,

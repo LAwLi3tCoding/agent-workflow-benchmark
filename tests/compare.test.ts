@@ -133,6 +133,21 @@ async function forgeLiveWorkflowTraceRun(
   await writeFile(provenancePath, `${JSON.stringify(provenance, null, 2)}\n`);
 }
 
+async function stripRuntimeSchemaMetadata(runDir: string): Promise<void> {
+  const runtimePath = path.join(runDir, "runtime-manifest.json");
+  const provenancePath = path.join(runDir, "provenance.json");
+  const runtime = JSON.parse(await readFile(runtimePath, "utf8"));
+  const provenance = JSON.parse(await readFile(provenancePath, "utf8"));
+
+  delete runtime.schemaVersion;
+  delete runtime.artifactType;
+  await writeFile(runtimePath, `${JSON.stringify(runtime, null, 2)}\n`);
+  provenance.integrity.artifacts.find(
+    (artifact: { ref: string }) => artifact.ref === "runtime-manifest.json"
+  ).sha256 = await hashFile(runtimePath);
+  await writeFile(provenancePath, `${JSON.stringify(provenance, null, 2)}\n`);
+}
+
 async function injectUnregisteredSuiteFailure(source: string, destination: string): Promise<void> {
   await cp(source, destination, { recursive: true });
   const suitePath = path.join(destination, "suite-result.json");
@@ -364,6 +379,70 @@ describe("paired workflow comparison", () => {
           source: "candidate"
         })
       ])
+    );
+  });
+
+  test("provenance-pinned legacy runtime manifests remain comparable without schema metadata", async () => {
+    const legacyBaseline = path.join(root, "legacy-runtime-baseline");
+    const legacyCandidate = path.join(root, "legacy-runtime-candidate");
+    await cp(cleanBaseline, legacyBaseline, { recursive: true });
+    await cp(cleanCandidate, legacyCandidate, { recursive: true });
+    await stripRuntimeSchemaMetadata(legacyBaseline);
+    await stripRuntimeSchemaMetadata(legacyCandidate);
+
+    const comparison = await comparePair(
+      legacyBaseline,
+      legacyCandidate,
+      "legacy-runtime-metadata"
+    );
+
+    expect(comparison.result.classification).toBe("UNCHANGED");
+    expect(comparison.result.comparability).toMatchObject({
+      status: "COMPARABLE",
+      reasons: []
+    });
+    expect(comparison.result.hardFailures).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: "PROVENANCE_INVALID" })
+      ])
+    );
+  });
+
+  test("present runtime schema metadata must identify the compatible manifest contract", async () => {
+    const tamperedMetadata = path.join(
+      root,
+      "tampered-runtime-schema-metadata"
+    );
+    await cp(cleanCandidate, tamperedMetadata, { recursive: true });
+    const runtimePath = path.join(
+      tamperedMetadata,
+      "runtime-manifest.json"
+    );
+    const provenancePath = path.join(tamperedMetadata, "provenance.json");
+    const runtime = JSON.parse(await readFile(runtimePath, "utf8"));
+    const provenance = JSON.parse(await readFile(provenancePath, "utf8"));
+
+    runtime.schemaVersion = "0.2.0";
+    runtime.artifactType = "untrusted_runtime";
+    await writeFile(runtimePath, `${JSON.stringify(runtime, null, 2)}\n`);
+    provenance.integrity.artifacts.find(
+      (artifact: { ref: string }) =>
+        artifact.ref === "runtime-manifest.json"
+    ).sha256 = await hashFile(runtimePath);
+    await writeFile(
+      provenancePath,
+      `${JSON.stringify(provenance, null, 2)}\n`
+    );
+
+    const comparison = await comparePair(
+      cleanBaseline,
+      tamperedMetadata,
+      "tampered-runtime-schema-metadata"
+    );
+
+    expect(comparison.result.classification).toBe("HARD_FAILURE");
+    expect(comparison.result.comparability.reasons).toContain(
+      "PROVENANCE_INVALID"
     );
   });
 

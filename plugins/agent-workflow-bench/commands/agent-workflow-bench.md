@@ -44,6 +44,19 @@ Gate exit codes are `0` for PASS, `2` for DIAGNOSTIC_ONLY, and `1` for BLOCK or 
 
 Use `--gate-policy <gate-policy.json>` on `compare` and `gate` when recomputing previous artifacts. Missing or mismatched policy version, rules hash, or policy hash is incomparable. Deterministic hard failures continue to dominate calibrated scores.
 
+For artifact compatibility, run:
+
+```bash
+awb artifact migrate --input <artifact.json> --out <migration-dir>
+```
+
+Use `--artifact-type <type>` for non-canonical filenames. The command writes
+`migration-result.json` and, when safe, `migrated-artifact.json`; exits are `0`
+for `CURRENT`/`MIGRATED`, `2` for `DIAGNOSTIC_ONLY`, and `1` for
+`INCOMPATIBLE`. Migration never invents trust: missing Observer attestation,
+policy hashes, integrity hashes, provenance bindings, runtime identity, or
+conditions identity remain diagnostic-only.
+
 Qualify the reference Observer first. This writes evidence and an integrity-bound artifact but never changes a trust root:
 
 ```bash
