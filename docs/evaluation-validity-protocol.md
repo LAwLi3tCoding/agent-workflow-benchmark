@@ -18,13 +18,16 @@ an unregistered hard-failure code influences the result.
 
 ## Content Validity
 
-Stage 1 content validity is structural only. Required coverage targets are derived from the
-reviewed ContractModel and every implemented generic oracle is materialized. Empirical content
-validity requires the versioned Gold Corpus in Stage 2.
+Required coverage targets are derived from the reviewed ContractModel and every implemented
+generic oracle is materialized. Stage 2 adds a versioned Gold Corpus with independent labels for
+known-good, known-bad, and boundary trajectories across every registered P0/P1 failure family.
+The corpus proves detector content coverage for synthetic fixtures; it does not prove external
+criterion validity or live-runner behavior.
 
-Threshold: all required Stage 1 targets are covered or carry a typed exemption. Failure
-condition: an uncovered required target, unknown binding, target-specific assumption in generic
-fixtures, or a backlog oracle presented as implemented.
+Threshold: every required target is covered or carries a typed exemption, every required failure
+family has all three controls, P0 mutation kill is 100%, false PASS is 0, and known-good controls
+are not blocked. Failure condition: an uncovered target, missing control, unknown binding,
+target-specific private data, label leakage, or a backlog oracle presented as implemented.
 
 ## Criterion Validity
 
@@ -91,14 +94,16 @@ qualification is missing or invalid, P0 evidence exists, privacy or isolation po
 violated, holdout leakage occurs, deterministic replay diverges, or a required schema cannot be
 validated. AI semantic judgment and aggregate scores cannot override any of these conditions.
 
-## Stage 1 Status
+## Stage 2 Status
 
-Proven: canonical vocabulary, contract hashing boundary, owner-review admission boundary,
-deterministic hard-failure precedence, and diagnostic evidence ceilings.
+Proven for the harness: canonical vocabulary, contract hashing boundary, owner-review admission
+boundary, deterministic hard-failure precedence, diagnostic evidence ceilings, content-hashed
+Gold Corpus fixtures, split label isolation, 12-family good/bad/boundary coverage, P0 mutation
+kill 100%, false PASS 0, and no known-good block.
 
 Diagnostic only: signed but unqualified traces and all built-in live contract summaries.
 
 Requires human input: criterion labels and production blocking authorization.
 
-Deferred by protocol: Gold Corpus performance, Observer qualification, statistical reliability,
-calibration, external validity, CI canary, trends, and adapter conformance.
+Deferred by protocol: Observer qualification, statistical reliability, calibration, external
+validity, CI canary, trends, and adapter conformance.

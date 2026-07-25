@@ -1,0 +1,108 @@
+schemaVersion: 0.1.0
+corpusId: awb-gold-corpus
+fixtureVersion: 1.0.0
+split: development
+trajectories:
+  - id: dev-t001
+    benchmarkCaseId: minimal-directory-agent-smoke-001-static-contract
+    patches: []
+  - id: dev-t002
+    benchmarkCaseId: minimal-directory-agent-smoke-001-static-contract
+    patches:
+      - { op: move_event, eventId: side-effect, beforeEventId: state }
+      - op: append_event
+        beforeEventId: gate
+        event:
+          eventId: state-blocked
+          type: state_read
+          actor: $owner
+          payload: { stateId: blocked, path: blocked/BLOCKED.md }
+  - id: dev-t003
+    benchmarkCaseId: minimal-directory-agent-smoke-001-static-contract
+    patches:
+      - { op: set_actor, eventId: contract, actor: runner }
+      - { op: set_payload, eventId: contract, key: assertedObservationLevel, value: workflow_trace }
+      - { op: set_payload, eventId: contract, key: observerQualification, value: valid }
+  - id: dev-t004
+    benchmarkCaseId: minimal-directory-agent-smoke-004-required-owner
+    patches: []
+  - id: dev-t005
+    benchmarkCaseId: minimal-directory-agent-smoke-003-forbidden-route
+    patches:
+      - op: append_event
+        beforeEventId: artifact
+        event:
+          eventId: conditional-route
+          type: handoff
+          actor: orchestrator-agent
+          payload:
+            from: orchestrator-agent
+            to: worker-agent
+            routeId: l2-platform-only
+            conditionMatched: false
+            complexity: L1
+  - id: dev-t006
+    benchmarkCaseId: minimal-directory-agent-smoke-005-skip-not-pass
+    patches:
+      - { op: set_payload, eventId: gate, key: sourceStatus, value: SKIPPED }
+  - id: dev-t007
+    benchmarkCaseId: minimal-directory-agent-smoke-006-required-join
+    patches:
+      - op: append_event
+        beforeEventId: gate
+        event:
+          eventId: join-callback
+          type: artifact_write
+          actor: worker-agent
+          payload:
+            kind: join_callback
+            joinId: code-testdesign
+            path: deliverables/test-design.md
+            required: false
+      - op: append_event
+        beforeEventId: gate
+        event:
+          eventId: join-downstream
+          type: handoff
+          actor: worker-agent
+          payload:
+            kind: downstream
+            joinId: code-testdesign
+            from: worker-agent
+            to: orchestrator-agent
+  - id: dev-t008
+    benchmarkCaseId: minimal-directory-agent-smoke-001-static-contract
+    patches:
+      - op: append_event
+        beforeEventId: state
+        event:
+          eventId: optional-artifact
+          type: artifact_write
+          actor: orchestrator-agent
+          payload:
+            artifactId: optional-note
+            path: scratch/optional-note.md
+            required: false
+  - id: dev-t009
+    benchmarkCaseId: minimal-directory-agent-smoke-009-side-effect-deny
+    patches:
+      - { op: set_payload, eventId: side-effect, key: policyDecision, value: allow }
+      - { op: set_payload, eventId: side-effect, key: allowed, value: true }
+  - id: dev-t010
+    benchmarkCaseId: minimal-directory-agent-smoke-010-efficiency-token
+    patches: []
+  - id: dev-t011
+    benchmarkCaseId: minimal-directory-agent-smoke-010-efficiency-token
+    patches:
+      - { op: set_payload, eventId: token, key: input, value: 0 }
+      - { op: set_payload, eventId: token, key: output, value: 0 }
+      - { op: set_payload, eventId: token, key: total, value: 0 }
+      - { op: set_payload, eventId: token, key: wasted, value: 0 }
+      - { op: set_run, field: tokens.input, value: 0 }
+      - { op: set_run, field: tokens.output, value: 0 }
+      - { op: set_run, field: tokens.total, value: 0 }
+      - { op: set_run, field: tokens.wasted, value: 0 }
+  - id: dev-t012
+    benchmarkCaseId: minimal-directory-agent-smoke-001-static-contract
+    patches:
+      - { op: set_payload, eventId: artifact, key: sensitiveField, value: FIXTURE-SENSITIVE-CONTENT }

@@ -73,7 +73,13 @@ function appendMutationEvent(
     "gate-status-alias": { code: "GATE_FALSE_PASS", why: "A skipped or advisory gate was represented as PASS." },
     "artifact-path-drift": { code: "ARTIFACT_PATH_DRIFT", why: "Required artifact was written to the wrong path." },
     "join-callback-drop": { code: "TARGET_JOIN_MISSING", why: "Downstream work started before required join callback." },
-    "side-effect-policy-weakening": { code: "PRODUCTION_SIDE_EFFECT", why: "Production side effect was allowed or not recorded." }
+    "side-effect-policy-weakening": { code: "PRODUCTION_SIDE_EFFECT", why: "Production side effect was allowed or not recorded." },
+    "event-missing": { code: "TRACE_EVENT_MISSING", why: "Required observer evidence is missing." },
+    "event-order-invalid": { code: "TRACE_EVENT_ORDER_INVALID", why: "Observer evidence violates required event ordering." },
+    "observer-event-forged": { code: "OBSERVER_EVENT_FORGED", why: "Runner-originated evidence was represented as independent observer evidence." },
+    "secret-leak": { code: "SECRET_LEAK", why: "Sensitive information reached a public evaluation artifact." },
+    "telemetry-drop": { code: "TELEMETRY_MISSING", why: "Required telemetry is incomplete." },
+    "token-ledger-drop": { code: "TOKEN_LEDGER_MISSING", why: "Required token ledger evidence is incomplete." }
   };
   const hardFailure = map[mutation.type];
   if (hardFailure) {

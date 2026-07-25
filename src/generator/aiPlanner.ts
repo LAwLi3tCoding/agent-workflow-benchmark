@@ -12,6 +12,7 @@ import {
 } from "../utils/redaction.js";
 import { PRODUCT_NAME } from "../core/product.js";
 import { sha256Text } from "../utils/hash.js";
+import type { GoldCorpusPlannerView } from "../evaluation/goldCorpus.js";
 
 export type AiPlannerRunner = "codex" | "claude" | "fixture";
 
@@ -23,6 +24,7 @@ export interface RunAiCasePlannerOptions {
   outDir: string;
   maxCases: number;
   evidence?: ProfileEvidence;
+  goldCorpusView?: GoldCorpusPlannerView;
 }
 
 export interface AiCasePlannerRun {
@@ -31,7 +33,18 @@ export interface AiCasePlannerRun {
   rawResponsePath: string;
 }
 
-export function buildAiCasePlanPrompt(contract: ContractModel, options: { maxCases: number; evidence?: ProfileEvidence; coverageMode?: CoverageMode }): string {
+export function buildAiCasePlanPrompt(
+  contract: ContractModel,
+  options: {
+    maxCases: number;
+    evidence?: ProfileEvidence;
+    coverageMode?: CoverageMode;
+    goldCorpusView?: GoldCorpusPlannerView;
+  }
+): string {
+  const goldCorpusExcerpt = options.goldCorpusView
+    ? safeGoldCorpusPlannerExcerpt(options.goldCorpusView)
+    : undefined;
   const coverageMode = options.coverageMode ?? "smoke";
   const coverageTargets = deriveWorkflowCoverageTargets(contract);
   const recommendedCaseCount = recommendedAiCaseCount(contract, { coverageMode });
@@ -69,6 +82,13 @@ export function buildAiCasePlanPrompt(contract: ContractModel, options: { maxCas
     "",
     "CoverageTargets:",
     JSON.stringify(coverageTargets, null, 2),
+    ...(goldCorpusExcerpt
+      ? [
+          "",
+          "Development-only unlabeled Gold Corpus trajectories:",
+          JSON.stringify(goldCorpusExcerpt, null, 2)
+        ]
+      : []),
     "",
     "Scoring policy:",
     [
@@ -113,15 +133,86 @@ export function buildAiCasePlanPrompt(contract: ContractModel, options: { maxCas
   ].join("\n");
 }
 
+function safeGoldCorpusPlannerExcerpt(
+  view: GoldCorpusPlannerView
+): GoldCorpusPlannerView {
+  const copy = structuredClone(view);
+  const forbiddenKeys = new Set([
+    "control",
+    "expectedFailureCode",
+    "expectedFailureCodes",
+    "expectedVerdict",
+    "failureCode",
+    "label",
+    "labels",
+    "labelSource"
+  ]);
+  const forbiddenValues = new Set([
+    "known_good",
+    "known_bad",
+    "boundary",
+    "TRACE_EVENT_MISSING",
+    "TRACE_EVENT_ORDER_INVALID",
+    "OBSERVER_EVENT_FORGED",
+    "TARGET_OWNER_BYPASS",
+    "TARGET_ROUTE_FORBIDDEN",
+    "GATE_FALSE_PASS",
+    "TARGET_JOIN_MISSING",
+    "ARTIFACT_PATH_DRIFT",
+    "PRODUCTION_SIDE_EFFECT",
+    "TELEMETRY_MISSING",
+    "TOKEN_LEDGER_MISSING",
+    "SECRET_LEAK"
+  ]);
+  const visit = (value: unknown): void => {
+    if (typeof value === "string") {
+      if (forbiddenValues.has(value)) {
+        throw new Error(
+          "Gold Corpus planner context contains outcome-label material."
+        );
+      }
+      return;
+    }
+    if (Array.isArray(value)) {
+      value.forEach(visit);
+      return;
+    }
+    if (!value || typeof value !== "object") {
+      return;
+    }
+    for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
+      if (forbiddenKeys.has(key)) {
+        throw new Error(
+          "Gold Corpus planner context contains outcome-label material."
+        );
+      }
+      if (key === "key" && typeof item === "string" && forbiddenKeys.has(item)) {
+        throw new Error(
+          "Gold Corpus planner context contains outcome-label material."
+        );
+      }
+      visit(item);
+    }
+  };
+  visit(copy);
+  return copy;
+}
+
 export async function runAiCasePlanner(contract: ContractModel, options: RunAiCasePlannerOptions): Promise<AiCasePlannerRun> {
   await mkdir(options.outDir, { recursive: true });
-  const prompt = buildAiCasePlanPrompt(contract, { maxCases: options.maxCases, evidence: options.evidence, coverageMode: options.coverageMode });
+  const prompt = buildAiCasePlanPrompt(contract, {
+    maxCases: options.maxCases,
+    evidence: options.evidence,
+    coverageMode: options.coverageMode,
+    goldCorpusView: options.goldCorpusView
+  });
   const promptPath = path.join(options.outDir, "ai-case-planner-prompt.txt");
   const rawResponsePath = path.join(options.outDir, "ai-case-planner-response.json");
   const portablePrompt = buildAiCasePlanPrompt(contract, {
     maxCases: options.maxCases,
     evidence: options.evidence ? publicProfileEvidence(options.evidence) : undefined,
-    coverageMode: options.coverageMode
+    coverageMode: options.coverageMode,
+    goldCorpusView: options.goldCorpusView
   });
   await writeFile(promptPath, redactSensitiveText(portablePrompt, { paths: [options.outDir] }));
 

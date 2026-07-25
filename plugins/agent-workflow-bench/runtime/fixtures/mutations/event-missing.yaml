@@ -1,0 +1,8 @@
+schemaVersion: 0.1.0
+id: event-missing
+type: event-missing
+description: Simulate missing required observer evidence.
+scope: overlay-only
+expectedOutcome:
+  verdict: FAIL
+  hardFailureCode: TRACE_EVENT_MISSING

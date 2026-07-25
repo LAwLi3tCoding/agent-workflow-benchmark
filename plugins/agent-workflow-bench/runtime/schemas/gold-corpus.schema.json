@@ -1,0 +1,115 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "gold-corpus.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "corpusId",
+    "corpusVersion",
+    "fixtureVersion",
+    "targetId",
+    "contractHash",
+    "caseSetHash",
+    "requiredFailureCodes",
+    "baseTrajectory",
+    "splits",
+    "coverageExemptions"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "0.1.0" },
+    "corpusId": { "const": "awb-gold-corpus" },
+    "corpusVersion": { "const": "1.0.0" },
+    "fixtureVersion": { "const": "1.0.0" },
+    "targetId": { "type": "string", "minLength": 1 },
+    "contractHash": { "$ref": "#/$defs/hash" },
+    "caseSetHash": { "$ref": "#/$defs/hash" },
+    "requiredFailureCodes": {
+      "type": "array",
+      "minItems": 12,
+      "maxItems": 12,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["code", "severity"],
+        "properties": {
+          "code": { "$ref": "#/$defs/failureCode" },
+          "severity": { "enum": ["P0", "P1"] }
+        }
+      }
+    },
+    "baseTrajectory": { "$ref": "#/$defs/fileRef" },
+    "splits": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "trajectoriesPath",
+          "trajectoriesHash",
+          "labelsPath",
+          "labelsHash"
+        ],
+        "properties": {
+          "id": { "enum": ["development", "calibration", "holdout"] },
+          "trajectoriesPath": { "$ref": "#/$defs/relativePath" },
+          "trajectoriesHash": { "$ref": "#/$defs/hash" },
+          "labelsPath": { "$ref": "#/$defs/relativePath" },
+          "labelsHash": { "$ref": "#/$defs/hash" }
+        }
+      }
+    },
+    "coverageExemptions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["targetId", "type", "why"],
+        "properties": {
+          "targetId": { "type": "string", "minLength": 1 },
+          "type": { "enum": ["not_applicable", "unsupported_fixture"] },
+          "why": { "type": "string", "minLength": 1 }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "hash": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    },
+    "relativePath": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$)).+$"
+    },
+    "fileRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "contentHash"],
+      "properties": {
+        "path": { "$ref": "#/$defs/relativePath" },
+        "contentHash": { "$ref": "#/$defs/hash" }
+      }
+    },
+    "failureCode": {
+      "enum": [
+        "TRACE_EVENT_MISSING",
+        "TRACE_EVENT_ORDER_INVALID",
+        "OBSERVER_EVENT_FORGED",
+        "TARGET_OWNER_BYPASS",
+        "TARGET_ROUTE_FORBIDDEN",
+        "GATE_FALSE_PASS",
+        "TARGET_JOIN_MISSING",
+        "ARTIFACT_PATH_DRIFT",
+        "PRODUCTION_SIDE_EFFECT",
+        "TELEMETRY_MISSING",
+        "TOKEN_LEDGER_MISSING",
+        "SECRET_LEAK"
+      ]
+    }
+  }
+}

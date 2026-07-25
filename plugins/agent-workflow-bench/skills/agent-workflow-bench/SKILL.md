@@ -95,6 +95,8 @@ awb run --case <case-yaml> --runner claude --execution live --mode diagnostic --
 Run overlay-only mutation reverse validation after the main run. This is benchmark scorer/oracle self-debug and must use the simulated runner; it does not mutate the real target source and does not prove live Codex/Claude runner behavior.
 
 ```bash
+awb gold-corpus validate --corpus fixtures/gold-corpus/v1/manifest.yaml
+awb debug reverse-validate --corpus fixtures/gold-corpus/v1/manifest.yaml --runner simulated --out .benchmark-debug/gold-corpus
 awb debug reverse-validate --target <target-id> --suite smoke --mutation-set fixtures/mutations/extended.yaml --runner simulated --suite-result reports/runs/<target-id>-ai/suite-result.json --out .benchmark-debug/<target-id>-mutations
 awb debug diagnose --debug-run .benchmark-debug/<target-id>-mutations --out .benchmark-debug/<target-id>-mutations/diagnosis
 awb debug propose-fix --dossier .benchmark-debug/<target-id>-mutations/diagnosis/debug-dossier.json --out .benchmark-debug/<target-id>-mutations/diagnosis/repair-plan.md

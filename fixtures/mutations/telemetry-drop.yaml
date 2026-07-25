@@ -5,4 +5,4 @@ description: Simulate missing event/tool telemetry and expect debug validation t
 scope: overlay-only
 expectedOutcome:
   verdict: PASS_WITH_WARNINGS
-  hardFailureCode: TELEMETRY_DEGRADATION
+  hardFailureCode: TELEMETRY_MISSING

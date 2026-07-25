@@ -32,6 +32,7 @@ export interface EvaluationContract {
   scorePolicy: {
     hardFailurePrecedence: true;
     p0ScoreCap: number;
+    p1ScoreCap: number;
     casePassMinimum: number;
     caseConditionalMinimum: number;
     suiteApproveMinimum: number;

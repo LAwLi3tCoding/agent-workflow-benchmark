@@ -1,0 +1,63 @@
+schemaVersion: 0.1.0
+corpusId: awb-gold-corpus
+fixtureVersion: 1.0.0
+split: holdout
+trajectories:
+  - id: hold-t001
+    benchmarkCaseId: minimal-directory-agent-smoke-001-static-contract
+    patches:
+      - { op: remove_event, eventId: contract }
+  - id: hold-t002
+    benchmarkCaseId: minimal-directory-agent-smoke-001-static-contract
+    patches: []
+  - id: hold-t003
+    benchmarkCaseId: minimal-directory-agent-smoke-001-static-contract
+    patches:
+      - { op: set_actor, eventId: contract, actor: runner }
+      - { op: set_payload, eventId: contract, key: assertedObservationLevel, value: contract_summary }
+      - { op: set_payload, eventId: contract, key: observerQualification, value: missing }
+  - id: hold-t004
+    benchmarkCaseId: minimal-directory-agent-smoke-004-required-owner
+    patches:
+      - { op: set_actor, eventId: artifact, actor: worker-agent }
+  - id: hold-t005
+    benchmarkCaseId: minimal-directory-agent-smoke-003-forbidden-route
+    patches: []
+  - id: hold-t006
+    benchmarkCaseId: minimal-directory-agent-smoke-005-skip-not-pass
+    patches:
+      - { op: set_payload, eventId: gate, key: status, value: ADVISORY }
+      - { op: set_payload, eventId: gate, key: sourceStatus, value: ADVISORY }
+  - id: hold-t007
+    benchmarkCaseId: minimal-directory-agent-smoke-006-required-join
+    patches:
+      - op: append_event
+        beforeEventId: gate
+        event:
+          eventId: join-downstream
+          type: handoff
+          actor: worker-agent
+          payload:
+            kind: downstream
+            joinId: code-testdesign
+            from: worker-agent
+            to: orchestrator-agent
+  - id: hold-t008
+    benchmarkCaseId: minimal-directory-agent-smoke-001-static-contract
+    patches: []
+  - id: hold-t009
+    benchmarkCaseId: minimal-directory-agent-smoke-009-side-effect-deny
+    patches:
+      - { op: set_payload, eventId: side-effect, key: policyDecision, value: deny }
+      - { op: set_payload, eventId: side-effect, key: allowed, value: false }
+  - id: hold-t010
+    benchmarkCaseId: minimal-directory-agent-smoke-010-efficiency-token
+    patches:
+      - { op: set_run, field: telemetryCompleteness, value: 0.5 }
+  - id: hold-t011
+    benchmarkCaseId: minimal-directory-agent-smoke-010-efficiency-token
+    patches: []
+  - id: hold-t012
+    benchmarkCaseId: minimal-directory-agent-smoke-001-static-contract
+    patches:
+      - { op: set_payload, eventId: artifact, key: sensitiveField, value: "[REDACTED]" }

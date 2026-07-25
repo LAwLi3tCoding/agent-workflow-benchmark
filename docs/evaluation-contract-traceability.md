@@ -19,10 +19,11 @@ rows are not product capability claims.
 | budget-efficiency | budgets | efficiency-token | token_usage | oracle-efficiency-token | efficiency, GATE-CANDIDATE-BELOW-PASS | tests/run-score.test.ts |
 | provenance-integrity | entrypoints, commandPolicy, budgets | static-contract | contract_observed, runner_result | oracle-static-contract | contract, GATE-COMPARISON-INTEGRITY | tests/compare.test.ts; tests/workflow-trace.test.ts |
 | evidence-trust-ceiling | entrypoints, commandPolicy | static-contract | runner_start, runner_result | oracle-static-contract | runner, GATE-EVIDENCE-NOT-WORKFLOW-TRACE, GATE-OBSERVER-UNQUALIFIED | tests/run-score.test.ts; tests/live-runner.test.ts; tests/workflow-trace.test.ts; tests/compare.test.ts |
+| gold-corpus-detection | roles, owners, routes, joins, artifacts, states, statuses, budgets, command policy | static-contract, forbidden-route, required-owner, skip-not-pass, required-join, side-effect-deny, efficiency-token | lifecycle, handoff, artifact, state, gate, side-effect, token events | canonical deterministic oracles | contract and affected dimensions, GATE-HARD-FAILURE | tests/gold-corpus.test.ts; tests/gold-corpus-cli.test.ts |
 
 ## Backlog boundary
 
-Observer qualification, Gold Corpus performance claims, reliability thresholds, external
+Observer qualification, reliability thresholds, external
 criterion validity, calibrated policy performance, trend analysis, and adapter conformance are
 not Stage 1 product claims. Their registry or protocol status remains backlog or
 `DIAGNOSTIC_ONLY` until the later stage acceptance evidence exists.

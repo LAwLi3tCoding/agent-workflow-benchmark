@@ -219,12 +219,21 @@ describe("paired workflow comparison", () => {
     expect(result.caseDeltas.some((delta: { resolvedHardFailures: string[] }) => delta.resolvedHardFailures.includes("TARGET_ROUTE_FORBIDDEN"))).toBe(true);
   });
 
-  test("classifies lower deterministic telemetry evidence as regressed", async () => {
+  test("classifies canonical missing telemetry evidence as a P1 hard failure", async () => {
     const { result } = await comparePair(cleanBaseline, regressedCandidate, "regressed");
 
-    expect(result.classification).toBe("REGRESSED");
+    expect(result.classification).toBe("HARD_FAILURE");
     expect(result.scoreDelta).toBeLessThan(0);
-    expect(result.summary.regressed).toBeGreaterThan(0);
+    expect(result.summary.hardFailure).toBeGreaterThan(0);
+    expect(result.hardFailures).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "TELEMETRY_MISSING",
+          severity: "P1",
+          source: "candidate"
+        })
+      ])
+    );
   });
 
   test("candidate hard failures dominate aggregate scores", async () => {
@@ -394,13 +403,13 @@ describe("paired workflow comparison", () => {
     expect(gate.report).toContain("Decision: DIAGNOSTIC_ONLY");
   });
 
-  test("gate blocks deterministic regressions and candidate hard failures with exit code 1", async () => {
+  test("gate blocks P1 telemetry and P0 candidate hard failures with exit code 1", async () => {
     const regression = await comparePair(cleanBaseline, regressedCandidate, "gate-regression");
     const regressionGate = await gateComparison(path.join(regression.out, "comparison-result.json"), "regression");
     expect(regressionGate.exitCode).toBe(1);
     expect(regressionGate.result).toMatchObject({
       decision: "BLOCK",
-      ruleId: "GATE-REGRESSION"
+      ruleId: "GATE-HARD-FAILURE"
     });
 
     const hardFailure = await comparePair(cleanBaseline, hardCandidate, "gate-hard-failure");

@@ -139,11 +139,11 @@ Source-checkout users can replace `awb ...` with
 | `DIAGNOSTIC_ONLY` | `2` | Simulated, unqualified, incomplete, or incomparable evidence |
 | `BLOCK` | `1` | Hard failure, regression, invalid provenance, or tool failure |
 
-Implemented hard failures always dominate score: forbidden routing, owner
-bypass, false PASS, missing required joins, artifact-path drift, unsafe
-production side effects, invalid provenance, and unregistered hard-failure
-codes. Runner failure and telemetry insufficiency are separate deterministic
-BLOCK/diagnostic conditions, not additional registry entries.
+Implemented hard failures always dominate score: missing or reordered evidence,
+forged Observer evidence, forbidden routing, owner bypass, false PASS, missing
+required joins, artifact-path drift, unsafe production side effects, telemetry
+or token-ledger loss, sensitive leakage, invalid provenance, and unregistered
+hard-failure codes. P0 failures block; P1 failures cap a case below PASS.
 
 ### Current runner evidence
 
@@ -195,6 +195,22 @@ integrity-bound qualification artifact produced by the Stage 3 qualification
 workflow. Editing run metadata to self-assert `valid` is ignored.
 
 ## Common Workflows
+
+### Validate the benchmark Gold Corpus
+
+```bash
+awb gold-corpus validate \
+  --corpus fixtures/gold-corpus/v1/manifest.yaml
+
+awb debug reverse-validate \
+  --corpus fixtures/gold-corpus/v1/manifest.yaml \
+  --runner simulated \
+  --out reports/gold-corpus
+```
+
+This is harness-only synthetic evidence. The report always records
+`releaseEligible: false`; it cannot produce a real workflow release PASS. See
+the [Gold Corpus contract](docs/gold-corpus.md).
 
 ### Matched baseline/candidate regression
 

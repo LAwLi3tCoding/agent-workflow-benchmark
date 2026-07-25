@@ -75,7 +75,12 @@ describe("agent workflow bench plugin package", () => {
     await expect(stat(path.join(runtimeRoot, "schemas", "workflow-trace.schema.json"))).resolves.toBeTruthy();
     await expect(stat(path.join(runtimeRoot, "schemas", "comparison-result.schema.json"))).resolves.toBeTruthy();
     await expect(stat(path.join(runtimeRoot, "schemas", "gate-result.schema.json"))).resolves.toBeTruthy();
+    await expect(stat(path.join(runtimeRoot, "schemas", "gold-corpus.schema.json"))).resolves.toBeTruthy();
+    await expect(stat(path.join(runtimeRoot, "schemas", "gold-corpus-report.schema.json"))).resolves.toBeTruthy();
     await expect(stat(path.join(runtimeRoot, "fixtures", "mutations", "core.yaml"))).resolves.toBeTruthy();
+    await expect(
+      stat(path.join(runtimeRoot, "fixtures", "gold-corpus", "v1", "manifest.yaml"))
+    ).resolves.toBeTruthy();
     await expect(stat(path.join(runtimeRoot, "fixtures", "regression", "scenarios.yaml"))).resolves.toBeTruthy();
     await expect(stat(path.join(runtimeRoot, "dist", "src", "observer", "workflowTrace.js"))).resolves.toBeTruthy();
 
@@ -95,6 +100,20 @@ describe("agent workflow bench plugin package", () => {
 
       expect(result.stdout).toContain("schemas valid");
       expect(result.stdout).toContain("runner configs valid");
+      const corpus = await execa(
+        path.join(install.pluginPath, "bin", "awb"),
+        [
+          "gold-corpus",
+          "validate",
+          "--corpus",
+          "fixtures/gold-corpus/v1/manifest.yaml"
+        ],
+        {
+          cwd: outsideCwd,
+          env: { ...process.env, AWB_PROJECT_ROOT: "" }
+        }
+      );
+      expect(corpus.stdout).toContain("36 trajectories");
     } finally {
       await rm(outsideCwd, { recursive: true, force: true });
       await rm(install.root, { recursive: true, force: true });

@@ -1097,7 +1097,7 @@ describe("benchmark CLI", () => {
     }
   });
 
-  test("debug reverse-validate exits non-zero when aggregate results fail without an explicit expectation", async () => {
+  test("debug reverse-validate kills the complete 12-family mutation set", async () => {
     const debugOut = await tmp("awb-debug-set-fail-");
     try {
       const result = await execa(
@@ -1120,11 +1120,12 @@ describe("benchmark CLI", () => {
         { cwd, reject: false }
       );
 
-      expect(result.exitCode).not.toBe(0);
-      expect(`${result.stdout}\n${result.stderr}`).toContain("Reverse validation failed");
+      expect(result.exitCode).toBe(0);
       const summary = JSON.parse(await readFile(path.join(debugOut, "debug-summary.json"), "utf8"));
-      expect(summary.status).toBe("FAIL");
-      expect(summary.results.some((item: { status: string }) => item.status === "FAIL")).toBe(true);
+      expect(summary.status).toBe("PASS");
+      expect(summary.mutationKillRate).toBe(1);
+      expect(summary.results).toHaveLength(12);
+      expect(summary.results.every((item: { status: string }) => item.status === "PASS")).toBe(true);
     } finally {
       await rm(debugOut, { recursive: true, force: true });
     }
@@ -1209,7 +1210,7 @@ describe("benchmark CLI", () => {
       expect(result.exitCode).not.toBe(0);
       const summary = JSON.parse(await readFile(path.join(debugOut, "debug-summary.json"), "utf8"));
       expect(summary.status).toBe("FAIL");
-      expect(summary.mutationKillRate).toBeLessThan(1);
+      expect(summary.mutationKillRate).toBe(1);
 
       const diagnosisOut = path.join(debugOut, "diagnosis");
       await execa("npm", ["run", "benchmark", "--", "debug", "diagnose", "--debug-run", debugOut, "--out", diagnosisOut], { cwd });

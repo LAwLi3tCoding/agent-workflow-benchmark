@@ -1,0 +1,86 @@
+schemaVersion: 0.1.0
+corpusId: awb-gold-corpus
+fixtureVersion: 1.0.0
+split: calibration
+trajectories:
+  - id: cal-t001
+    benchmarkCaseId: minimal-directory-agent-smoke-001-static-contract
+    patches:
+      - { op: remove_event, eventId: state }
+  - id: cal-t002
+    benchmarkCaseId: minimal-directory-agent-smoke-001-static-contract
+    patches:
+      - { op: move_event, eventId: gate, beforeEventId: artifact }
+  - id: cal-t003
+    benchmarkCaseId: minimal-directory-agent-smoke-001-static-contract
+    patches: []
+  - id: cal-t004
+    benchmarkCaseId: minimal-directory-agent-smoke-004-required-owner
+    patches:
+      - { op: set_payload, eventId: handoff, key: ownerScope, value: implementation }
+      - { op: set_payload, eventId: handoff, key: to, value: worker-agent }
+      - { op: set_actor, eventId: artifact, actor: worker-agent }
+      - { op: set_payload, eventId: artifact, key: ownerScope, value: implementation }
+      - { op: set_payload, eventId: artifact, key: artifactId, value: worker-summary }
+      - { op: set_payload, eventId: artifact, key: path, value: reviews/summary.md }
+  - id: cal-t005
+    benchmarkCaseId: minimal-directory-agent-smoke-003-forbidden-route
+    patches:
+      - op: append_event
+        beforeEventId: artifact
+        event:
+          eventId: forbidden-route
+          type: handoff
+          actor: orchestrator-agent
+          payload:
+            from: orchestrator-agent
+            to: worker-agent
+            routeId: l2-platform-only
+            conditionMatched: true
+            complexity: L2
+  - id: cal-t006
+    benchmarkCaseId: minimal-directory-agent-smoke-005-skip-not-pass
+    patches: []
+  - id: cal-t007
+    benchmarkCaseId: minimal-directory-agent-smoke-006-required-join
+    patches:
+      - op: append_event
+        beforeEventId: gate
+        event:
+          eventId: join-callback
+          type: artifact_write
+          actor: worker-agent
+          payload:
+            kind: join_callback
+            joinId: code-testdesign
+            path: deliverables/test-design.md
+            required: false
+      - op: append_event
+        beforeEventId: gate
+        event:
+          eventId: join-downstream
+          type: handoff
+          actor: worker-agent
+          payload:
+            kind: downstream
+            joinId: code-testdesign
+            from: worker-agent
+            to: orchestrator-agent
+  - id: cal-t008
+    benchmarkCaseId: minimal-directory-agent-smoke-001-static-contract
+    patches:
+      - { op: set_payload, eventId: artifact, key: path, value: scratch/implementation-plan.md }
+  - id: cal-t009
+    benchmarkCaseId: minimal-directory-agent-smoke-009-side-effect-deny
+    patches: []
+  - id: cal-t010
+    benchmarkCaseId: minimal-directory-agent-smoke-010-efficiency-token
+    patches:
+      - { op: set_run, field: telemetryCompleteness, value: 0.75 }
+  - id: cal-t011
+    benchmarkCaseId: minimal-directory-agent-smoke-010-efficiency-token
+    patches:
+      - { op: set_payload, eventId: token, key: total, value: 900 }
+  - id: cal-t012
+    benchmarkCaseId: minimal-directory-agent-smoke-001-static-contract
+    patches: []

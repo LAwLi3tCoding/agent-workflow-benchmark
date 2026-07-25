@@ -7,3 +7,7 @@ mutations:
   - fixtures/mutations/side-effect-policy-weakening.yaml
   - fixtures/mutations/telemetry-drop.yaml
   - fixtures/mutations/token-ledger-drop.yaml
+  - fixtures/mutations/event-missing.yaml
+  - fixtures/mutations/event-order-invalid.yaml
+  - fixtures/mutations/observer-event-forged.yaml
+  - fixtures/mutations/secret-leak.yaml

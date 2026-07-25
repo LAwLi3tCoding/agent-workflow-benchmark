@@ -53,6 +53,7 @@ interface EvaluationContractFixture {
   scorePolicy: {
     hardFailurePrecedence: true;
     p0ScoreCap: number;
+    p1ScoreCap: number;
     casePassMinimum: number;
     caseConditionalMinimum: number;
     suiteApproveMinimum: number;
@@ -86,6 +87,7 @@ describe("canonical evaluation contract", () => {
     expect(contract.scorePolicy).toMatchObject({
       hardFailurePrecedence: true,
       p0ScoreCap: 49,
+      p1ScoreCap: 84,
       casePassMinimum: 85,
       caseConditionalMinimum: 70,
       suiteApproveMinimum: 85,
@@ -134,7 +136,6 @@ describe("canonical evaluation contract", () => {
         contract.hardFailures.some((failure) => failure.code === code && failure.status === "implemented")
       )
     ).toBe(true);
-    expect(contract.hardFailures.some((failure) => failure.status === "backlog")).toBe(true);
   });
 
   test("canonical hard-failure definitions override untrusted event labels and fail closed on unknown codes", async () => {
@@ -172,6 +173,41 @@ describe("canonical evaluation contract", () => {
       why: canonicalUnknown.why
     });
     expect(unknown.why).not.toContain("TARGET_PRIVATE_FAILURE");
+
+    const secretResult = scoreCase(
+      testCase,
+      makeRun(testCase.id, {
+        eventId: "secret-hard-failure",
+        timestamp: new Date(0).toISOString(),
+        type: "hard_failure",
+        actor: "awb-oracle",
+        payload: { code: "SECRET_LEAK" }
+      })
+    );
+    expect(secretResult.evaluationDimensions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          dimension: "sideEffect",
+          status: "FAIL",
+          relatedFailureCodes: ["SECRET_LEAK"]
+        })
+      ])
+    );
+
+    const p1Result = scoreCase(
+      testCase,
+      makeRun(testCase.id, {
+        eventId: "telemetry-hard-failure",
+        timestamp: new Date(0).toISOString(),
+        type: "hard_failure",
+        actor: "awb-oracle",
+        payload: { code: "TELEMETRY_MISSING" }
+      })
+    );
+    expect(p1Result).toMatchObject({
+      verdict: "PASS_WITH_WARNINGS",
+      scoreCap: 84
+    });
   });
 
   test("implemented claims are fully traceable and the validity protocol names every proof axis", async () => {

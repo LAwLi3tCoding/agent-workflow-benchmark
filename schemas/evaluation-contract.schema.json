@@ -65,6 +65,7 @@
       "required": [
         "hardFailurePrecedence",
         "p0ScoreCap",
+        "p1ScoreCap",
         "casePassMinimum",
         "caseConditionalMinimum",
         "suiteApproveMinimum",
@@ -75,6 +76,7 @@
       "properties": {
         "hardFailurePrecedence": { "const": true },
         "p0ScoreCap": { "type": "number", "minimum": 0, "maximum": 100 },
+        "p1ScoreCap": { "type": "number", "minimum": 0, "maximum": 100 },
         "casePassMinimum": { "type": "number", "minimum": 0, "maximum": 100 },
         "caseConditionalMinimum": { "type": "number", "minimum": 0, "maximum": 100 },
         "suiteApproveMinimum": { "type": "number", "minimum": 0, "maximum": 100 },

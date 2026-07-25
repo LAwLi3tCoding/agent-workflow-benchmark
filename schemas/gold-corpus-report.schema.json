@@ -1,0 +1,185 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "gold-corpus-report.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "reportType",
+    "assessmentType",
+    "releaseEligible",
+    "status",
+    "corpusId",
+    "corpusVersion",
+    "fixtureVersion",
+    "targetId",
+    "contractHash",
+    "caseSetHash",
+    "manifestHash",
+    "metrics",
+    "coverage",
+    "blindSpots",
+    "results"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "0.1.0" },
+    "reportType": { "const": "gold_corpus_reverse_validation" },
+    "assessmentType": { "const": "harness_diagnostic" },
+    "releaseEligible": { "const": false },
+    "status": { "enum": ["PASS", "FAIL"] },
+    "corpusId": { "const": "awb-gold-corpus" },
+    "corpusVersion": { "const": "1.0.0" },
+    "fixtureVersion": { "const": "1.0.0" },
+    "targetId": { "type": "string", "minLength": 1 },
+    "contractHash": { "$ref": "#/$defs/hash" },
+    "caseSetHash": { "$ref": "#/$defs/hash" },
+    "manifestHash": { "$ref": "#/$defs/hash" },
+    "metrics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mutationKillRate",
+        "p0MutationKillRate",
+        "falsePositiveCount",
+        "falsePositiveRate",
+        "falseNegativeCount",
+        "falseNegativeRate",
+        "falsePassCount",
+        "knownGoodBlockedCount"
+      ],
+      "properties": {
+        "mutationKillRate": { "$ref": "#/$defs/rate" },
+        "p0MutationKillRate": { "$ref": "#/$defs/rate" },
+        "falsePositiveCount": { "type": "integer", "minimum": 0 },
+        "falsePositiveRate": { "$ref": "#/$defs/rate" },
+        "falseNegativeCount": { "type": "integer", "minimum": 0 },
+        "falseNegativeRate": { "$ref": "#/$defs/rate" },
+        "falsePassCount": { "type": "integer", "minimum": 0 },
+        "knownGoodBlockedCount": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "coverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "requiredFailureCodes",
+        "coveredFailureCodes",
+        "missingFailureCodes",
+        "requiredCoverageTargetIds",
+        "coveredCoverageTargetIds",
+        "unknownCoverageTargetIds",
+        "exemptedCoverageTargetIds",
+        "missingCoverageTargetIds"
+      ],
+      "properties": {
+        "requiredFailureCodes": { "$ref": "#/$defs/stringArray" },
+        "coveredFailureCodes": { "$ref": "#/$defs/stringArray" },
+        "missingFailureCodes": { "$ref": "#/$defs/stringArray" },
+        "requiredCoverageTargetIds": { "$ref": "#/$defs/stringArray" },
+        "coveredCoverageTargetIds": { "$ref": "#/$defs/stringArray" },
+        "unknownCoverageTargetIds": { "$ref": "#/$defs/stringArray" },
+        "exemptedCoverageTargetIds": { "$ref": "#/$defs/stringArray" },
+        "missingCoverageTargetIds": { "$ref": "#/$defs/stringArray" }
+      }
+    },
+    "blindSpots": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["trajectoryId", "classification", "why"],
+        "properties": {
+          "trajectoryId": { "type": "string", "minLength": 1 },
+          "classification": {
+            "enum": ["detector_gap", "oracle_gap", "fixture_gap", "coverage_gap"]
+          },
+          "why": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "results": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "trajectoryId",
+          "split",
+          "failureCode",
+          "severity",
+          "control",
+          "labelSource",
+          "expectedVerdict",
+          "observedVerdict",
+          "expectedFailureCodes",
+          "observedFailureCodes",
+          "expectationMatched",
+          "mutationKilled",
+          "falsePositive",
+          "falseNegative",
+          "falsePass",
+          "knownGoodBlocked"
+        ],
+        "properties": {
+          "trajectoryId": { "type": "string", "minLength": 1 },
+          "split": { "enum": ["development", "calibration", "holdout"] },
+          "failureCode": { "$ref": "#/$defs/failureCode" },
+          "severity": { "enum": ["P0", "P1"] },
+          "control": { "enum": ["known_good", "known_bad", "boundary"] },
+          "labelSource": { "type": "string", "minLength": 1 },
+          "expectedVerdict": {
+            "enum": ["PASS", "PASS_WITH_WARNINGS", "FAIL"]
+          },
+          "observedVerdict": {
+            "enum": ["PASS", "PASS_WITH_WARNINGS", "FAIL", "DIAGNOSTIC_ONLY"]
+          },
+          "expectedFailureCodes": {
+            "type": "array",
+            "items": { "$ref": "#/$defs/failureCode" }
+          },
+          "observedFailureCodes": {
+            "type": "array",
+            "items": { "type": "string", "minLength": 1 }
+          },
+          "expectationMatched": { "type": "boolean" },
+          "mutationKilled": { "type": "boolean" },
+          "falsePositive": { "type": "boolean" },
+          "falseNegative": { "type": "boolean" },
+          "falsePass": { "type": "boolean" },
+          "knownGoodBlocked": { "type": "boolean" }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "hash": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    },
+    "rate": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "stringArray": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "failureCode": {
+      "enum": [
+        "TRACE_EVENT_MISSING",
+        "TRACE_EVENT_ORDER_INVALID",
+        "OBSERVER_EVENT_FORGED",
+        "TARGET_OWNER_BYPASS",
+        "TARGET_ROUTE_FORBIDDEN",
+        "GATE_FALSE_PASS",
+        "TARGET_JOIN_MISSING",
+        "ARTIFACT_PATH_DRIFT",
+        "PRODUCTION_SIDE_EFFECT",
+        "TELEMETRY_MISSING",
+        "TOKEN_LEDGER_MISSING",
+        "SECRET_LEAK"
+      ]
+    }
+  }
+}

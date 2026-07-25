@@ -1,6 +1,7 @@
 import { Command } from "commander";
 import { Ajv2020, type ValidateFunction } from "ajv/dist/2020.js";
 import { access, appendFile, copyFile, readdir, readFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import path from "node:path";
 import YAML from "yaml";
 import type {
@@ -46,6 +47,14 @@ import {
 } from "../regression/compare.js";
 import { evaluateGate, gateExitCode, renderGateReport } from "../regression/gate.js";
 import { getEvaluationContract } from "../evaluation/evaluationContract.js";
+import {
+  DEFAULT_GOLD_CORPUS_PATH,
+  evaluateGoldCorpus,
+  loadGoldCorpus,
+  loadGoldCorpusPlannerView,
+  type GoldCorpusManifest,
+  type GoldCorpusSplit
+} from "../evaluation/goldCorpus.js";
 import {
   profileEvidenceSensitiveValues,
   publicAiCasePlan,
@@ -109,6 +118,10 @@ program
   .option("--live-model <model>", "model for live Codex/Claude planning")
   .option("--timeout-ms <ms>", "AI planner timeout in milliseconds", "120000")
   .option("--max-cases <n>", "maximum AI cases to request")
+  .option(
+    "--gold-corpus <path>",
+    "optional versioned corpus; only its unlabeled development split enters planner context"
+  )
   .requiredOption("--out <dir>")
   .action(async (options: {
     target: string;
@@ -118,6 +131,7 @@ program
     liveModel?: string;
     timeoutMs: string;
     maxCases?: string;
+    goldCorpus?: string;
     out: string;
   }) => {
     const profile = await profileTarget(await loadTargetPack(options.target, { rootOverride: options.targetRoot }));
@@ -125,6 +139,14 @@ program
     const maxCases = options.maxCases
       ? parsePositiveInt(options.maxCases, "--max-cases")
       : recommendedAiCaseCount(profile.contract, { coverageMode });
+    const goldCorpusView = options.goldCorpus
+      ? await loadGoldCorpusPlannerView(await resolveExistingPath(options.goldCorpus))
+      : undefined;
+    if (goldCorpusView && goldCorpusView.targetId !== profile.contract.targetId) {
+      throw new Error(
+        `Gold Corpus target ${goldCorpusView.targetId} does not match planner target ${profile.contract.targetId}.`
+      );
+    }
     const run = await runAiCasePlanner(profile.contract, {
       runner: normalizeAiPlannerRunner(options.runner),
       model: options.liveModel,
@@ -132,7 +154,8 @@ program
       timeoutMs: parsePositiveInt(options.timeoutMs, "--timeout-ms"),
       maxCases,
       outDir: options.out,
-      evidence: profile.evidence
+      evidence: profile.evidence,
+      goldCorpusView
     });
     await writeJson(path.join(options.out, "ai-case-plan-validation.json"), validateAiCasePlan(run.plan, profile.contract, { coverageMode }));
     await writeJson(path.join(options.out, "ai-case-plan.json"), run.plan);
@@ -738,6 +761,28 @@ program
 
 const debug = program.command("debug");
 
+const goldCorpus = program.command("gold-corpus");
+
+goldCorpus
+  .command("validate")
+  .requiredOption("--corpus <path>")
+  .action(async (options: { corpus: string }) => {
+    const corpusPath = await resolveExistingPath(options.corpus);
+    const corpus = await loadGoldCorpus(corpusPath);
+    const target = await loadTargetPack(corpus.manifest.targetId);
+    const contract = (await profileTarget(target)).contract;
+    const suite = materializeSmokeSuite(contract);
+    const report = evaluateGoldCorpus(corpus, contract, suite.cases);
+    if (report.status !== "PASS") {
+      throw new Error(
+        `Gold Corpus validation failed with ${report.blindSpots.length} blind spot(s).`
+      );
+    }
+    console.log(
+      `gold corpus valid: corpusVersion=${corpus.manifest.corpusVersion} ${corpus.cases.length} trajectories`
+    );
+  });
+
 debug
   .command("prepare-env")
   .option("--target <id>")
@@ -763,6 +808,11 @@ debug
   .option("--case <path>")
   .option("--mutation <path>")
   .option("--mutation-set <path>")
+  .option("--corpus <path>", "versioned Gold Corpus manifest")
+  .option(
+    "--split <split>",
+    "development, calibration, or holdout; omit to validate all splits"
+  )
   .option("--runner <id>", "runner id", "simulated")
   .option("--expect <verdict>", "expected mutant verdict: fail, pass_with_warnings, diagnostic_only, or pass")
   .option("--suite-result <path>")
@@ -774,11 +824,48 @@ debug
       case?: string;
       mutation?: string;
       mutationSet?: string;
+      corpus?: string;
+      split?: string;
       runner: string;
       expect?: string;
       suiteResult?: string;
       out: string;
     }) => {
+      if (options.corpus) {
+        if (options.mutation || options.mutationSet || options.case || options.target) {
+          throw new Error(
+            "--corpus cannot be combined with --mutation, --mutation-set, --case, or --target."
+          );
+        }
+        if (options.runner !== "simulated") {
+          throw new Error(
+            "Gold Corpus reverse validation is harness-diagnostic and requires --runner simulated."
+          );
+        }
+        const corpus = await loadGoldCorpus(
+          await resolveExistingPath(options.corpus)
+        );
+        const target = await loadTargetPack(corpus.manifest.targetId);
+        const contract = (await profileTarget(target)).contract;
+        const suite = materializeSmokeSuite(contract);
+        const split = options.split
+          ? [normalizeGoldCorpusSplit(options.split)]
+          : undefined;
+        const report = evaluateGoldCorpus(corpus, contract, suite.cases, {
+          splits: split
+        });
+        await writeJson(
+          path.join(options.out, "gold-corpus-report.json"),
+          report
+        );
+        console.log(`Gold Corpus reverse validation written: ${options.out}`);
+        if (report.status !== "PASS") {
+          throw new Error(
+            `Gold Corpus reverse validation failed: falsePass=${report.metrics.falsePassCount} falseNegative=${report.metrics.falseNegativeCount} falsePositive=${report.metrics.falsePositiveCount}.`
+          );
+        }
+        return;
+      }
       const { target, contract, cases } = await resolveDebugInputs(options);
       const mutations = await loadMutations(options);
       const results = [];
@@ -1154,6 +1241,17 @@ function normalizeCoverageMode(value: string): CoverageMode {
   throw new Error(`Unsupported coverage mode: ${value}`);
 }
 
+function normalizeGoldCorpusSplit(value: string): GoldCorpusSplit {
+  if (
+    value === "development" ||
+    value === "calibration" ||
+    value === "holdout"
+  ) {
+    return value;
+  }
+  throw new Error(`Unsupported Gold Corpus split: ${value}`);
+}
+
 function normalizeExecutionMode(value: string): "simulated" | "live" {
   if (value === "simulated" || value === "auto") {
     return "simulated";
@@ -1202,6 +1300,10 @@ async function validateSchemasAndTargets(): Promise<void> {
   let validateRunner: ValidateFunction | undefined;
   let validateEvaluationContract: ValidateFunction | undefined;
   let validateContractValidity: ValidateFunction | undefined;
+  let validateGoldCorpus: ValidateFunction | undefined;
+  let validateGoldCorpusBase: ValidateFunction | undefined;
+  let validateGoldCorpusTrajectories: ValidateFunction | undefined;
+  let validateGoldCorpusLabels: ValidateFunction | undefined;
   for (const file of schemaFiles) {
     const schema = JSON.parse(await readFile(path.join(schemaDir, file), "utf8")) as object;
     const validate = ajv.compile(schema);
@@ -1217,6 +1319,18 @@ async function validateSchemasAndTargets(): Promise<void> {
     if (file === "contract-validity.schema.json") {
       validateContractValidity = validate;
     }
+    if (file === "gold-corpus.schema.json") {
+      validateGoldCorpus = validate;
+    }
+    if (file === "gold-corpus-base.schema.json") {
+      validateGoldCorpusBase = validate;
+    }
+    if (file === "gold-corpus-trajectories.schema.json") {
+      validateGoldCorpusTrajectories = validate;
+    }
+    if (file === "gold-corpus-labels.schema.json") {
+      validateGoldCorpusLabels = validate;
+    }
   }
   if (!validateTarget) {
     throw new Error("target-pack.schema.json missing");
@@ -1230,11 +1344,71 @@ async function validateSchemasAndTargets(): Promise<void> {
   if (!validateContractValidity) {
     throw new Error("contract-validity.schema.json missing");
   }
+  if (
+    !validateGoldCorpus ||
+    !validateGoldCorpusBase ||
+    !validateGoldCorpusTrajectories ||
+    !validateGoldCorpusLabels
+  ) {
+    throw new Error("Gold Corpus schemas are missing.");
+  }
   const evaluationContract = getEvaluationContract();
   if (!validateEvaluationContract(evaluationContract)) {
     throw new Error(
       `Canonical evaluation contract failed schema validation: ${ajv.errorsText(validateEvaluationContract.errors)}`
     );
+  }
+  if (existsSync(DEFAULT_GOLD_CORPUS_PATH)) {
+    const goldCorpusManifest = YAML.parse(
+      await readFile(DEFAULT_GOLD_CORPUS_PATH, "utf8")
+    ) as GoldCorpusManifest;
+    if (!validateGoldCorpus(goldCorpusManifest)) {
+      throw new Error(
+        `Gold Corpus manifest failed schema validation: ${ajv.errorsText(
+          validateGoldCorpus.errors
+        )}`
+      );
+    }
+    const goldCorpusRoot = path.dirname(DEFAULT_GOLD_CORPUS_PATH);
+    const goldCorpusBase = YAML.parse(
+      await readFile(
+        path.join(goldCorpusRoot, goldCorpusManifest.baseTrajectory.path),
+        "utf8"
+      )
+    ) as object;
+    if (!validateGoldCorpusBase(goldCorpusBase)) {
+      throw new Error(
+        `Gold Corpus base trajectory failed schema validation: ${ajv.errorsText(
+          validateGoldCorpusBase.errors
+        )}`
+      );
+    }
+    for (const split of goldCorpusManifest.splits) {
+      const trajectories = YAML.parse(
+        await readFile(
+          path.join(goldCorpusRoot, split.trajectoriesPath),
+          "utf8"
+        )
+      ) as object;
+      const labels = YAML.parse(
+        await readFile(path.join(goldCorpusRoot, split.labelsPath), "utf8")
+      ) as object;
+      if (!validateGoldCorpusTrajectories(trajectories)) {
+        throw new Error(
+          `Gold Corpus ${split.id} trajectories failed schema validation: ${ajv.errorsText(
+            validateGoldCorpusTrajectories.errors
+          )}`
+        );
+      }
+      if (!validateGoldCorpusLabels(labels)) {
+        throw new Error(
+          `Gold Corpus ${split.id} labels failed schema validation: ${ajv.errorsText(
+            validateGoldCorpusLabels.errors
+          )}`
+        );
+      }
+    }
+    await loadGoldCorpus(DEFAULT_GOLD_CORPUS_PATH);
   }
   for (const id of await listTargetIds()) {
     const target = await loadTargetPack(id);
@@ -1260,6 +1434,9 @@ async function validateSchemasAndTargets(): Promise<void> {
     if (!validateRunner(runnerConfig)) {
       throw new Error(`Runner config ${file} failed schema validation: ${ajv.errorsText(validateRunner.errors)}`);
     }
+  }
+  if (!existsSync(DEFAULT_GOLD_CORPUS_PATH)) {
+    throw new Error("Versioned Gold Corpus manifest is missing.");
   }
 }
 
@@ -1418,7 +1595,11 @@ function selectCaseForMutation(cases: BenchmarkCase[], mutation: MutationInput):
     "join-callback-drop": "required-join",
     "side-effect-policy-weakening": "side-effect-deny",
     "telemetry-drop": "efficiency-token",
-    "token-ledger-drop": "efficiency-token"
+    "token-ledger-drop": "efficiency-token",
+    "event-missing": "static-contract",
+    "event-order-invalid": "static-contract",
+    "observer-event-forged": "static-contract",
+    "secret-leak": "static-contract"
   };
   return cases.find((testCase) => testCase.templateId === templateByMutation[mutation.type]) ?? cases[0]!;
 }

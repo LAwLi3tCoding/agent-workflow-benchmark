@@ -1,0 +1,8 @@
+schemaVersion: 0.1.0
+id: event-order-invalid
+type: event-order-invalid
+description: Simulate invalid observer event ordering.
+scope: overlay-only
+expectedOutcome:
+  verdict: FAIL
+  hardFailureCode: TRACE_EVENT_ORDER_INVALID

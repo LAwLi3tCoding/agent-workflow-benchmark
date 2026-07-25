@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "gold-corpus-base.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "corpusId", "fixtureVersion", "run"],
+  "properties": {
+    "schemaVersion": { "const": "0.1.0" },
+    "corpusId": { "const": "awb-gold-corpus" },
+    "fixtureVersion": { "const": "1.0.0" },
+    "run": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["wallClockSeconds", "telemetryCompleteness", "tokens", "events"],
+      "properties": {
+        "wallClockSeconds": { "type": "number", "minimum": 0 },
+        "telemetryCompleteness": { "type": "number", "minimum": 0, "maximum": 1 },
+        "tokens": { "$ref": "#/$defs/tokens" },
+        "events": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/event" }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "tokens": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["input", "output", "total", "wasted", "costEstimateConfidence"],
+      "properties": {
+        "input": { "type": "number", "minimum": 0 },
+        "output": { "type": "number", "minimum": 0 },
+        "total": { "type": "number", "minimum": 0 },
+        "wasted": { "type": "number", "minimum": 0 },
+        "costEstimateConfidence": { "enum": ["high", "medium", "low", "unavailable"] }
+      }
+    },
+    "event": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["eventId", "type", "actor", "payload"],
+      "properties": {
+        "eventId": { "type": "string", "minLength": 1 },
+        "type": {
+          "enum": [
+            "case_start",
+            "contract_observed",
+            "handoff",
+            "gate_decision",
+            "artifact_write",
+            "state_read",
+            "side_effect_attempt",
+            "token_usage",
+            "runner_start",
+            "runner_transcript",
+            "runner_result",
+            "runner_exit",
+            "case_end"
+          ]
+        },
+        "actor": { "type": "string", "minLength": 1 },
+        "payload": { "type": "object" }
+      }
+    }
+  }
+}

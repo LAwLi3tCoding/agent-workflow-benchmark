@@ -1,0 +1,75 @@
+schemaVersion: 0.1.0
+corpusId: awb-gold-corpus
+fixtureVersion: 1.0.0
+run:
+  wallClockSeconds: 18
+  telemetryCompleteness: 0.95
+  tokens:
+    input: 900
+    output: 180
+    total: 1080
+    wasted: 60
+    costEstimateConfidence: high
+  events:
+    - eventId: case-start
+      type: case_start
+      actor: observer
+      payload:
+        caseId: $caseId
+    - eventId: contract
+      type: contract_observed
+      actor: observer
+      payload:
+        contractHash: $contractHash
+        observationLevel: workflow_trace
+    - eventId: handoff
+      type: handoff
+      actor: $primaryRole
+      payload:
+        from: benchmark
+        to: $owner
+        ownerScope: design
+        status: accepted
+    - eventId: artifact
+      type: artifact_write
+      actor: $owner
+      payload:
+        artifactId: implementation-plan
+        path: $artifactPath
+        ownerScope: design
+        required: true
+        bytes: 128
+    - eventId: state
+      type: state_read
+      actor: $owner
+      payload:
+        stateId: workflow-state
+        path: $statePath
+    - eventId: gate
+      type: gate_decision
+      actor: $owner
+      payload:
+        status: PASS
+        sourceStatus: PASS
+    - eventId: side-effect
+      type: side_effect_attempt
+      actor: observer
+      payload:
+        command: fixture-write
+        classifiedAs: external_write
+        policyDecision: deny
+        allowed: false
+    - eventId: token
+      type: token_usage
+      actor: runner
+      payload:
+        input: 900
+        output: 180
+        total: 1080
+        wasted: 60
+        source: native
+    - eventId: case-end
+      type: case_end
+      actor: observer
+      payload:
+        status: completed

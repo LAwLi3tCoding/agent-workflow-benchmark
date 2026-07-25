@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "gold-corpus-labels.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "corpusId",
+    "fixtureVersion",
+    "split",
+    "labelSource",
+    "labels"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "0.1.0" },
+    "corpusId": { "const": "awb-gold-corpus" },
+    "fixtureVersion": { "const": "1.0.0" },
+    "split": { "enum": ["development", "calibration", "holdout"] },
+    "labelSource": { "type": "string", "minLength": 1 },
+    "labels": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "trajectoryId",
+          "failureCode",
+          "severity",
+          "control",
+          "expectedVerdict",
+          "expectedFailureCodes",
+          "coverageTargetIds"
+        ],
+        "properties": {
+          "trajectoryId": { "type": "string", "minLength": 1 },
+          "failureCode": { "$ref": "#/$defs/failureCode" },
+          "severity": { "enum": ["P0", "P1"] },
+          "control": { "enum": ["known_good", "known_bad", "boundary"] },
+          "expectedVerdict": { "enum": ["PASS", "PASS_WITH_WARNINGS", "FAIL"] },
+          "expectedFailureCodes": {
+            "type": "array",
+            "items": { "$ref": "#/$defs/failureCode" }
+          },
+          "coverageTargetIds": {
+            "type": "array",
+            "items": { "type": "string", "minLength": 1 }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "failureCode": {
+      "enum": [
+        "TRACE_EVENT_MISSING",
+        "TRACE_EVENT_ORDER_INVALID",
+        "OBSERVER_EVENT_FORGED",
+        "TARGET_OWNER_BYPASS",
+        "TARGET_ROUTE_FORBIDDEN",
+        "GATE_FALSE_PASS",
+        "TARGET_JOIN_MISSING",
+        "ARTIFACT_PATH_DRIFT",
+        "PRODUCTION_SIDE_EFFECT",
+        "TELEMETRY_MISSING",
+        "TOKEN_LEDGER_MISSING",
+        "SECRET_LEAK"
+      ]
+    }
+  }
+}

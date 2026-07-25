@@ -1,0 +1,8 @@
+schemaVersion: 0.1.0
+id: observer-event-forged
+type: observer-event-forged
+description: Simulate runner evidence represented as independent observer evidence.
+scope: overlay-only
+expectedOutcome:
+  verdict: FAIL
+  hardFailureCode: OBSERVER_EVENT_FORGED

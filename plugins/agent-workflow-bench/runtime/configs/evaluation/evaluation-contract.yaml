@@ -22,6 +22,7 @@ evidencePolicy:
 scorePolicy:
   hardFailurePrecedence: true
   p0ScoreCap: 49
+  p1ScoreCap: 84
   casePassMinimum: 85
   caseConditionalMinimum: 70
   suiteApproveMinimum: 85
@@ -155,12 +156,12 @@ hardFailures:
     source: derived
     status: implemented
     why: Runner emitted a hard-failure code that is not implemented by the canonical registry.
-  - { code: TRACE_EVENT_MISSING, severity: P0, dimension: telemetry, source: derived, status: backlog, why: Required observer evidence is missing. }
-  - { code: TRACE_EVENT_ORDER_INVALID, severity: P0, dimension: telemetry, source: derived, status: backlog, why: Observer evidence violates required event ordering. }
-  - { code: OBSERVER_EVENT_FORGED, severity: P0, dimension: runner, source: derived, status: backlog, why: Runner-originated evidence was represented as independent observer evidence. }
-  - { code: SECRET_LEAK, severity: P0, dimension: sideEffect, source: derived, status: backlog, why: Sensitive information reached a public evaluation artifact. }
-  - { code: TELEMETRY_MISSING, severity: P1, dimension: telemetry, source: derived, status: backlog, why: Required telemetry is incomplete. }
-  - { code: TOKEN_LEDGER_MISSING, severity: P1, dimension: telemetry, source: derived, status: backlog, why: Required token ledger evidence is incomplete. }
+  - { code: TRACE_EVENT_MISSING, severity: P0, dimension: telemetry, source: derived, status: implemented, why: Required observer evidence is missing. }
+  - { code: TRACE_EVENT_ORDER_INVALID, severity: P0, dimension: telemetry, source: derived, status: implemented, why: Observer evidence violates required event ordering. }
+  - { code: OBSERVER_EVENT_FORGED, severity: P0, dimension: runner, source: derived, status: implemented, why: Runner-originated evidence was represented as independent observer evidence. }
+  - { code: SECRET_LEAK, severity: P0, dimension: sideEffect, source: derived, status: implemented, why: Sensitive information reached a public evaluation artifact. }
+  - { code: TELEMETRY_MISSING, severity: P1, dimension: telemetry, source: derived, status: implemented, why: Required telemetry is incomplete. }
+  - { code: TOKEN_LEDGER_MISSING, severity: P1, dimension: telemetry, source: derived, status: implemented, why: Required token ledger evidence is incomplete. }
 dimensions:
   - { id: contract, status: implemented, weight: 1 }
   - { id: routing, status: implemented, weight: 1 }
@@ -300,6 +301,15 @@ claims:
     scoreDimensions: [runner]
     gateRuleIds: [GATE-EVIDENCE-NOT-WORKFLOW-TRACE, GATE-OBSERVER-UNQUALIFIED]
     tests: [tests/run-score.test.ts, tests/live-runner.test.ts, tests/workflow-trace.test.ts, tests/compare.test.ts]
+  - id: gold-corpus-detection
+    status: implemented
+    contractFields: [roles, requiredOwners, routing, joins, artifacts, states, statuses, budgets, commandPolicy]
+    caseTemplateIds: [static-contract, forbidden-route, required-owner, skip-not-pass, required-join, side-effect-deny, efficiency-token]
+    eventTypes: [case_start, contract_observed, handoff, artifact_write, state_read, gate_decision, side_effect_attempt, token_usage, case_end]
+    oracleIds: [oracle-static-contract, oracle-forbidden-route, oracle-required-owner, oracle-skip-not-pass, oracle-required-join, oracle-side-effect-deny, oracle-efficiency-token]
+    scoreDimensions: [contract, routing, ownership, gate, artifact, join, sideEffect, telemetry, runner]
+    gateRuleIds: [GATE-HARD-FAILURE]
+    tests: [tests/gold-corpus.test.ts, tests/gold-corpus-cli.test.ts]
   - id: observer-qualification
     status: backlog
     contractFields: [entrypoints, commandPolicy]

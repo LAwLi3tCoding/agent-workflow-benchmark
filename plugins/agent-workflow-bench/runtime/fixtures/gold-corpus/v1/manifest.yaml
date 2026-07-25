@@ -1,0 +1,40 @@
+schemaVersion: 0.1.0
+corpusId: awb-gold-corpus
+corpusVersion: 1.0.0
+fixtureVersion: 1.0.0
+targetId: minimal-directory-agent
+contractHash: sha256:a504c25c525b6b3c2af7d52e6fc935040bff8a69718a4fbc129c72e965461c7b
+caseSetHash: sha256:2bea71209b9551e4517697f376247a70edf92666fba456c86ab29b3d61ac67ee
+requiredFailureCodes:
+  - { code: TRACE_EVENT_MISSING, severity: P0 }
+  - { code: TRACE_EVENT_ORDER_INVALID, severity: P0 }
+  - { code: OBSERVER_EVENT_FORGED, severity: P0 }
+  - { code: TARGET_OWNER_BYPASS, severity: P0 }
+  - { code: TARGET_ROUTE_FORBIDDEN, severity: P0 }
+  - { code: GATE_FALSE_PASS, severity: P0 }
+  - { code: TARGET_JOIN_MISSING, severity: P0 }
+  - { code: ARTIFACT_PATH_DRIFT, severity: P0 }
+  - { code: PRODUCTION_SIDE_EFFECT, severity: P0 }
+  - { code: TELEMETRY_MISSING, severity: P1 }
+  - { code: TOKEN_LEDGER_MISSING, severity: P1 }
+  - { code: SECRET_LEAK, severity: P0 }
+baseTrajectory:
+  path: base-trajectory.yaml
+  contentHash: sha256:30bcea67557d289bafda7247c4eeecf424461fe6072db47f489180e0c080ea29
+splits:
+  - id: development
+    trajectoriesPath: trajectories/development.yaml
+    trajectoriesHash: sha256:d22c72ff8f7f879c428c111b1d35bc38a99c7d24242bc90b510bde63eb53c59c
+    labelsPath: labels/development.yaml
+    labelsHash: sha256:9ded1f9b5a7b7a4d2f2e3275303242fb351e4226319f4d2ac31382603246c4e5
+  - id: calibration
+    trajectoriesPath: trajectories/calibration.yaml
+    trajectoriesHash: sha256:b1f3ffc01f9eb6c1e7a959a264a631d33a8b4d03ef9a91cb227cb1447d26423f
+    labelsPath: labels/calibration.yaml
+    labelsHash: sha256:273eaa87e3698846ffac2c49a35fd23d5312d5a7f1028d2ed274fe3432155252
+  - id: holdout
+    trajectoriesPath: trajectories/holdout.yaml
+    trajectoriesHash: sha256:cb0562b7ddaf5da7e6974dd095a16f73c1bba94615277171bca53d70df5d6d13
+    labelsPath: labels/holdout.yaml
+    labelsHash: sha256:1f469ed92f5cd389895c5ef49b58f6560bc3728378784ec7200c138e012897b0
+coverageExemptions: []

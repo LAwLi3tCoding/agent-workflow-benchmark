@@ -73,7 +73,13 @@
               "TARGET_JOIN_MISSING",
               "PRODUCTION_SIDE_EFFECT",
               "PROVENANCE_INVALID",
-              "UNREGISTERED_HARD_FAILURE"
+              "UNREGISTERED_HARD_FAILURE",
+              "TRACE_EVENT_MISSING",
+              "TRACE_EVENT_ORDER_INVALID",
+              "OBSERVER_EVENT_FORGED",
+              "SECRET_LEAK",
+              "TELEMETRY_MISSING",
+              "TOKEN_LEDGER_MISSING"
             ]
           },
           "severity": { "enum": ["P0", "P1"] },

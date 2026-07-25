@@ -1,0 +1,144 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "gold-corpus-trajectories.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "corpusId", "fixtureVersion", "split", "trajectories"],
+  "properties": {
+    "schemaVersion": { "const": "0.1.0" },
+    "corpusId": { "const": "awb-gold-corpus" },
+    "fixtureVersion": { "const": "1.0.0" },
+    "split": { "enum": ["development", "calibration", "holdout"] },
+    "trajectories": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "benchmarkCaseId", "patches"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "benchmarkCaseId": { "type": "string", "minLength": 1 },
+          "patches": {
+            "type": "array",
+            "items": { "$ref": "#/$defs/patch" }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "eventType": {
+      "enum": [
+        "case_start",
+        "contract_observed",
+        "handoff",
+        "gate_decision",
+        "artifact_write",
+        "state_read",
+        "side_effect_attempt",
+        "token_usage",
+        "runner_start",
+        "runner_transcript",
+        "runner_result",
+        "runner_exit",
+        "case_end"
+      ]
+    },
+    "event": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["eventId", "type", "actor", "payload"],
+      "properties": {
+        "eventId": { "type": "string", "minLength": 1 },
+        "type": { "$ref": "#/$defs/eventType" },
+        "actor": { "type": "string", "minLength": 1 },
+        "payload": { "type": "object" }
+      }
+    },
+    "patch": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["op", "eventId"],
+          "properties": {
+            "op": { "const": "remove_event" },
+            "eventId": { "type": "string", "minLength": 1 }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["op", "eventId", "beforeEventId"],
+          "properties": {
+            "op": { "const": "move_event" },
+            "eventId": { "type": "string", "minLength": 1 },
+            "beforeEventId": { "type": "string", "minLength": 1 }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["op", "eventId", "actor"],
+          "properties": {
+            "op": { "const": "set_actor" },
+            "eventId": { "type": "string", "minLength": 1 },
+            "actor": { "type": "string", "minLength": 1 }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["op", "eventId", "key", "value"],
+          "properties": {
+            "op": { "const": "set_payload" },
+            "eventId": { "type": "string", "minLength": 1 },
+            "key": { "type": "string", "minLength": 1 },
+            "value": {}
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["op", "eventId", "key"],
+          "properties": {
+            "op": { "const": "remove_payload" },
+            "eventId": { "type": "string", "minLength": 1 },
+            "key": { "type": "string", "minLength": 1 }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["op", "event"],
+          "properties": {
+            "op": { "const": "append_event" },
+            "event": { "$ref": "#/$defs/event" },
+            "beforeEventId": { "type": "string", "minLength": 1 }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["op", "field", "value"],
+          "properties": {
+            "op": { "const": "set_run" },
+            "field": {
+              "enum": [
+                "wallClockSeconds",
+                "telemetryCompleteness",
+                "tokens.input",
+                "tokens.output",
+                "tokens.total",
+                "tokens.wasted",
+                "tokens.costEstimateConfidence"
+              ]
+            },
+            "value": {}
+          }
+        }
+      ]
+    }
+  }
+}
