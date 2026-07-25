@@ -32,13 +32,45 @@ target-specific private data, label leakage, or a backlog oracle presented as im
 ## Criterion Validity
 
 Criterion validity compares AWB decisions with labels produced independently by workflow owners
-and reviewers. It is not established in Stage 1. Until Stage 5 supplies blinded labels,
-confusion matrices, P0 precision/recall, overall agreement, and inter-rater agreement, criterion
-validity is `pending_human_input` and results remain diagnostic for this claim.
+and reviewers. Stage 5 adds the external validity packaging and analysis mechanism, but it does
+not establish real external validity by itself. The public repository includes only a
+privacy-safe 8-item template at `fixtures/external-validity/v1/study.yaml`; it is intentionally
+below the frozen sample threshold and carries `pending_human_input` owner-review status.
 
-Suggested acceptance threshold: P0 recall 100%, false PASS 0, overall agreement at the frozen
-protocol threshold, and Cohen kappa at least 0.8. Failure condition: missing labels, leaked
-holdout labels, unresolved adjudication, or any false PASS.
+The frozen protocol requires directory, CLI, and hybrid targets across Codex and Claude, with
+four design strata: known improvement, no change, ordinary regression, and P0 regression. The
+minimum sample is 5 items for each of the 24 target-class / runner / stratum cells, for 120
+items total. Each item must have an owner-reviewed external contract, qualified independent
+Codex or Claude live `workflow_trace` evidence, two independent blinded human ratings, and
+adjudication for disagreements.
+
+Use the criterion-validity workflow to create a blinded labeling package and analyze the
+completed study:
+
+```bash
+awb criterion-validity package \
+  --study fixtures/external-validity/v1/study.yaml \
+  --out reports/external-validity/v1
+
+awb criterion-validity analyze \
+  --study fixtures/external-validity/v1/study.yaml \
+  --observations <external-validity-observations.json> \
+  --labels <external-validity-human-labels.json> \
+  --trusted-observer-key <observer-public.pem> \
+  --trusted-qualification-key <qualification-authority-public.pem> \
+  --out reports/external-validity/v1
+```
+
+Acceptance threshold: P0 recall 100%, false PASS 0, overall agreement at least 0.85, and
+Cohen kappa at least 0.8. Missing labels, missing owner reviews, incomplete 120-item coverage,
+unqualified or summary-only evidence, unresolved adjudication, leaked private data, duplicate
+evidence, unknown hard-failure codes, or any false PASS keep the report `PENDING_HUMAN_INPUT`,
+`INSUFFICIENT_EVIDENCE`, or `FAIL` instead of PASS. Criterion validity remains diagnostic-only
+until those thresholds pass on qualified external evidence. Observation manifests contain
+references and content hashes for AWB comparison bundles, not self-asserted trust flags;
+`analyze` reopens each bundle, verifies both signed traces and authority-signed Observer
+qualification against explicit public keys, recomputes the gate, and binds target, contract,
+runner, baseline, and candidate identities before counting the sample.
 
 ## Reliability
 
@@ -133,7 +165,7 @@ qualification is missing or invalid, P0 evidence exists, privacy or isolation po
 violated, holdout leakage occurs, deterministic replay diverges, or a required schema cannot be
 validated. AI semantic judgment and aggregate scores cannot override any of these conditions.
 
-## Stage 4 Status
+## Stage 5 Status
 
 Proven for the harness: canonical vocabulary, contract hashing boundary, owner-review admission
 boundary, deterministic hard-failure precedence, diagnostic evidence ceilings, content-hashed
@@ -146,9 +178,17 @@ case set, contract, conditions, seed, runner, environment, Observer version,
 model, permissions, and budgets; deterministic fixtures reproduce exactly,
 and undersized or unstable studies fail closed.
 
+Implemented mechanism: external validity study/package/observation/label/report schemas,
+blinded labeling package generation, human-label/adjudication analysis, confusion matrix,
+P0 precision/recall, false-PASS counting, exact agreement, Cohen kappa, public-ref privacy
+checks, cryptographic comparison-bundle revalidation, policy/input-bound report hashes, and the
+criterion-validity CLI surface.
+
 Diagnostic only: signed but unqualified traces and all built-in live contract summaries.
 
-Requires human input: criterion labels and production blocking authorization.
+Requires human input before an external-validity PASS: a completed 120-item private study with
+owner-reviewed real external contracts (the public template is 112 items short and is not
+evidence), qualified independent Codex and Claude live traces, two-rater labels, adjudication for
+disagreements, and production blocking authorization.
 
-Deferred by protocol: calibration, external validity, CI canary, trends, and
-adapter conformance.
+Deferred by protocol: calibration, CI canary, trends, and adapter conformance.

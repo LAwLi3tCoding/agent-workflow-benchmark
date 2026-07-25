@@ -282,6 +282,7 @@ live runner の挙動を証明するものでもありません。
 | `compare` | 揃った baseline/candidate 証拠を比較 |
 | `gate` | 決定論的 CI release policy の適用 |
 | `score` / `report` | 既存 Run の確認・描画 |
+| `criterion-validity ...` | 盲検化した外部研究 package の生成・独立ラベル分析 |
 | `debug ...` | Benchmark Harness の逆検証と診断 |
 
 | Artifact | 目的 |
@@ -295,7 +296,7 @@ live runner の挙動を証明するものでもありません。
 | `workflow-trace.json` | 独立署名済みの正規化 live trace |
 | `comparison-result.json` | 完全性に結び付いたペア比較 |
 | `gate-result.json` | 決定論的リリース判定 |
-| `report.md` | 人間向けの診断と推奨事項 |
+| `report.md` / `validity-report.*` | 人間向け診断と外部妥当性の証拠 |
 
 完全なオプションは `awb <command> --help` で確認できます。
 

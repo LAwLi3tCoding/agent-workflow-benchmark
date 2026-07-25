@@ -1,0 +1,146 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "external-validity-human-labels.schema.json",
+  "title": "Agent Workflow Bench external validity human labels",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "resultType",
+    "studyId",
+    "status",
+    "raters",
+    "labels",
+    "adjudications"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "0.1.0" },
+    "resultType": { "const": "external_validity_human_labels" },
+    "studyId": { "$ref": "#/$defs/semanticId" },
+    "status": { "enum": ["DRAFT", "COMPLETE"] },
+    "blindingAttestation": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "raters": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/rater" }
+    },
+    "labels": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/label" }
+    },
+    "adjudications": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/adjudication" }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": { "status": { "const": "COMPLETE" } },
+        "required": ["status"]
+      },
+      "then": {
+        "required": ["blindingAttestation"],
+        "properties": {
+          "blindingAttestation": { "const": "awb_decision_hidden" },
+          "raters": { "minItems": 2 },
+          "labels": { "minItems": 1 }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "semanticId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+    },
+    "classification": {
+      "enum": [
+        "IMPROVED",
+        "UNCHANGED",
+        "REGRESSED",
+        "MIXED",
+        "HARD_FAILURE",
+        "INCOMPARABLE"
+      ]
+    },
+    "gateDecision": {
+      "enum": ["PASS", "BLOCK", "DIAGNOSTIC_ONLY"]
+    },
+    "failureCode": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Z0-9][A-Z0-9_-]*$"
+    },
+    "rater": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["raterId", "role"],
+      "properties": {
+        "raterId": { "$ref": "#/$defs/semanticId" },
+        "role": {
+          "enum": ["workflow_owner", "independent_reviewer"]
+        }
+      }
+    },
+    "label": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "itemId",
+        "raterId",
+        "classification",
+        "gateDecision",
+        "failureCodes"
+      ],
+      "properties": {
+        "itemId": { "$ref": "#/$defs/semanticId" },
+        "raterId": { "$ref": "#/$defs/semanticId" },
+        "classification": { "$ref": "#/$defs/classification" },
+        "gateDecision": { "$ref": "#/$defs/gateDecision" },
+        "failureCodes": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/failureCode" }
+        }
+      }
+    },
+    "adjudication": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "itemId",
+        "adjudicatorId",
+        "classification",
+        "gateDecision",
+        "failureCodes",
+        "resolution"
+      ],
+      "properties": {
+        "itemId": { "$ref": "#/$defs/semanticId" },
+        "adjudicatorId": { "$ref": "#/$defs/semanticId" },
+        "classification": { "$ref": "#/$defs/classification" },
+        "gateDecision": { "$ref": "#/$defs/gateDecision" },
+        "failureCodes": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/failureCode" }
+        },
+        "resolution": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024
+        }
+      }
+    }
+  }
+}

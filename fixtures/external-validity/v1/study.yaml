@@ -1,0 +1,126 @@
+schemaVersion: 0.1.0
+resultType: external_validity_study
+studyId: public-safe-external-validity-template
+protocolVersion: criterion-validity-v1
+blinding:
+  mode: double_blind
+  assignmentHash: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+targets:
+  - targetId: external-target-directory
+    blindedTargetId: target-1
+    targetClass: directory
+    targetRefHash: sha256:1111111111111111111111111111111111111111111111111111111111111111
+    contractHash: sha256:2111111111111111111111111111111111111111111111111111111111111111
+    contractReview:
+      status: pending_human_input
+  - targetId: external-target-cli
+    blindedTargetId: target-2
+    targetClass: cli
+    targetRefHash: sha256:1222222222222222222222222222222222222222222222222222222222222222
+    contractHash: sha256:2222222222222222222222222222222222222222222222222222222222222222
+    contractReview:
+      status: pending_human_input
+  - targetId: external-target-hybrid
+    blindedTargetId: target-3
+    targetClass: hybrid
+    targetRefHash: sha256:1333333333333333333333333333333333333333333333333333333333333333
+    contractHash: sha256:2333333333333333333333333333333333333333333333333333333333333333
+    contractReview:
+      status: pending_human_input
+items:
+  - itemId: blind-item-001
+    blindedChangeId: change-001
+    targetId: external-target-directory
+    runner: codex
+    runnerBlindId: runner-a
+    designStratum: known_improvement
+    baseline:
+      ref: external://blind-item-001-baseline
+      contentHash: sha256:3011111111111111111111111111111111111111111111111111111111111111
+    candidate:
+      ref: external://blind-item-001-candidate
+      contentHash: sha256:4011111111111111111111111111111111111111111111111111111111111111
+  - itemId: blind-item-002
+    blindedChangeId: change-002
+    targetId: external-target-directory
+    runner: claude
+    runnerBlindId: runner-b
+    designStratum: no_change
+    baseline:
+      ref: external://blind-item-002-baseline
+      contentHash: sha256:3022222222222222222222222222222222222222222222222222222222222222
+    candidate:
+      ref: external://blind-item-002-candidate
+      contentHash: sha256:4022222222222222222222222222222222222222222222222222222222222222
+  - itemId: blind-item-003
+    blindedChangeId: change-003
+    targetId: external-target-cli
+    runner: codex
+    runnerBlindId: runner-a
+    designStratum: ordinary_regression
+    baseline:
+      ref: external://blind-item-003-baseline
+      contentHash: sha256:3033333333333333333333333333333333333333333333333333333333333333
+    candidate:
+      ref: external://blind-item-003-candidate
+      contentHash: sha256:4033333333333333333333333333333333333333333333333333333333333333
+  - itemId: blind-item-004
+    blindedChangeId: change-004
+    targetId: external-target-cli
+    runner: claude
+    runnerBlindId: runner-b
+    designStratum: p0_regression
+    baseline:
+      ref: external://blind-item-004-baseline
+      contentHash: sha256:3044444444444444444444444444444444444444444444444444444444444444
+    candidate:
+      ref: external://blind-item-004-candidate
+      contentHash: sha256:4044444444444444444444444444444444444444444444444444444444444444
+  - itemId: blind-item-005
+    blindedChangeId: change-005
+    targetId: external-target-hybrid
+    runner: codex
+    runnerBlindId: runner-a
+    designStratum: known_improvement
+    baseline:
+      ref: external://blind-item-005-baseline
+      contentHash: sha256:3055555555555555555555555555555555555555555555555555555555555555
+    candidate:
+      ref: external://blind-item-005-candidate
+      contentHash: sha256:4055555555555555555555555555555555555555555555555555555555555555
+  - itemId: blind-item-006
+    blindedChangeId: change-006
+    targetId: external-target-hybrid
+    runner: claude
+    runnerBlindId: runner-b
+    designStratum: no_change
+    baseline:
+      ref: external://blind-item-006-baseline
+      contentHash: sha256:3066666666666666666666666666666666666666666666666666666666666666
+    candidate:
+      ref: external://blind-item-006-candidate
+      contentHash: sha256:4066666666666666666666666666666666666666666666666666666666666666
+  - itemId: blind-item-007
+    blindedChangeId: change-007
+    targetId: external-target-hybrid
+    runner: codex
+    runnerBlindId: runner-a
+    designStratum: ordinary_regression
+    baseline:
+      ref: external://blind-item-007-baseline
+      contentHash: sha256:3077777777777777777777777777777777777777777777777777777777777777
+    candidate:
+      ref: external://blind-item-007-candidate
+      contentHash: sha256:4077777777777777777777777777777777777777777777777777777777777777
+  - itemId: blind-item-008
+    blindedChangeId: change-008
+    targetId: external-target-directory
+    runner: claude
+    runnerBlindId: runner-b
+    designStratum: p0_regression
+    baseline:
+      ref: external://blind-item-008-baseline
+      contentHash: sha256:3088888888888888888888888888888888888888888888888888888888888888
+    candidate:
+      ref: external://blind-item-008-candidate
+      contentHash: sha256:4088888888888888888888888888888888888888888888888888888888888888

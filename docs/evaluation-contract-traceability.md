@@ -22,10 +22,17 @@ rows are not product capability claims.
 | gold-corpus-detection | roles, owners, routes, joins, artifacts, states, statuses, budgets, command policy | static-contract, forbidden-route, required-owner, skip-not-pass, required-join, side-effect-deny, efficiency-token | lifecycle, handoff, artifact, state, gate, side-effect, token events | canonical deterministic oracles | contract and affected dimensions, GATE-HARD-FAILURE | tests/gold-corpus.test.ts; tests/gold-corpus-cli.test.ts |
 | observer-qualification | entrypoints, commandPolicy | static-contract | filesystem_access, tool_call, process_spawn, network_access, artifact_write, state_read, side_effect_attempt, token_usage | oracle-static-contract | runner, telemetry, GATE-PASS | tests/reference-observer.test.ts; tests/observer-qualification.test.ts; tests/workflow-trace.test.ts |
 | reliability-statistics | budgets, commandPolicy | static-contract | runner_start, runner_result, case_end | oracle-static-contract | telemetry, runner, GATE-INCOMPARABLE, GATE-EVIDENCE-NOT-WORKFLOW-TRACE, GATE-PASS | tests/reliability.test.ts; tests/reliability-statistics.test.ts; tests/reliability-evidence-boundary.test.ts; tests/reliability-schema.test.ts |
+| external-criterion-validity-mechanism | criterionValidityPolicy | directory, cli, hybrid external study items | cryptographically reverified workflow_trace comparison bundles, blinded labels, adjudications | owner-reviewed reference label comparison | validity status, confusion matrix, P0 recall, false PASS, exact agreement, Cohen kappa | tests/external-validity.test.ts; tests/external-validity-verified.test.ts; tests/external-validity-comparison-evidence.test.ts; tests/external-validity-schema.test.ts; tests/external-validity-cli.test.ts |
 
 ## Backlog boundary
 
-External criterion validity, calibrated policy performance, trend analysis, and adapter
-conformance remain later-stage claims. Reliability statistics are implemented, but deterministic
-or unqualified studies remain `DIAGNOSTIC_ONLY`; only stable qualified independent live
-`workflow_trace` samples can become gate-eligible.
+External criterion validity tooling is implemented as a packaging and analysis mechanism, not as
+an established production-validity claim. The public fixture is an 8-item privacy-safe template
+and remains `pending_human_input`; a PASS requires the frozen 120-item reviewed external study,
+qualified Codex and Claude live traces, two independent blinded raters, adjudication, P0 recall
+1.0, false PASS 0, overall agreement at least 0.85, and Cohen kappa at least 0.8.
+
+Calibrated policy performance, trend analysis, and adapter conformance remain later-stage
+claims. Reliability statistics are implemented, but deterministic or unqualified studies remain
+`DIAGNOSTIC_ONLY`; only stable qualified independent live `workflow_trace` samples can become
+gate-eligible.

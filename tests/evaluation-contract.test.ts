@@ -71,6 +71,18 @@ interface EvaluationContractFixture {
     bootstrapIterations: number;
     defaultSeed: string;
   };
+  criterionValidityPolicy: {
+    requiredTargetClasses: string[];
+    requiredRunners: string[];
+    requiredDesignStrata: string[];
+    minimumItemsPerCell: number;
+    minimumTotalItems: number;
+    minimumIndependentRaters: number;
+    p0RecallMinimum: number;
+    maximumFalsePassCount: number;
+    overallAgreementMinimum: number;
+    cohenKappaMinimum: number;
+  };
 }
 
 describe("canonical evaluation contract", () => {
@@ -127,6 +139,37 @@ describe("canonical evaluation contract", () => {
         ).map(([key, value]) => [key, (value as { const?: unknown }).const])
       )
     ).toEqual(frozenReliabilityPolicy);
+    const frozenCriterionValidityPolicy = {
+      requiredTargetClasses: ["directory", "cli", "hybrid"],
+      requiredRunners: ["codex", "claude"],
+      requiredDesignStrata: [
+        "known_improvement",
+        "no_change",
+        "ordinary_regression",
+        "p0_regression"
+      ],
+      minimumItemsPerCell: 5,
+      minimumTotalItems: 120,
+      minimumIndependentRaters: 2,
+      p0RecallMinimum: 1,
+      maximumFalsePassCount: 0,
+      overallAgreementMinimum: 0.85,
+      cohenKappaMinimum: 0.8
+    };
+    expect(contract.criterionValidityPolicy).toEqual(
+      frozenCriterionValidityPolicy
+    );
+    expect(
+      Object.fromEntries(
+        Object.entries(
+          evaluationContractSchema.properties.criterionValidityPolicy
+            .properties
+        ).map(([key, value]) => [
+          key,
+          (value as { const?: unknown }).const
+        ])
+      )
+    ).toEqual(frozenCriterionValidityPolicy);
     expectUnique(contract.events.map((item) => item.id));
     expectUnique(contract.oracles.map((item) => item.id));
     expectUnique(contract.hardFailures.map((item) => item.code));

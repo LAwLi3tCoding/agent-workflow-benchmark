@@ -1,0 +1,216 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "validity-report.schema.json",
+  "title": "Agent Workflow Bench external validity report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "resultType",
+    "studyId",
+    "status",
+    "criterionValidity",
+    "strongConclusionAllowed",
+    "gateEligibility",
+    "blockers",
+    "failures",
+    "bindings",
+    "metrics",
+    "coverage",
+    "integrity"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "0.1.0" },
+    "resultType": { "const": "external_validity_report" },
+    "studyId": { "$ref": "#/$defs/semanticId" },
+    "status": {
+      "enum": [
+        "PASS",
+        "FAIL",
+        "PENDING_HUMAN_INPUT",
+        "INSUFFICIENT_EVIDENCE"
+      ]
+    },
+    "criterionValidity": {
+      "enum": [
+        "established",
+        "pending_human_input",
+        "diagnostic_only",
+        "failed"
+      ]
+    },
+    "strongConclusionAllowed": { "type": "boolean" },
+    "gateEligibility": {
+      "enum": ["ELIGIBLE", "BLOCK", "DIAGNOSTIC_ONLY"]
+    },
+    "blockers": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/statusCode" }
+    },
+    "failures": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/statusCode" }
+    },
+    "bindings": { "$ref": "#/$defs/bindings" },
+    "metrics": { "$ref": "#/$defs/metrics" },
+    "coverage": { "$ref": "#/$defs/coverage" },
+    "integrity": { "$ref": "#/$defs/integrity" }
+  },
+  "$defs": {
+    "semanticId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+    },
+    "hash": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    },
+    "ratio": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "nullableRatio": {
+      "anyOf": [
+        { "$ref": "#/$defs/ratio" },
+        { "type": "null" }
+      ]
+    },
+    "nullableInteger": {
+      "anyOf": [
+        { "type": "integer", "minimum": 0 },
+        { "type": "null" }
+      ]
+    },
+    "classification": {
+      "enum": [
+        "IMPROVED",
+        "UNCHANGED",
+        "REGRESSED",
+        "MIXED",
+        "HARD_FAILURE",
+        "INCOMPARABLE"
+      ]
+    },
+    "statusCode": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Z0-9][A-Z0-9_-]*$"
+    },
+    "targetClass": {
+      "enum": ["directory", "cli", "hybrid"]
+    },
+    "runner": {
+      "enum": ["codex", "claude"]
+    },
+    "bindings": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "policyHash",
+        "studyHash",
+        "observationsHash",
+        "verifiedEvidenceHash",
+        "humanLabelsHash"
+      ],
+      "properties": {
+        "policyHash": { "$ref": "#/$defs/hash" },
+        "studyHash": { "$ref": "#/$defs/hash" },
+        "observationsHash": { "$ref": "#/$defs/hash" },
+        "verifiedEvidenceHash": { "$ref": "#/$defs/hash" },
+        "humanLabelsHash": { "$ref": "#/$defs/hash" }
+      }
+    },
+    "metrics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sampleSize",
+        "confusionMatrix",
+        "p0Precision",
+        "p0Recall",
+        "falsePassCount",
+        "overallAgreement",
+        "interRaterAgreement",
+        "cohenKappa"
+      ],
+      "properties": {
+        "sampleSize": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["planned", "observed", "labeled", "adjudicated"],
+          "properties": {
+            "planned": { "type": "integer", "minimum": 0 },
+            "observed": { "type": "integer", "minimum": 0 },
+            "labeled": { "type": "integer", "minimum": 0 },
+            "adjudicated": { "type": "integer", "minimum": 0 }
+          }
+        },
+        "confusionMatrix": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["expected", "observed", "count"],
+            "properties": {
+              "expected": { "$ref": "#/$defs/classification" },
+              "observed": { "$ref": "#/$defs/classification" },
+              "count": { "type": "integer", "minimum": 0 }
+            }
+          }
+        },
+        "p0Precision": { "$ref": "#/$defs/nullableRatio" },
+        "p0Recall": { "$ref": "#/$defs/nullableRatio" },
+        "falsePassCount": { "$ref": "#/$defs/nullableInteger" },
+        "overallAgreement": { "$ref": "#/$defs/nullableRatio" },
+        "interRaterAgreement": { "$ref": "#/$defs/nullableRatio" },
+        "cohenKappa": {
+          "anyOf": [
+            { "type": "number", "minimum": -1, "maximum": 1 },
+            { "type": "null" }
+          ]
+        }
+      }
+    },
+    "coverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "targetClasses",
+        "runners",
+        "designCells",
+        "minimumItemsPerCell",
+        "complete"
+      ],
+      "properties": {
+        "targetClasses": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/targetClass" }
+        },
+        "runners": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/runner" }
+        },
+        "designCells": { "type": "integer", "minimum": 0 },
+        "minimumItemsPerCell": { "type": "integer", "minimum": 0 },
+        "complete": { "type": "boolean" }
+      }
+    },
+    "integrity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "contentHash"],
+      "properties": {
+        "status": { "const": "VERIFIED_AT_WRITE" },
+        "contentHash": { "$ref": "#/$defs/hash" }
+      }
+    }
+  }
+}

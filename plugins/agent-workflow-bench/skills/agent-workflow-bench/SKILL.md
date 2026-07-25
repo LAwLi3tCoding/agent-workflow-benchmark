@@ -33,6 +33,15 @@ awb debug reliability --study <reliability-study.json> --out <reliability-dir>
 
 The report includes deterministic reproducibility, live A/A stability, variance, missing rate, telemetry completeness, attempt-identity and duplicate-evidence quarantine, fixed-context drift, P0 detection rate, and gate eligibility. Live attempt identity is derived from the signed trace hash. Simulated consistency is `DIAGNOSTIC_REPRODUCIBLE` with no strong conclusion; this layer never upgrades simulated or unqualified evidence into release PASS.
 
+For external criterion-validity diagnostics, generate a blinded labeling package before collecting human labels:
+
+```bash
+awb criterion-validity package --study <study.yaml> --out <validity-dir>
+awb criterion-validity analyze --study <study.yaml> --observations <external-validity-observations.json> --labels <external-validity-human-labels.json> --trusted-observer-key <observer-public.pem> --trusted-qualification-key <qualification-authority-public.pem> --out <validity-dir>
+```
+
+The observation manifest references content-hashed comparison bundles. `analyze` revalidates both signed traces, Observer qualification, comparison integrity, and study bindings with explicit public keys; self-asserted trust fields cannot produce PASS. The public `fixtures/external-validity/v1/study.yaml` is only an 8-item privacy-safe template. A real PASS requires 120 reviewed external items: directory, CLI, and hybrid targets across Codex and Claude; known-improvement, no-change, ordinary-regression, and P0-regression strata; qualified independent live `workflow_trace` evidence; two independent blinded raters; adjudication; P0 recall 1.0; false PASS 0; overall agreement at least 0.85; and Cohen kappa at least 0.8. Missing labels, owner reviews, qualified traces, adjudication, or sample coverage keep criterion validity diagnostic-only.
+
 Qualify the reference Observer without changing any trust root:
 
 ```bash

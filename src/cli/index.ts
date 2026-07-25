@@ -84,6 +84,20 @@ import {
   type ReliabilityReport
 } from "../reliability/reliability.js";
 import { runReliabilityStudy } from "../reliability/study.js";
+import {
+  analyzeExternalValidity,
+  analyzeExternalValidityFromComparisons,
+  createExternalValidityLabelingPackage,
+  renderExternalValidityMarkdown,
+  type ExternalValidityReport
+} from "../validity/externalValidity.js";
+import {
+  loadExternalValidityHumanLabels,
+  loadExternalValidityObservations,
+  loadExternalValidityStudy,
+  validateExternalValidityPackage,
+  validateExternalValidityReport
+} from "../validity/io.js";
 
 const program = new Command();
 
@@ -1014,6 +1028,89 @@ debug
     process.exitCode = reliabilityExitCode(report);
   });
 
+const criterionValidity = program.command("criterion-validity");
+
+criterionValidity
+  .command("package")
+  .description("Create a blinded public-safe package for independent human labeling")
+  .requiredOption("--study <path>", "external-validity study YAML or JSON")
+  .requiredOption("--out <dir>")
+  .action(async (options: { study: string; out: string }) => {
+    const study = await loadExternalValidityStudy(
+      await resolveExistingPath(options.study)
+    );
+    const artifacts = createExternalValidityLabelingPackage(study);
+    await validateExternalValidityPackage(artifacts);
+    await writeExternalValidityLabelingArtifacts(options.out, artifacts);
+    console.log(`external validity labeling package written: ${options.out}`);
+  });
+
+criterionValidity
+  .command("analyze")
+  .description("Compare qualified AWB observations with blinded independent human labels")
+  .requiredOption("--study <path>", "external-validity study YAML or JSON")
+  .option("--observations <path>", "completed AWB observations JSON or YAML")
+  .option("--labels <path>", "completed blinded human labels and adjudications")
+  .option(
+    "--trusted-observer-key <path>",
+    "trusted Ed25519 Observer public key for comparison revalidation"
+  )
+  .option(
+    "--trusted-qualification-key <path>",
+    "trusted Ed25519 qualification-authority public key"
+  )
+  .requiredOption("--out <dir>")
+  .action(async (options: {
+    study: string;
+    observations?: string;
+    labels?: string;
+    trustedObserverKey?: string;
+    trustedQualificationKey?: string;
+    out: string;
+  }) => {
+    const study = await loadExternalValidityStudy(
+      await resolveExistingPath(options.study)
+    );
+    const observations = options.observations
+      ? await loadExternalValidityObservations(
+          await resolveExistingPath(options.observations)
+        )
+      : undefined;
+    const labels = options.labels
+      ? await loadExternalValidityHumanLabels(
+          await resolveExistingPath(options.labels)
+        )
+      : undefined;
+    const artifacts = createExternalValidityLabelingPackage(study);
+    const report = observations
+      ? await analyzeExternalValidityFromComparisons(
+          study,
+          observations,
+          labels,
+          {
+            trustedObserverKeyPath: options.trustedObserverKey
+              ? await resolveExistingPath(options.trustedObserverKey)
+              : undefined,
+            trustedQualificationKeyPath: options.trustedQualificationKey
+              ? await resolveExistingPath(options.trustedQualificationKey)
+              : undefined
+          }
+        )
+      : analyzeExternalValidity(study, undefined, labels);
+    await Promise.all([
+      validateExternalValidityPackage(artifacts),
+      validateExternalValidityReport(report)
+    ]);
+    await writeExternalValidityLabelingArtifacts(options.out, artifacts);
+    await writeJson(path.join(options.out, "validity-report.json"), report);
+    await writeReportFile(
+      path.join(options.out, "validity-report.md"),
+      renderExternalValidityMarkdown(report)
+    );
+    console.log(`external criterion validity report written: ${options.out}`);
+    process.exitCode = externalValidityExitCode(report);
+  });
+
 const goldCorpus = program.command("gold-corpus");
 
 goldCorpus
@@ -1675,6 +1772,20 @@ async function validateSchemasAndTargets(): Promise<void> {
   if (!validateReliabilityStudy || !validateReliabilityReport) {
     throw new Error("Reliability schemas are missing.");
   }
+  const externalValiditySchemaFiles = [
+    "external-validity-study.schema.json",
+    "external-validity-labeling-package.schema.json",
+    "external-validity-observations.schema.json",
+    "external-validity-human-labels.schema.json",
+    "validity-report.schema.json"
+  ];
+  if (
+    externalValiditySchemaFiles.some(
+      (schemaName) => !schemaFiles.includes(schemaName)
+    )
+  ) {
+    throw new Error("External validity schemas are missing.");
+  }
   if (
     !validateGoldCorpus ||
     !validateGoldCorpusBase ||
@@ -1740,6 +1851,24 @@ async function validateSchemasAndTargets(): Promise<void> {
       }
     }
     await loadGoldCorpus(DEFAULT_GOLD_CORPUS_PATH);
+  }
+  const externalValidityStudyPath = path.join(
+    benchmarkRoot,
+    "fixtures",
+    "external-validity",
+    "v1",
+    "study.yaml"
+  );
+  if (existsSync(externalValidityStudyPath)) {
+    const study = await loadExternalValidityStudy(
+      externalValidityStudyPath
+    );
+    const artifacts = createExternalValidityLabelingPackage(study);
+    const report = analyzeExternalValidity(study);
+    await Promise.all([
+      validateExternalValidityPackage(artifacts),
+      validateExternalValidityReport(report)
+    ]);
   }
   for (const id of await listTargetIds()) {
     const target = await loadTargetPack(id);
@@ -1904,6 +2033,44 @@ function enforceGateMode(mode: string, suiteResult: SuiteResult): void {
 
 function reliabilityExitCode(report: ReliabilityReport): 0 | 1 | 2 {
   if (report.gateEligibility === "BLOCK" || report.conclusion === "INVALID") {
+    return 1;
+  }
+  return report.strongConclusionAllowed ? 0 : 2;
+}
+
+async function writeExternalValidityLabelingArtifacts(
+  outDir: string,
+  artifacts: ReturnType<typeof createExternalValidityLabelingPackage>
+): Promise<void> {
+  await Promise.all([
+    writeJson(
+      path.join(
+        outDir,
+        "external-validity-labeling-package.json"
+      ),
+      artifacts.package
+    ),
+    writeJson(
+      path.join(
+        outDir,
+        "external-validity-observations.template.json"
+      ),
+      artifacts.observationsTemplate
+    ),
+    writeJson(
+      path.join(
+        outDir,
+        "external-validity-human-labels.template.json"
+      ),
+      artifacts.labelsTemplate
+    )
+  ]);
+}
+
+function externalValidityExitCode(
+  report: ExternalValidityReport
+): 0 | 1 | 2 {
+  if (report.status === "FAIL" || report.gateEligibility === "BLOCK") {
     return 1;
   }
   return report.strongConclusionAllowed ? 0 : 2;

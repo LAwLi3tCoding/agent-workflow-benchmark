@@ -51,6 +51,23 @@ export interface EvaluationContract {
     bootstrapIterations: number;
     defaultSeed: string;
   };
+  criterionValidityPolicy: {
+    requiredTargetClasses: Array<"directory" | "cli" | "hybrid">;
+    requiredRunners: Array<"codex" | "claude">;
+    requiredDesignStrata: Array<
+      | "known_improvement"
+      | "no_change"
+      | "ordinary_regression"
+      | "p0_regression"
+    >;
+    minimumItemsPerCell: number;
+    minimumTotalItems: number;
+    minimumIndependentRaters: number;
+    p0RecallMinimum: number;
+    maximumFalsePassCount: number;
+    overallAgreementMinimum: number;
+    cohenKappaMinimum: number;
+  };
   coverageTargets: Array<{
     id: string;
     label: string;
@@ -143,6 +160,10 @@ export function getReliabilityPolicy(): EvaluationContract["reliabilityPolicy"] 
   return getEvaluationContract().reliabilityPolicy;
 }
 
+export function getCriterionValidityPolicy(): EvaluationContract["criterionValidityPolicy"] {
+  return getEvaluationContract().criterionValidityPolicy;
+}
+
 export function getHardFailureDefinition(
   code: string
 ): EvaluationContract["hardFailures"][number] | undefined {
@@ -190,6 +211,32 @@ function assertEvaluationContract(contract: EvaluationContract): void {
   ) {
     throw new Error(
       "Canonical evaluation contract reliability policy is invalid or weakens frozen thresholds."
+    );
+  }
+  const criterion = contract.criterionValidityPolicy;
+  if (
+    !criterion ||
+    JSON.stringify(criterion.requiredTargetClasses) !==
+      JSON.stringify(["directory", "cli", "hybrid"]) ||
+    JSON.stringify(criterion.requiredRunners) !==
+      JSON.stringify(["codex", "claude"]) ||
+    JSON.stringify(criterion.requiredDesignStrata) !==
+      JSON.stringify([
+        "known_improvement",
+        "no_change",
+        "ordinary_regression",
+        "p0_regression"
+      ]) ||
+    criterion.minimumItemsPerCell !== 5 ||
+    criterion.minimumTotalItems !== 120 ||
+    criterion.minimumIndependentRaters !== 2 ||
+    criterion.p0RecallMinimum !== 1 ||
+    criterion.maximumFalsePassCount !== 0 ||
+    criterion.overallAgreementMinimum !== 0.85 ||
+    criterion.cohenKappaMinimum !== 0.8
+  ) {
+    throw new Error(
+      "Canonical evaluation contract criterion validity policy is invalid or weakens frozen thresholds."
     );
   }
   for (const [label, ids] of [

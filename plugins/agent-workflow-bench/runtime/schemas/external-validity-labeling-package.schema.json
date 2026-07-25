@@ -1,0 +1,91 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "external-validity-labeling-package.schema.json",
+  "title": "Agent Workflow Bench external validity labeling package",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "resultType",
+    "studyId",
+    "status",
+    "publicSafe",
+    "blinding",
+    "items"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "0.1.0" },
+    "resultType": { "const": "external_validity_labeling_package" },
+    "studyId": { "$ref": "#/$defs/semanticId" },
+    "status": { "const": "READY_FOR_HUMAN_LABELING" },
+    "publicSafe": { "const": true },
+    "blinding": { "$ref": "#/$defs/blinding" },
+    "items": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/packageItem" }
+    }
+  },
+  "$defs": {
+    "semanticId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+    },
+    "hash": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    },
+    "publicExternalRef": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512,
+      "pattern": "^(?!(?:.*(?:/\u0055sers/|/\u0068ome/|/private/|@|private-target|company-domain)))(?:external|https|ipfs)://[^\\u0000]+$"
+    },
+    "targetClass": {
+      "enum": ["directory", "cli", "hybrid"]
+    },
+    "blinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode", "assignmentHash"],
+      "properties": {
+        "mode": { "const": "double_blind" },
+        "assignmentHash": { "$ref": "#/$defs/hash" }
+      }
+    },
+    "artifactRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ref", "contentHash"],
+      "properties": {
+        "ref": { "$ref": "#/$defs/publicExternalRef" },
+        "contentHash": { "$ref": "#/$defs/hash" }
+      }
+    },
+    "packageItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "itemId",
+        "blindedChangeId",
+        "blindedTargetId",
+        "targetClass",
+        "runnerBlindId",
+        "baseline",
+        "candidate"
+      ],
+      "properties": {
+        "itemId": { "$ref": "#/$defs/semanticId" },
+        "blindedChangeId": { "$ref": "#/$defs/semanticId" },
+        "blindedTargetId": { "$ref": "#/$defs/semanticId" },
+        "targetClass": { "$ref": "#/$defs/targetClass" },
+        "runnerBlindId": { "$ref": "#/$defs/semanticId" },
+        "baseline": { "$ref": "#/$defs/artifactRef" },
+        "candidate": { "$ref": "#/$defs/artifactRef" }
+      }
+    }
+  }
+}

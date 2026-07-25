@@ -29,6 +29,9 @@ export function getScorePolicy() {
 export function getReliabilityPolicy() {
     return getEvaluationContract().reliabilityPolicy;
 }
+export function getCriterionValidityPolicy() {
+    return getEvaluationContract().criterionValidityPolicy;
+}
 export function getHardFailureDefinition(code) {
     return getEvaluationContract().hardFailures.find((item) => item.code === code && item.status === "implemented");
 }
@@ -59,6 +62,28 @@ function assertEvaluationContract(contract) {
         reliability.bootstrapIterations !== 2000 ||
         reliability.defaultSeed !== "awb-default-seed-v1") {
         throw new Error("Canonical evaluation contract reliability policy is invalid or weakens frozen thresholds.");
+    }
+    const criterion = contract.criterionValidityPolicy;
+    if (!criterion ||
+        JSON.stringify(criterion.requiredTargetClasses) !==
+            JSON.stringify(["directory", "cli", "hybrid"]) ||
+        JSON.stringify(criterion.requiredRunners) !==
+            JSON.stringify(["codex", "claude"]) ||
+        JSON.stringify(criterion.requiredDesignStrata) !==
+            JSON.stringify([
+                "known_improvement",
+                "no_change",
+                "ordinary_regression",
+                "p0_regression"
+            ]) ||
+        criterion.minimumItemsPerCell !== 5 ||
+        criterion.minimumTotalItems !== 120 ||
+        criterion.minimumIndependentRaters !== 2 ||
+        criterion.p0RecallMinimum !== 1 ||
+        criterion.maximumFalsePassCount !== 0 ||
+        criterion.overallAgreementMinimum !== 0.85 ||
+        criterion.cohenKappaMinimum !== 0.8) {
+        throw new Error("Canonical evaluation contract criterion validity policy is invalid or weakens frozen thresholds.");
     }
     for (const [label, ids] of [
         ["event", contract.events.map((item) => item.id)],

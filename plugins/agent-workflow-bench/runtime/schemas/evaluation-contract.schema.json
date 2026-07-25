@@ -10,6 +10,7 @@
     "evidencePolicy",
     "scorePolicy",
     "reliabilityPolicy",
+    "criterionValidityPolicy",
     "coverageTargets",
     "events",
     "oracles",
@@ -128,6 +129,45 @@
         "defaultSeed": {
           "const": "awb-default-seed-v1"
         }
+      }
+    },
+    "criterionValidityPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "requiredTargetClasses",
+        "requiredRunners",
+        "requiredDesignStrata",
+        "minimumItemsPerCell",
+        "minimumTotalItems",
+        "minimumIndependentRaters",
+        "p0RecallMinimum",
+        "maximumFalsePassCount",
+        "overallAgreementMinimum",
+        "cohenKappaMinimum"
+      ],
+      "properties": {
+        "requiredTargetClasses": {
+          "const": ["directory", "cli", "hybrid"]
+        },
+        "requiredRunners": {
+          "const": ["codex", "claude"]
+        },
+        "requiredDesignStrata": {
+          "const": [
+            "known_improvement",
+            "no_change",
+            "ordinary_regression",
+            "p0_regression"
+          ]
+        },
+        "minimumItemsPerCell": { "const": 5 },
+        "minimumTotalItems": { "const": 120 },
+        "minimumIndependentRaters": { "const": 2 },
+        "p0RecallMinimum": { "const": 1 },
+        "maximumFalsePassCount": { "const": 0 },
+        "overallAgreementMinimum": { "const": 0.85 },
+        "cohenKappaMinimum": { "const": 0.8 }
       }
     },
     "coverageTargets": { "$ref": "#/$defs/registry" },

@@ -317,6 +317,30 @@ study 达到 100%，结论也只是 `DIAGNOSTIC_REPRODUCIBLE`，并保持
 live `workflow_trace` study 才能成为
 gate-eligible evidence。
 
+外部效度使用独立的 `criterion-validity` 流程，不复用 gold corpus 或 reliability
+结论。Stage 5 已实现打包和分析机制，但仓库内只提供
+`fixtures/external-validity/v1/study.yaml` 这个 8 条样本的隐私安全模板；它不是生产
+外部效度证据。真实研究必须覆盖 directory、CLI、hybrid 三类 target，Codex、Claude
+两个 runner，以及 known improvement、no change、ordinary regression、P0 regression
+四类设计分层。冻结样本量是 24 个 cell 每格 5 条，共 120 条。
+
+先生成盲审包，再在补齐外部观测和人工标签后分析：
+
+```bash
+awb criterion-validity package --study <study.yaml> --out <dir>
+awb criterion-validity analyze --study <study.yaml> --observations <observations.json> --labels <human-labels.json> --trusted-observer-key <observer-public.pem> --trusted-qualification-key <qualification-authority-public.pem> --out <dir>
+```
+
+盲审包不能暴露真实 target 名称、runner 身份、设计分层、私有路径、内部链接或业务数据。
+每条样本需要 owner-reviewed 外部合同、已认证独立 live `workflow_trace` 观测、两名独立
+评审的 blinded label，以及冲突样本的 adjudication。`observations.json` 只记录
+comparison bundle 的引用和内容哈希；分析时会用显式公钥重新验签两侧 trace、Observer
+资格和 comparison 完整性，自报 `VALID` 字段不能建立 PASS。准入阈值是 P0 recall 100%、
+false PASS 0、overall agreement 至少 0.85、Cohen kappa 至少 0.8。缺 owner review、
+缺标签、样本不足、summary-only evidence、未认证 trace、冲突未裁决或私有数据泄漏时，
+结果只能是 `PENDING_HUMAN_INPUT`、`INSUFFICIENT_EVIDENCE` 或 `FAIL`，不能作为生产
+CI 准入 PASS。
+
 ## 11. 建设阶段
 
 ### MVP

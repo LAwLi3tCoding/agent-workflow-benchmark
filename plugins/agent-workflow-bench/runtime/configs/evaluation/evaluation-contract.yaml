@@ -39,6 +39,18 @@ reliabilityPolicy:
   confidenceLevel: 0.95
   bootstrapIterations: 2000
   defaultSeed: awb-default-seed-v1
+criterionValidityPolicy:
+  requiredTargetClasses: [directory, cli, hybrid]
+  requiredRunners: [codex, claude]
+  requiredDesignStrata:
+    [known_improvement, no_change, ordinary_regression, p0_regression]
+  minimumItemsPerCell: 5
+  minimumTotalItems: 120
+  minimumIndependentRaters: 2
+  p0RecallMinimum: 1
+  maximumFalsePassCount: 0
+  overallAgreementMinimum: 0.85
+  cohenKappaMinimum: 0.8
 coverageTargets:
   - { id: "dimension:entrypoint", label: "Entrypoint and admission path", status: implemented }
   - { id: "dimension:owner-routing", label: "Declared owner routing and handoff", status: implemented }

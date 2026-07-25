@@ -88,6 +88,11 @@ describe("agent workflow bench plugin package", () => {
     await expect(stat(path.join(runtimeRoot, "schemas", "reliability-report.schema.json"))).resolves.toBeTruthy();
     await expect(stat(path.join(runtimeRoot, "schemas", "gold-corpus.schema.json"))).resolves.toBeTruthy();
     await expect(stat(path.join(runtimeRoot, "schemas", "gold-corpus-report.schema.json"))).resolves.toBeTruthy();
+    await expect(stat(path.join(runtimeRoot, "schemas", "external-validity-study.schema.json"))).resolves.toBeTruthy();
+    await expect(stat(path.join(runtimeRoot, "schemas", "external-validity-labeling-package.schema.json"))).resolves.toBeTruthy();
+    await expect(stat(path.join(runtimeRoot, "schemas", "external-validity-observations.schema.json"))).resolves.toBeTruthy();
+    await expect(stat(path.join(runtimeRoot, "schemas", "external-validity-human-labels.schema.json"))).resolves.toBeTruthy();
+    await expect(stat(path.join(runtimeRoot, "schemas", "validity-report.schema.json"))).resolves.toBeTruthy();
     await expect(stat(path.join(runtimeRoot, "fixtures", "mutations", "core.yaml"))).resolves.toBeTruthy();
     await expect(
       stat(path.join(runtimeRoot, "fixtures", "gold-corpus", "v1", "manifest.yaml"))
@@ -137,6 +142,30 @@ describe("agent workflow bench plugin package", () => {
       );
       expect(reliabilityHelp.stdout).toContain("--study");
       expect(reliabilityHelp.stdout).toContain("--out");
+      const criterionValidityHelp = await execa(
+        path.join(install.pluginPath, "bin", "awb"),
+        ["criterion-validity", "--help"],
+        {
+          cwd: outsideCwd,
+          env: { ...process.env, AWB_PROJECT_ROOT: "" }
+        }
+      );
+      expect(criterionValidityHelp.stdout).toContain("package");
+      expect(criterionValidityHelp.stdout).toContain("analyze");
+      const criterionAnalyzeHelp = await execa(
+        path.join(install.pluginPath, "bin", "awb"),
+        ["criterion-validity", "analyze", "--help"],
+        {
+          cwd: outsideCwd,
+          env: { ...process.env, AWB_PROJECT_ROOT: "" }
+        }
+      );
+      expect(criterionAnalyzeHelp.stdout).toContain(
+        "--trusted-observer-key"
+      );
+      expect(criterionAnalyzeHelp.stdout).toContain(
+        "--trusted-qualification-key"
+      );
 
       const observerKeys = generateKeyPairSync("ed25519");
       const authorityKeys = generateKeyPairSync("ed25519");

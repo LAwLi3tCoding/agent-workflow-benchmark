@@ -274,6 +274,7 @@ runner 的真实行为。
 | `compare` | 比较匹配的 baseline/candidate 证据 |
 | `gate` | 执行确定性 CI 发布策略 |
 | `score` / `report` | 查看或渲染已有运行 |
+| `criterion-validity ...` | 生成盲化外部研究包或分析独立人工标签 |
 | `debug ...` | 反向验证并诊断 benchmark harness |
 
 | 制品 | 用途 |
@@ -287,7 +288,7 @@ runner 的真实行为。
 | `workflow-trace.json` | 独立签名的标准化 live trace |
 | `comparison-result.json` | 完整性绑定的配对比较 |
 | `gate-result.json` | 确定性发布结论 |
-| `report.md` | 人读诊断与建议 |
+| `report.md` / `validity-report.*` | 人读诊断与外部效度证据 |
 
 完整参数请执行 `awb <command> --help`。
 
