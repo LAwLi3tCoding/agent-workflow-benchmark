@@ -9,6 +9,7 @@
     "models",
     "evidencePolicy",
     "scorePolicy",
+    "reliabilityPolicy",
     "coverageTargets",
     "events",
     "oracles",
@@ -83,6 +84,50 @@
         "suiteConditionalMinimum": { "type": "number", "minimum": 0, "maximum": 100 },
         "telemetryMinimum": { "type": "number", "minimum": 0, "maximum": 1 },
         "efficiencyWastedRatioWarning": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    },
+    "reliabilityPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "deterministicMinimumSamples",
+        "liveMinimumSamples",
+        "gateConsistencyMinimum",
+        "caseConsistencyMinimum",
+        "maximumMissingRate",
+        "minimumTelemetryCompleteness",
+        "confidenceLevel",
+        "bootstrapIterations",
+        "defaultSeed"
+      ],
+      "properties": {
+        "deterministicMinimumSamples": {
+          "const": 5
+        },
+        "liveMinimumSamples": {
+          "const": 20
+        },
+        "gateConsistencyMinimum": {
+          "const": 0.95
+        },
+        "caseConsistencyMinimum": {
+          "const": 0.95
+        },
+        "maximumMissingRate": {
+          "const": 0
+        },
+        "minimumTelemetryCompleteness": {
+          "const": 0.75
+        },
+        "confidenceLevel": {
+          "const": 0.95
+        },
+        "bootstrapIterations": {
+          "const": 2000
+        },
+        "defaultSeed": {
+          "const": "awb-default-seed-v1"
+        }
       }
     },
     "coverageTargets": { "$ref": "#/$defs/registry" },

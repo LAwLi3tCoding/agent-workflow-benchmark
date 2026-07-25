@@ -16,7 +16,10 @@ let hardCandidate = "";
 let regressedCandidate = "";
 let mismatchedCandidate = "";
 
-async function runFixture(out: string, options: { mutation?: string; suite?: string } = {}): Promise<void> {
+async function runFixture(
+  out: string,
+  options: { mutation?: string; suite?: string; seed?: string } = {}
+): Promise<void> {
   const args = [
     "run",
     "benchmark",
@@ -28,6 +31,8 @@ async function runFixture(out: string, options: { mutation?: string; suite?: str
     options.suite ?? "smoke",
     "--runner",
     "simulated",
+    "--seed",
+    options.seed ?? "compare-fixed-seed",
     "--out",
     out
   ];
@@ -301,6 +306,23 @@ describe("paired workflow comparison", () => {
     expect(result.comparability.reasons).toEqual(expect.arrayContaining(["SUITE_MISMATCH", "CASE_SET_MISMATCH"]));
   });
 
+  test("reports a dedicated seed mismatch instead of hiding it in a generic conditions mismatch", async () => {
+    const differentSeed = path.join(root, "different-seed-candidate");
+    await runFixture(differentSeed, { seed: "different-comparison-seed" });
+
+    const { result } = await comparePair(
+      cleanBaseline,
+      differentSeed,
+      "seed-incomparable"
+    );
+
+    expect(result.classification).toBe("INCOMPARABLE");
+    expect(result.comparability).toMatchObject({
+      status: "INCOMPARABLE",
+      reasons: ["SEED_MISMATCH"]
+    });
+  });
+
   test("missing provenance is incomparable while tampered evidence is a hard failure", async () => {
     const missing = path.join(root, "missing-provenance");
     const tampered = path.join(root, "tampered-provenance");
@@ -370,6 +392,65 @@ describe("paired workflow comparison", () => {
       decision: "BLOCK",
       ruleId: "GATE-HARD-FAILURE"
     });
+  });
+
+  test("runtime manifest seed must match the provenance conditions even after artifact hashes are recomputed", async () => {
+    const tamperedSeed = path.join(root, "tampered-runtime-seed");
+    await cp(cleanCandidate, tamperedSeed, { recursive: true });
+    const runtimePath = path.join(tamperedSeed, "runtime-manifest.json");
+    const provenancePath = path.join(tamperedSeed, "provenance.json");
+    const runtime = JSON.parse(await readFile(runtimePath, "utf8"));
+    const provenance = JSON.parse(await readFile(provenancePath, "utf8"));
+
+    runtime.seed = "runtime-only-seed";
+    await writeFile(runtimePath, `${JSON.stringify(runtime, null, 2)}\n`);
+    provenance.integrity.artifacts.find(
+      (artifact: { ref: string }) => artifact.ref === "runtime-manifest.json"
+    ).sha256 = await hashFile(runtimePath);
+    await writeFile(provenancePath, `${JSON.stringify(provenance, null, 2)}\n`);
+
+    const comparison = await comparePair(
+      cleanBaseline,
+      tamperedSeed,
+      "tampered-runtime-seed"
+    );
+    expect(comparison.result.classification).toBe("HARD_FAILURE");
+    expect(comparison.result.comparability.reasons).toContain(
+      "PROVENANCE_INVALID"
+    );
+  });
+
+  test("runtime manifest attempt identity must match provenance after artifact hashes are recomputed", async () => {
+    const tamperedAttempt = path.join(root, "tampered-runtime-attempt");
+    await cp(cleanCandidate, tamperedAttempt, { recursive: true });
+    const runtimePath = path.join(
+      tamperedAttempt,
+      "runtime-manifest.json"
+    );
+    const provenancePath = path.join(tamperedAttempt, "provenance.json");
+    const runtime = JSON.parse(await readFile(runtimePath, "utf8"));
+    const provenance = JSON.parse(await readFile(provenancePath, "utf8"));
+
+    runtime.attemptId = "attempt-replayed-identity";
+    await writeFile(runtimePath, `${JSON.stringify(runtime, null, 2)}\n`);
+    provenance.integrity.artifacts.find(
+      (artifact: { ref: string }) =>
+        artifact.ref === "runtime-manifest.json"
+    ).sha256 = await hashFile(runtimePath);
+    await writeFile(
+      provenancePath,
+      `${JSON.stringify(provenance, null, 2)}\n`
+    );
+
+    const comparison = await comparePair(
+      cleanBaseline,
+      tamperedAttempt,
+      "tampered-runtime-attempt"
+    );
+    expect(comparison.result.classification).toBe("HARD_FAILURE");
+    expect(comparison.result.comparability.reasons).toContain(
+      "PROVENANCE_INVALID"
+    );
   });
 
   test("current runner adapters reject invented workflow-trace evidence even when all editable hashes are recomputed", async () => {

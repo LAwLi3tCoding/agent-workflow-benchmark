@@ -40,6 +40,17 @@ export interface EvaluationContract {
     telemetryMinimum: number;
     efficiencyWastedRatioWarning: number;
   };
+  reliabilityPolicy: {
+    deterministicMinimumSamples: number;
+    liveMinimumSamples: number;
+    gateConsistencyMinimum: number;
+    caseConsistencyMinimum: number;
+    maximumMissingRate: number;
+    minimumTelemetryCompleteness: number;
+    confidenceLevel: number;
+    bootstrapIterations: number;
+    defaultSeed: string;
+  };
   coverageTargets: Array<{
     id: string;
     label: string;
@@ -128,6 +139,10 @@ export function getScorePolicy(): EvaluationContract["scorePolicy"] {
   return getEvaluationContract().scorePolicy;
 }
 
+export function getReliabilityPolicy(): EvaluationContract["reliabilityPolicy"] {
+  return getEvaluationContract().reliabilityPolicy;
+}
+
 export function getHardFailureDefinition(
   code: string
 ): EvaluationContract["hardFailures"][number] | undefined {
@@ -159,6 +174,23 @@ function assertEvaluationContract(contract: EvaluationContract): void {
     contract.contractId !== "agent-workflow-bench-evaluation-contract"
   ) {
     throw new Error("Canonical evaluation contract is missing or unsupported.");
+  }
+  const reliability = contract.reliabilityPolicy;
+  if (
+    !reliability ||
+    reliability.deterministicMinimumSamples !== 5 ||
+    reliability.liveMinimumSamples !== 20 ||
+    reliability.gateConsistencyMinimum !== 0.95 ||
+    reliability.caseConsistencyMinimum !== 0.95 ||
+    reliability.maximumMissingRate !== 0 ||
+    reliability.minimumTelemetryCompleteness !== 0.75 ||
+    reliability.confidenceLevel !== 0.95 ||
+    reliability.bootstrapIterations !== 2000 ||
+    reliability.defaultSeed !== "awb-default-seed-v1"
+  ) {
+    throw new Error(
+      "Canonical evaluation contract reliability policy is invalid or weakens frozen thresholds."
+    );
   }
   for (const [label, ids] of [
     ["event", contract.events.map((item) => item.id)],

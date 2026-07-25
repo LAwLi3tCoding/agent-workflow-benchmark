@@ -29,6 +29,16 @@ scorePolicy:
   suiteConditionalMinimum: 70
   telemetryMinimum: 0.75
   efficiencyWastedRatioWarning: 0.2
+reliabilityPolicy:
+  deterministicMinimumSamples: 5
+  liveMinimumSamples: 20
+  gateConsistencyMinimum: 0.95
+  caseConsistencyMinimum: 0.95
+  maximumMissingRate: 0
+  minimumTelemetryCompleteness: 0.75
+  confidenceLevel: 0.95
+  bootstrapIterations: 2000
+  defaultSeed: awb-default-seed-v1
 coverageTargets:
   - { id: "dimension:entrypoint", label: "Entrypoint and admission path", status: implemented }
   - { id: "dimension:owner-routing", label: "Declared owner routing and handoff", status: implemented }
@@ -319,3 +329,12 @@ claims:
     scoreDimensions: [runner, telemetry]
     gateRuleIds: [GATE-PASS]
     tests: [tests/reference-observer.test.ts, tests/observer-qualification.test.ts, tests/workflow-trace.test.ts]
+  - id: reliability-statistics
+    status: implemented
+    contractFields: [budgets, commandPolicy]
+    caseTemplateIds: [static-contract]
+    eventTypes: [runner_start, runner_result, case_end]
+    oracleIds: [oracle-static-contract]
+    scoreDimensions: [telemetry, runner]
+    gateRuleIds: [GATE-INCOMPARABLE, GATE-EVIDENCE-NOT-WORKFLOW-TRACE, GATE-PASS]
+    tests: [tests/reliability.test.ts, tests/reliability-statistics.test.ts, tests/reliability-evidence-boundary.test.ts, tests/reliability-schema.test.ts]

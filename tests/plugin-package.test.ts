@@ -84,6 +84,8 @@ describe("agent workflow bench plugin package", () => {
     await expect(stat(path.join(runtimeRoot, "schemas", "observer-qualification.schema.json"))).resolves.toBeTruthy();
     await expect(stat(path.join(runtimeRoot, "schemas", "comparison-result.schema.json"))).resolves.toBeTruthy();
     await expect(stat(path.join(runtimeRoot, "schemas", "gate-result.schema.json"))).resolves.toBeTruthy();
+    await expect(stat(path.join(runtimeRoot, "schemas", "reliability-study.schema.json"))).resolves.toBeTruthy();
+    await expect(stat(path.join(runtimeRoot, "schemas", "reliability-report.schema.json"))).resolves.toBeTruthy();
     await expect(stat(path.join(runtimeRoot, "schemas", "gold-corpus.schema.json"))).resolves.toBeTruthy();
     await expect(stat(path.join(runtimeRoot, "schemas", "gold-corpus-report.schema.json"))).resolves.toBeTruthy();
     await expect(stat(path.join(runtimeRoot, "fixtures", "mutations", "core.yaml"))).resolves.toBeTruthy();
@@ -125,6 +127,16 @@ describe("agent workflow bench plugin package", () => {
         }
       );
       expect(corpus.stdout).toContain("36 trajectories");
+      const reliabilityHelp = await execa(
+        path.join(install.pluginPath, "bin", "awb"),
+        ["debug", "reliability", "--help"],
+        {
+          cwd: outsideCwd,
+          env: { ...process.env, AWB_PROJECT_ROOT: "" }
+        }
+      );
+      expect(reliabilityHelp.stdout).toContain("--study");
+      expect(reliabilityHelp.stdout).toContain("--out");
 
       const observerKeys = generateKeyPairSync("ed25519");
       const authorityKeys = generateKeyPairSync("ed25519");

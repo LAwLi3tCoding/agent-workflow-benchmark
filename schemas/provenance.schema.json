@@ -9,8 +9,14 @@
     "generatedAt": { "type": "string" },
     "subject": {
       "type": "object",
-      "required": ["targetId", "contractHash", "contentHash", "git", "variant"],
+      "required": ["attemptId", "targetId", "contractHash", "contentHash", "git", "variant"],
       "properties": {
+        "attemptId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+        },
         "targetId": { "type": "string" },
         "contractHash": { "type": "string" },
         "contentHash": { "type": "string" },
@@ -38,6 +44,7 @@
       "type": "object",
       "required": [
         "suite",
+        "seed",
         "caseSetHash",
         "budgetHash",
         "commandPolicyHash",
@@ -53,6 +60,7 @@
       ],
       "properties": {
         "suite": { "type": "string" },
+        "seed": { "type": "string", "minLength": 1 },
         "caseSetHash": { "type": "string" },
         "budgetHash": { "type": "string" },
         "commandPolicyHash": { "type": "string" },

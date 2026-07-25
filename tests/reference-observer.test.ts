@@ -136,6 +136,7 @@ describe("reference workflow-trace Observer", () => {
           targetId: "fixture-target",
           contractHash: `sha256:${"a".repeat(64)}`,
           suite: "qualification",
+          seed: "reference-observer-test",
           caseSetHash: `sha256:${"b".repeat(64)}`,
           runner: {
             name: "codex",
@@ -263,6 +264,7 @@ describe("reference workflow-trace Observer", () => {
         targetId: "fixture-target",
         contractHash: `sha256:${"a".repeat(64)}`,
         suite: "qualification",
+        seed: "reference-observer-test",
         caseSetHash: `sha256:${"b".repeat(64)}`,
         caseIds: ["known-good"],
         cases: [{ id: "known-good", templateId: "observer-qualification" }]
@@ -271,6 +273,17 @@ describe("reference workflow-trace Observer", () => {
       keyFingerprint: expect.stringMatching(/^sha256:[a-f0-9]{64}$/u),
       eventCount: expect.any(Number)
     });
+    await expect(
+      verifyWorkflowTraceBundle(tracePath, publicKeyPath, {
+        targetId: "fixture-target",
+        contractHash: `sha256:${"a".repeat(64)}`,
+        suite: "qualification",
+        seed: "different-study-seed",
+        caseSetHash: `sha256:${"b".repeat(64)}`,
+        caseIds: ["known-good"],
+        cases: [{ id: "known-good", templateId: "observer-qualification" }]
+      })
+    ).rejects.toThrow("Workflow trace seed does not match");
   }, 30_000);
 
   test("refuses a signing key stored inside the Runner workspace", async () => {
@@ -301,6 +314,7 @@ describe("reference workflow-trace Observer", () => {
               targetId: "fixture-target",
               contractHash: `sha256:${"a".repeat(64)}`,
               suite: "qualification",
+              seed: "reference-observer-test",
               caseSetHash: `sha256:${"b".repeat(64)}`,
               runner: {
                 name: "codex",
@@ -365,6 +379,7 @@ describe("reference workflow-trace Observer", () => {
               targetId: "fixture-target",
               contractHash: `sha256:${"a".repeat(64)}`,
               suite: "qualification",
+              seed: "reference-observer-test",
               caseSetHash: `sha256:${"b".repeat(64)}`,
               runner: {
                 name: "codex",
@@ -443,6 +458,7 @@ describe("reference workflow-trace Observer", () => {
                 targetId: "fixture-target",
                 contractHash: `sha256:${"a".repeat(64)}`,
                 suite: "qualification",
+                seed: "reference-observer-test",
                 caseSetHash: `sha256:${"b".repeat(64)}`,
                 runner: {
                   name: "codex",
@@ -523,6 +539,7 @@ describe("reference workflow-trace Observer", () => {
               targetId: "fixture-target",
               contractHash: `sha256:${"a".repeat(64)}`,
               suite: "qualification",
+              seed: "reference-observer-test",
               caseSetHash: `sha256:${"b".repeat(64)}`,
               runner: {
                 name: "codex",
@@ -637,6 +654,7 @@ describe("reference workflow-trace Observer", () => {
                 targetId: "fixture-target",
                 contractHash: `sha256:${"a".repeat(64)}`,
                 suite: "qualification",
+                seed: "reference-observer-test",
                 caseSetHash: `sha256:${"b".repeat(64)}`,
                 runner: {
                   name: "codex",

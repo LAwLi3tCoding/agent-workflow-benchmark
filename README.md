@@ -320,7 +320,7 @@ target source and do not prove live runner behavior.
 | `compare` | Compare matched baseline and candidate evidence |
 | `gate` | Apply deterministic CI release policy |
 | `score` / `report` | Inspect or render an existing run |
-| `debug ...` | Reverse-validate and diagnose the benchmark harness |
+| `debug ...` | Reverse-validate the harness or analyze repeated-run reliability |
 
 | Artifact | Purpose |
 | --- | --- |
@@ -333,7 +333,9 @@ target source and do not prove live runner behavior.
 | `workflow-trace.json` | Independently signed normalized live trace |
 | `comparison-result.json` | Integrity-bound paired classification |
 | `gate-result.json` | Deterministic release decision |
-| `report.md` | Human-readable diagnosis and recommendations |
+| `report.md` / `reliability-report.*` | Human diagnosis, repeated-run statistics, and quarantine |
+
+Unsigned simulated repeats can report `DIAGNOSTIC_REPRODUCIBLE`, but only stable qualified live `workflow_trace` studies can report a strong `RELIABLE` conclusion.
 
 Run `awb <command> --help` for the complete option set.
 

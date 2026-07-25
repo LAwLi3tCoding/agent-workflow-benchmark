@@ -19,6 +19,7 @@ export interface WorkflowTraceBundle {
     targetId: string;
     contractHash: string;
     suite: string;
+    seed: string;
     caseSetHash: string;
     runner: {
       name: Exclude<RunnerCapability["name"], "simulated">;
@@ -53,6 +54,15 @@ export interface VerifiedWorkflowTrace {
   runs: CaseRun[];
 }
 
+export function workflowTraceAttemptId(traceHash: string): string {
+  if (!/^sha256:[a-f0-9]{64}$/u.test(traceHash)) {
+    throw new Error(
+      "Workflow trace hash cannot derive a valid attempt identity."
+    );
+  }
+  return `trace-${traceHash.slice("sha256:".length)}`;
+}
+
 export async function verifyWorkflowTraceBundle(
   tracePath: string,
   trustedObserverKeyPath: string,
@@ -60,6 +70,7 @@ export async function verifyWorkflowTraceBundle(
     targetId: string;
     contractHash: string;
     suite: string;
+    seed?: string;
     caseSetHash: string;
     caseIds: string[];
     cases?: Array<{ id: string; templateId: string }>;
@@ -103,6 +114,14 @@ export async function verifyWorkflowTraceBundle(
     bundle.subject.suite !== expected.suite
   ) {
     throw new Error("Workflow trace subject does not match the target contract and suite.");
+  }
+  if (
+    expected.seed !== undefined &&
+    bundle.subject.seed !== expected.seed
+  ) {
+    throw new Error(
+      "Workflow trace seed does not match the expected execution conditions."
+    );
   }
   if (bundle.subject.caseSetHash !== expected.caseSetHash) {
     throw new Error("Workflow trace case set hash does not match the materialized benchmark cases.");
@@ -271,6 +290,8 @@ function assertBundleShape(bundle: WorkflowTraceBundle): void {
     typeof bundle.subject.targetId !== "string" ||
     typeof bundle.subject.contractHash !== "string" ||
     typeof bundle.subject.suite !== "string" ||
+    typeof bundle.subject.seed !== "string" ||
+    !bundle.subject.seed ||
     typeof bundle.subject.caseSetHash !== "string" ||
     !bundle.subject.runner ||
     !["codex", "claude", "opencode"].includes(bundle.subject.runner.name) ||

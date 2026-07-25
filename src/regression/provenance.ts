@@ -4,6 +4,7 @@ import { PRODUCT_NAME } from "../core/product.js";
 import { evidenceBoundary, type EvidenceKind, type ObservationLevel } from "../doctor/doctor.js";
 import type { VerifiedWorkflowTrace } from "../observer/workflowTrace.js";
 import type { VerifiedObserverQualification } from "../observer/qualification.js";
+import { getReliabilityPolicy } from "../evaluation/evaluationContract.js";
 import { hashFile, sha256Text, stableJson } from "../utils/hash.js";
 
 export interface RunProvenance {
@@ -11,6 +12,7 @@ export interface RunProvenance {
   product: typeof PRODUCT_NAME;
   generatedAt: string;
   subject: {
+    attemptId: string;
     targetId: string;
     contractHash: string;
     contentHash: string;
@@ -27,6 +29,7 @@ export interface RunProvenance {
   };
   conditions: {
     suite: string;
+    seed: string;
     caseSetHash: string;
     budgetHash: string;
     commandPolicyHash: string;
@@ -70,11 +73,13 @@ export interface RunProvenance {
 export type ObserverQualificationStatus = "missing" | "valid" | "invalid";
 
 export async function buildRunProvenance(options: {
+  attemptId: string;
   profile: ProfileResult;
   cases: BenchmarkCase[];
   suite: string;
   runner: RunnerCapability;
   executionMode: "live" | "simulated";
+  seed?: string;
   model?: string;
   mutation?: MutationInput;
   artifacts: Array<{ ref: string; path: string }>;
@@ -100,6 +105,10 @@ export async function buildRunProvenance(options: {
   };
   const conditionBase = {
     suite: options.suite,
+    seed:
+      options.verifiedTrace?.bundle.subject.seed ??
+      options.seed ??
+      getReliabilityPolicy().defaultSeed,
     caseSetHash: semanticCaseSetHash(options.cases),
     budgetHash: sha256Text(stableJson({ contract: options.profile.contract.budgets, cases: options.cases.map((item) => item.budgets) })),
     commandPolicyHash: sha256Text(stableJson(options.profile.contract.commandPolicy)),
@@ -159,6 +168,7 @@ export async function buildRunProvenance(options: {
     product: PRODUCT_NAME,
     generatedAt: new Date().toISOString(),
     subject: {
+      attemptId: options.attemptId,
       targetId: options.profile.contract.targetId,
       contractHash: options.profile.contract.contractHash,
       contentHash: profileContentHash(options.profile),

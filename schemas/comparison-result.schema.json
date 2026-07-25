@@ -26,7 +26,33 @@
       "required": ["status", "reasons"],
       "properties": {
         "status": { "enum": ["COMPARABLE", "INCOMPARABLE"] },
-        "reasons": { "type": "array", "items": { "type": "string" } }
+        "reasons": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "PROVENANCE_MISSING",
+              "PROVENANCE_INVALID",
+              "TARGET_ID_MISMATCH",
+              "CONTRACT_MISMATCH",
+              "SUITE_MISMATCH",
+              "CASE_SET_MISMATCH",
+              "RUNNER_MISMATCH",
+              "EXECUTION_MODE_MISMATCH",
+              "EVIDENCE_KIND_MISMATCH",
+              "OBSERVATION_LEVEL_MISMATCH",
+              "ISOLATION_MISMATCH",
+              "PERMISSION_MISMATCH",
+              "BUDGET_MISMATCH",
+              "COMMAND_POLICY_MISMATCH",
+              "ENVIRONMENT_MISMATCH",
+              "MODEL_MISMATCH",
+              "OBSERVER_MISMATCH",
+              "SEED_MISMATCH",
+              "CONDITIONS_MISMATCH"
+            ]
+          }
+        }
       }
     },
     "classification": { "enum": ["IMPROVED", "REGRESSED", "UNCHANGED", "MIXED", "HARD_FAILURE", "INCOMPARABLE"] },

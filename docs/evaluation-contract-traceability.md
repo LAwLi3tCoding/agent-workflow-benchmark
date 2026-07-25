@@ -21,9 +21,11 @@ rows are not product capability claims.
 | evidence-trust-ceiling | entrypoints, commandPolicy | static-contract | runner_start, runner_result | oracle-static-contract | runner, GATE-EVIDENCE-NOT-WORKFLOW-TRACE, GATE-OBSERVER-UNQUALIFIED | tests/run-score.test.ts; tests/live-runner.test.ts; tests/workflow-trace.test.ts; tests/compare.test.ts |
 | gold-corpus-detection | roles, owners, routes, joins, artifacts, states, statuses, budgets, command policy | static-contract, forbidden-route, required-owner, skip-not-pass, required-join, side-effect-deny, efficiency-token | lifecycle, handoff, artifact, state, gate, side-effect, token events | canonical deterministic oracles | contract and affected dimensions, GATE-HARD-FAILURE | tests/gold-corpus.test.ts; tests/gold-corpus-cli.test.ts |
 | observer-qualification | entrypoints, commandPolicy | static-contract | filesystem_access, tool_call, process_spawn, network_access, artifact_write, state_read, side_effect_attempt, token_usage | oracle-static-contract | runner, telemetry, GATE-PASS | tests/reference-observer.test.ts; tests/observer-qualification.test.ts; tests/workflow-trace.test.ts |
+| reliability-statistics | budgets, commandPolicy | static-contract | runner_start, runner_result, case_end | oracle-static-contract | telemetry, runner, GATE-INCOMPARABLE, GATE-EVIDENCE-NOT-WORKFLOW-TRACE, GATE-PASS | tests/reliability.test.ts; tests/reliability-statistics.test.ts; tests/reliability-evidence-boundary.test.ts; tests/reliability-schema.test.ts |
 
 ## Backlog boundary
 
-Reliability thresholds, external criterion validity, calibrated policy performance, trend analysis, and adapter conformance are
-not Stage 1 product claims. Their registry or protocol status remains backlog or
-`DIAGNOSTIC_ONLY` until the later stage acceptance evidence exists.
+External criterion validity, calibrated policy performance, trend analysis, and adapter
+conformance remain later-stage claims. Reliability statistics are implemented, but deterministic
+or unqualified studies remain `DIAGNOSTIC_ONLY`; only stable qualified independent live
+`workflow_trace` samples can become gate-eligible.

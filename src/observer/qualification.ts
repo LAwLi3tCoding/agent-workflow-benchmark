@@ -803,6 +803,7 @@ async function runKnownGoodRepeats(options: {
           targetId: options.contract.targetId,
           contractHash: options.contract.contractHash,
           suite: "smoke",
+          seed: "observer-qualification-v1",
           caseSetHash: options.caseSetHash,
           runner: {
             name: "codex",
@@ -860,6 +861,7 @@ async function runKnownGoodRepeats(options: {
         targetId: options.contract.targetId,
         contractHash: options.contract.contractHash,
         suite: "smoke",
+        seed: "observer-qualification-v1",
         caseSetHash: options.caseSetHash,
         caseIds: ["qualification-known-good"],
         cases: [
@@ -910,6 +912,7 @@ async function runObserverMutationChecks(options: {
     targetId: options.verified.bundle.subject.targetId,
     contractHash: options.verified.bundle.subject.contractHash,
     suite: options.verified.bundle.subject.suite,
+    seed: options.verified.bundle.subject.seed,
     caseSetHash: options.verified.bundle.subject.caseSetHash,
     caseIds: options.verified.bundle.cases.map((item) => item.caseId),
     cases: options.verified.bundle.cases.map((item) => ({

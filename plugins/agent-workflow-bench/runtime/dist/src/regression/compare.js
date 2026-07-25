@@ -1,6 +1,6 @@
 import { access, copyFile, mkdir, rm } from "node:fs/promises";
 import path from "node:path";
-import { verifyWorkflowTraceBundle } from "../observer/workflowTrace.js";
+import { verifyWorkflowTraceBundle, workflowTraceAttemptId } from "../observer/workflowTrace.js";
 import { assertQualifiedWorkflowTraceEvidence, verifyObserverQualificationArtifact } from "../observer/qualification.js";
 import { PRODUCT_NAME } from "../core/product.js";
 import { hashFile, sha256Text, stableJson } from "../utils/hash.js";
@@ -328,6 +328,7 @@ async function validateProvenance(runDir, suitePath, suite, provenance, options)
                 targetId: provenance.subject.targetId,
                 contractHash: provenance.subject.contractHash,
                 suite: provenance.conditions.suite,
+                seed: provenance.conditions.seed,
                 caseSetHash: provenance.conditions.caseSetHash,
                 caseIds: suite.caseResults.map((item) => item.caseId),
                 runner: {
@@ -391,14 +392,24 @@ function validateRuntimeManifest(runtime, suite, provenance, verifiedTrace, veri
         typeof runtime.runner.capabilitiesHash !== "string" ||
         !["live", "simulated"].includes(runtime.runner.executionMode) ||
         typeof runtime.dryRun !== "boolean" ||
+        typeof runtime.attemptId !== "string" ||
+        !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u.test(runtime.attemptId) ||
+        typeof runtime.seed !== "string" ||
+        !runtime.seed ||
         typeof runtime.contractHash !== "string" ||
         !Number.isInteger(runtime.caseCount) ||
         runtime.caseCount < 0) {
         return "runtime-manifest.json is missing required execution facts.";
     }
-    if (runtime.contractHash !== provenance.subject.contractHash ||
-        runtime.caseCount !== suite.caseResults.length) {
+    if (runtime.attemptId !== provenance.subject.attemptId ||
+        runtime.contractHash !== provenance.subject.contractHash ||
+        runtime.caseCount !== suite.caseResults.length ||
+        runtime.seed !== provenance.conditions.seed) {
         return "Runtime manifest subject does not match suite/provenance evidence.";
+    }
+    if (verifiedTrace &&
+        runtime.attemptId !== workflowTraceAttemptId(verifiedTrace.traceHash)) {
+        return "Workflow trace attempt identity does not match signed evidence.";
     }
     if (runtime.runner.executionMode !== provenance.conditions.executionMode) {
         return "Runtime execution mode does not match provenance.";
@@ -584,6 +595,8 @@ function comparisonReasons(baseline, candidate) {
         reasons.push("MODEL_MISMATCH");
     if (stableJson(left.conditions.observer) !== stableJson(right.conditions.observer))
         reasons.push("OBSERVER_MISMATCH");
+    if (left.conditions.seed !== right.conditions.seed)
+        reasons.push("SEED_MISMATCH");
     if (left.conditions.conditionsHash !== right.conditions.conditionsHash && reasons.length === 0)
         reasons.push("CONDITIONS_MISMATCH");
     return reasons;

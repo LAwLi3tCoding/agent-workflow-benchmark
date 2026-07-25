@@ -162,6 +162,7 @@ export interface MaterializedSuite {
     suite: string;
     contractHash: string;
     generatedAt: string;
+    seed: string;
     caseIds: string[];
     generation?: {
       mode: "template" | "ai-first";

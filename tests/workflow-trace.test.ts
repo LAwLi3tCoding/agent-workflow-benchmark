@@ -692,6 +692,65 @@ describe("attested workflow trace ingestion", () => {
       expect.arrayContaining([expect.objectContaining({ code: "PROVENANCE_INVALID", source: "candidate" })])
     );
   }, 30_000);
+
+  test("signed trace replay identity cannot be rewritten through unsigned manifests", async () => {
+    const baselineOut = path.join(root, "baseline-attempt-binding");
+    const candidateOut = path.join(root, "candidate-attempt-binding");
+    await ingestTrace(baselineTracePath, publicKeyPath, baselineOut);
+    await ingestTrace(candidateTracePath, publicKeyPath, candidateOut);
+
+    const runtimePath = path.join(
+      candidateOut,
+      "runtime-manifest.json"
+    );
+    const provenancePath = path.join(candidateOut, "provenance.json");
+    const runtime = JSON.parse(await readFile(runtimePath, "utf8"));
+    const provenance = JSON.parse(await readFile(provenancePath, "utf8"));
+    runtime.attemptId = "trace-rewritten-attempt";
+    provenance.subject.attemptId = runtime.attemptId;
+    await writeFile(
+      runtimePath,
+      `${JSON.stringify(runtime, null, 2)}\n`
+    );
+    provenance.integrity.artifacts.find(
+      (artifact: { ref: string }) =>
+        artifact.ref === "runtime-manifest.json"
+    ).sha256 = await sha256File(runtimePath);
+    await writeFile(
+      provenancePath,
+      `${JSON.stringify(provenance, null, 2)}\n`
+    );
+
+    const comparisonOut = path.join(root, "comparison-attempt-binding");
+    await execa(
+      "node",
+      [
+        "--import",
+        "tsx",
+        "src/cli/index.ts",
+        "compare",
+        "--baseline",
+        baselineOut,
+        "--candidate",
+        candidateOut,
+        "--trusted-observer-key",
+        publicKeyPath,
+        "--out",
+        comparisonOut
+      ],
+      { cwd }
+    );
+    const comparison = JSON.parse(
+      await readFile(
+        path.join(comparisonOut, "comparison-result.json"),
+        "utf8"
+      )
+    );
+    expect(comparison.classification).toBe("HARD_FAILURE");
+    expect(comparison.comparability.reasons).toContain(
+      "PROVENANCE_INVALID"
+    );
+  }, 30_000);
 });
 
 async function ingestTrace(
@@ -881,6 +940,7 @@ function makeTracePayload(targetId: string, contractHash: string, cases: Benchma
       targetId,
       contractHash,
       suite: "smoke",
+      seed: "workflow-trace-test",
       caseSetHash: semanticCaseSetHash(cases),
       runner,
       isolation: "read_only_sandbox",

@@ -25,6 +25,14 @@ awb gate --comparison <comparison-dir>/comparison-result.json --out <gate-dir>
 
 Gate exit codes are `0` for PASS, `2` for `DIAGNOSTIC_ONLY`, and `1` for BLOCK or tool/runtime failure. PASS requires a qualified independent live `workflow_trace`. Simulated runs, current live `contract-summary` adapters, and signed traces without a valid Observer qualification artifact are diagnostic-only. Comparison ignores self-asserted `valid` metadata unless the authority-signed artifact verifies.
 
+For repeated-run reliability diagnostics, use a manifest of matched baseline/candidate run pairs:
+
+```bash
+awb debug reliability --study <reliability-study.json> --out <reliability-dir>
+```
+
+The report includes deterministic reproducibility, live A/A stability, variance, missing rate, telemetry completeness, attempt-identity and duplicate-evidence quarantine, fixed-context drift, P0 detection rate, and gate eligibility. Live attempt identity is derived from the signed trace hash. Simulated consistency is `DIAGNOSTIC_REPRODUCIBLE` with no strong conclusion; this layer never upgrades simulated or unqualified evidence into release PASS.
+
 Qualify the reference Observer without changing any trust root:
 
 ```bash

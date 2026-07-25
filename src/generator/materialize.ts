@@ -1,12 +1,19 @@
 import type { AiCasePlan, BenchmarkCase, ContractModel, MaterializedSuite } from "../core/types.js";
-import { getImplementedOracles } from "../evaluation/evaluationContract.js";
+import {
+  getImplementedOracles,
+  getReliabilityPolicy
+} from "../evaluation/evaluationContract.js";
 import { sha256Text, stableJson } from "../utils/hash.js";
 import { publicAiCasePlan } from "../utils/redaction.js";
 import { normalizeCaseId } from "./caseIds.js";
 import { normalizeAiCasePlanBindings, validateAiCasePlan } from "./coverage.js";
 
-export function materializeSmokeSuite(contract: ContractModel, options: { suite?: string } = {}): MaterializedSuite {
+export function materializeSmokeSuite(
+  contract: ContractModel,
+  options: { suite?: string; seed?: string } = {}
+): MaterializedSuite {
   const suiteName = options.suite ?? "smoke";
+  const seed = options.seed ?? getReliabilityPolicy().defaultSeed;
   const templates = getImplementedOracles();
   const cases = templates.map((oracle, index) =>
     makeCase(
@@ -33,6 +40,7 @@ export function materializeSmokeSuite(contract: ContractModel, options: { suite?
       suite: suiteName,
       contractHash: contract.contractHash,
       generatedAt: new Date(0).toISOString(),
+      seed,
       caseIds: cases.map((testCase) => testCase.id)
     }
   };
@@ -40,9 +48,17 @@ export function materializeSmokeSuite(contract: ContractModel, options: { suite?
 
 export function materializeAiSuite(
   contract: ContractModel,
-  options: { planner: string; model?: string; plan: AiCasePlan; suite?: string; sensitiveValues?: string[] }
+  options: {
+    planner: string;
+    model?: string;
+    plan: AiCasePlan;
+    suite?: string;
+    seed?: string;
+    sensitiveValues?: string[];
+  }
 ): MaterializedSuite {
   const suiteName = options.suite ?? "smoke";
+  const seed = options.seed ?? getReliabilityPolicy().defaultSeed;
   const normalizedPlan = publicAiCasePlan(
     normalizeAiCasePlanBindings(options.plan, contract),
     { values: options.sensitiveValues }
@@ -67,6 +83,7 @@ export function materializeAiSuite(
       suite: suiteName,
       contractHash: contract.contractHash,
       generatedAt: new Date(0).toISOString(),
+      seed,
       caseIds: cases.map((testCase) => testCase.id),
       generation: {
         mode: "ai-first",

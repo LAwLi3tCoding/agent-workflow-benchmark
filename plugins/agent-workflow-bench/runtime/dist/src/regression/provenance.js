@@ -1,6 +1,7 @@
 import { execa } from "execa";
 import { PRODUCT_NAME } from "../core/product.js";
 import { evidenceBoundary } from "../doctor/doctor.js";
+import { getReliabilityPolicy } from "../evaluation/evaluationContract.js";
 import { hashFile, sha256Text, stableJson } from "../utils/hash.js";
 export async function buildRunProvenance(options) {
     const effectiveRunner = effectiveRunnerIdentity(options.runner, options.executionMode);
@@ -20,6 +21,9 @@ export async function buildRunProvenance(options) {
     };
     const conditionBase = {
         suite: options.suite,
+        seed: options.verifiedTrace?.bundle.subject.seed ??
+            options.seed ??
+            getReliabilityPolicy().defaultSeed,
         caseSetHash: semanticCaseSetHash(options.cases),
         budgetHash: sha256Text(stableJson({ contract: options.profile.contract.budgets, cases: options.cases.map((item) => item.budgets) })),
         commandPolicyHash: sha256Text(stableJson(options.profile.contract.commandPolicy)),
@@ -73,6 +77,7 @@ export async function buildRunProvenance(options) {
         product: PRODUCT_NAME,
         generatedAt: new Date().toISOString(),
         subject: {
+            attemptId: options.attemptId,
             targetId: options.profile.contract.targetId,
             contractHash: options.profile.contract.contractHash,
             contentHash: profileContentHash(options.profile),

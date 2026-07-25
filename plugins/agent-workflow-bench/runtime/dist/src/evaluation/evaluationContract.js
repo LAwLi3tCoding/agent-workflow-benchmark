@@ -26,6 +26,9 @@ export function getImplementedDimensions() {
 export function getScorePolicy() {
     return getEvaluationContract().scorePolicy;
 }
+export function getReliabilityPolicy() {
+    return getEvaluationContract().reliabilityPolicy;
+}
 export function getHardFailureDefinition(code) {
     return getEvaluationContract().hardFailures.find((item) => item.code === code && item.status === "implemented");
 }
@@ -43,6 +46,19 @@ function assertEvaluationContract(contract) {
         contract.schemaVersion !== "0.1.0" ||
         contract.contractId !== "agent-workflow-bench-evaluation-contract") {
         throw new Error("Canonical evaluation contract is missing or unsupported.");
+    }
+    const reliability = contract.reliabilityPolicy;
+    if (!reliability ||
+        reliability.deterministicMinimumSamples !== 5 ||
+        reliability.liveMinimumSamples !== 20 ||
+        reliability.gateConsistencyMinimum !== 0.95 ||
+        reliability.caseConsistencyMinimum !== 0.95 ||
+        reliability.maximumMissingRate !== 0 ||
+        reliability.minimumTelemetryCompleteness !== 0.75 ||
+        reliability.confidenceLevel !== 0.95 ||
+        reliability.bootstrapIterations !== 2000 ||
+        reliability.defaultSeed !== "awb-default-seed-v1") {
+        throw new Error("Canonical evaluation contract reliability policy is invalid or weakens frozen thresholds.");
     }
     for (const [label, ids] of [
         ["event", contract.events.map((item) => item.id)],

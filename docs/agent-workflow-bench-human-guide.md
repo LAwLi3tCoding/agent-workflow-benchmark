@@ -302,6 +302,21 @@ Gate exit code 固定为：
 
 这些指标不直接给被测 workflow 加减分。它们衡量的是 benchmark 工具自身是否可信。benchmark 版本发布前，核心 mutation set 必须达到目标 kill rate；P0 hard failure mutation 出现 false negative 时，该 benchmark 版本不能用于准入 gate，只能用于诊断。
 
+重复运行的可靠性使用独立的 `reliability-study.json`，每个 sample 都声明匹配的
+baseline/candidate 相对路径和固定 seed，然后执行
+`awb debug reliability --study <study.json> --out <dir>`。报告保留全部请求过的
+attempt，并给出 gate/case 一致性、A/A unchanged rate、维度方差、paired delta、
+missing rate、telemetry completeness、Wilson/bootstrap 区间、P0 detection rate、
+固定上下文漂移和重复证据数量。低于冻结样本数、出现缺失或 summary-only evidence
+时拒绝 strong conclusion；不稳定 case、上下文漂移或重复 evidence 进入 quarantine，
+不能靠删除失败样本恢复通过。每次运行的 attempt identity 同时绑定 runtime manifest
+与 provenance，报告只暴露其哈希；重复 identity 会被 quarantine。Live identity 从
+签名 trace hash 派生，simulated replay 检测仅用于诊断。即使 deterministic simulated
+study 达到 100%，结论也只是 `DIAGNOSTIC_REPRODUCIBLE`，并保持
+`strongConclusionAllowed: false` 与 `DIAGNOSTIC_ONLY`；只有稳定且已认证的独立
+live `workflow_trace` study 才能成为
+gate-eligible evidence。
+
 ## 11. 建设阶段
 
 ### MVP

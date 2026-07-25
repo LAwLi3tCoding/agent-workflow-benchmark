@@ -60,6 +60,17 @@ interface EvaluationContractFixture {
     suiteConditionalMinimum: number;
     telemetryMinimum: number;
   };
+  reliabilityPolicy: {
+    deterministicMinimumSamples: number;
+    liveMinimumSamples: number;
+    gateConsistencyMinimum: number;
+    caseConsistencyMinimum: number;
+    maximumMissingRate: number;
+    minimumTelemetryCompleteness: number;
+    confidenceLevel: number;
+    bootstrapIterations: number;
+    defaultSeed: string;
+  };
 }
 
 describe("canonical evaluation contract", () => {
@@ -69,6 +80,9 @@ describe("canonical evaluation contract", () => {
     const suiteSchema = await readJson("schemas/suite-result.schema.json");
     const comparisonSchema = await readJson("schemas/comparison-result.schema.json");
     const gateSchema = await readJson("schemas/gate-result.schema.json");
+    const evaluationContractSchema = await readJson(
+      "schemas/evaluation-contract.schema.json"
+    );
 
     expect(contract.schemaVersion).toBe("0.1.0");
     expect(contract.models).toEqual({
@@ -94,6 +108,25 @@ describe("canonical evaluation contract", () => {
       suiteConditionalMinimum: 70,
       telemetryMinimum: 0.75
     });
+    const frozenReliabilityPolicy = {
+      deterministicMinimumSamples: 5,
+      liveMinimumSamples: 20,
+      gateConsistencyMinimum: 0.95,
+      caseConsistencyMinimum: 0.95,
+      maximumMissingRate: 0,
+      minimumTelemetryCompleteness: 0.75,
+      confidenceLevel: 0.95,
+      bootstrapIterations: 2000,
+      defaultSeed: "awb-default-seed-v1"
+    };
+    expect(contract.reliabilityPolicy).toEqual(frozenReliabilityPolicy);
+    expect(
+      Object.fromEntries(
+        Object.entries(
+          evaluationContractSchema.properties.reliabilityPolicy.properties
+        ).map(([key, value]) => [key, (value as { const?: unknown }).const])
+      )
+    ).toEqual(frozenReliabilityPolicy);
     expectUnique(contract.events.map((item) => item.id));
     expectUnique(contract.oracles.map((item) => item.id));
     expectUnique(contract.hardFailures.map((item) => item.code));

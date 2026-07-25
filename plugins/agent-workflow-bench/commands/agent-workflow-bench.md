@@ -12,6 +12,14 @@ awb compare --baseline <baseline-run> --candidate <candidate-run> --out reports/
 awb gate --comparison reports/comparisons/"$ARGUMENTS"/comparison-result.json --out reports/gates/"$ARGUMENTS"
 ```
 
+For repeated-run reliability diagnostics, write a `reliability-study.json` with matched baseline/candidate pairs and run:
+
+```bash
+awb debug reliability --study <reliability-study.json> --out reports/reliability/"$ARGUMENTS"
+```
+
+Reliability reports preserve every requested attempt and quarantine unstable or duplicated evidence. Unsigned simulated repeats can only produce `DIAGNOSTIC_REPRODUCIBLE`; only stable qualified live `workflow_trace` studies can produce a strong `RELIABLE` conclusion and become gate-eligible.
+
 Gate exit codes are `0` for PASS, `2` for DIAGNOSTIC_ONLY, and `1` for BLOCK or tool/runtime failure. PASS requires a qualified independent live `workflow_trace`. Simulated runs, current live `contract-summary` adapters, and signed traces without a valid authority-signed qualification artifact are diagnostic-only.
 
 Qualify the reference Observer first. This writes evidence and an integrity-bound artifact but never changes a trust root:

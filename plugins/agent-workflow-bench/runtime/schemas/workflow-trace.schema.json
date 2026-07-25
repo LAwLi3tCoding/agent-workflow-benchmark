@@ -37,6 +37,7 @@
         "targetId",
         "contractHash",
         "suite",
+        "seed",
         "caseSetHash",
         "runner",
         "isolation",
@@ -46,6 +47,7 @@
         "targetId": { "type": "string", "minLength": 1 },
         "contractHash": { "type": "string", "minLength": 1 },
         "suite": { "type": "string", "minLength": 1 },
+        "seed": { "type": "string", "minLength": 1 },
         "caseSetHash": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
         "runner": {
           "type": "object",

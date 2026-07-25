@@ -1,7 +1,11 @@
 import { access, copyFile, mkdir, rm } from "node:fs/promises";
 import path from "node:path";
 import type { HardFailure, MutationInput, RunnerCapability, SuiteResult } from "../core/types.js";
-import { verifyWorkflowTraceBundle, type VerifiedWorkflowTrace } from "../observer/workflowTrace.js";
+import {
+  verifyWorkflowTraceBundle,
+  workflowTraceAttemptId,
+  type VerifiedWorkflowTrace
+} from "../observer/workflowTrace.js";
 import {
   assertQualifiedWorkflowTraceEvidence,
   verifyObserverQualificationArtifact,
@@ -33,6 +37,7 @@ export type ComparisonReason =
   | "ENVIRONMENT_MISMATCH"
   | "MODEL_MISMATCH"
   | "OBSERVER_MISMATCH"
+  | "SEED_MISMATCH"
   | "CONDITIONS_MISMATCH";
 
 export interface ComparisonCaseDelta {
@@ -117,6 +122,7 @@ interface LoadedRun {
 }
 
 interface RuntimeManifest {
+  attemptId: string;
   runner: {
     name: RunnerCapability["name"];
     supported: boolean;
@@ -126,6 +132,7 @@ interface RuntimeManifest {
     executionMode: RunnerCapability["executionMode"];
   };
   dryRun: boolean;
+  seed: string;
   contractHash: string;
   caseCount: number;
   skippedCaseCount?: number;
@@ -532,6 +539,7 @@ async function validateProvenance(
           targetId: provenance.subject.targetId,
           contractHash: provenance.subject.contractHash,
           suite: provenance.conditions.suite,
+          seed: provenance.conditions.seed,
           caseSetHash: provenance.conditions.caseSetHash,
           caseIds: suite.caseResults.map((item) => item.caseId),
           runner: {
@@ -622,6 +630,10 @@ function validateRuntimeManifest(
     typeof runtime.runner.capabilitiesHash !== "string" ||
     !["live", "simulated"].includes(runtime.runner.executionMode) ||
     typeof runtime.dryRun !== "boolean" ||
+    typeof runtime.attemptId !== "string" ||
+    !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u.test(runtime.attemptId) ||
+    typeof runtime.seed !== "string" ||
+    !runtime.seed ||
     typeof runtime.contractHash !== "string" ||
     !Number.isInteger(runtime.caseCount) ||
     runtime.caseCount < 0
@@ -629,10 +641,18 @@ function validateRuntimeManifest(
     return "runtime-manifest.json is missing required execution facts.";
   }
   if (
+    runtime.attemptId !== provenance.subject.attemptId ||
     runtime.contractHash !== provenance.subject.contractHash ||
-    runtime.caseCount !== suite.caseResults.length
+    runtime.caseCount !== suite.caseResults.length ||
+    runtime.seed !== provenance.conditions.seed
   ) {
     return "Runtime manifest subject does not match suite/provenance evidence.";
+  }
+  if (
+    verifiedTrace &&
+    runtime.attemptId !== workflowTraceAttemptId(verifiedTrace.traceHash)
+  ) {
+    return "Workflow trace attempt identity does not match signed evidence.";
   }
   if (runtime.runner.executionMode !== provenance.conditions.executionMode) {
     return "Runtime execution mode does not match provenance.";
@@ -820,6 +840,7 @@ function comparisonReasons(baseline: LoadedRun, candidate: LoadedRun): Compariso
   if (left.conditions.environmentHash !== right.conditions.environmentHash) reasons.push("ENVIRONMENT_MISMATCH");
   if (left.conditions.model !== right.conditions.model) reasons.push("MODEL_MISMATCH");
   if (stableJson(left.conditions.observer) !== stableJson(right.conditions.observer)) reasons.push("OBSERVER_MISMATCH");
+  if (left.conditions.seed !== right.conditions.seed) reasons.push("SEED_MISMATCH");
   if (left.conditions.conditionsHash !== right.conditions.conditionsHash && reasons.length === 0) reasons.push("CONDITIONS_MISMATCH");
   return reasons;
 }

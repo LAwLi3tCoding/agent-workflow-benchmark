@@ -2,6 +2,7 @@ import { Command } from "commander";
 import { Ajv2020 } from "ajv/dist/2020.js";
 import { access, appendFile, copyFile, readdir, readFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
+import { randomUUID } from "node:crypto";
 import path from "node:path";
 import YAML from "yaml";
 import { getBenchmarkRoot, listTargetIds, loadTargetPack } from "../core/targetRegistry.js";
@@ -20,14 +21,16 @@ import { ensureDir, readJson, readYaml, writeJson, writeYaml } from "../utils/io
 import { AWB_VERSION, CLI_NAME, PRODUCT_NAME, PRODUCT_TAGLINE } from "../core/product.js";
 import { diagnoseWorkflow, renderDoctorReport } from "../doctor/doctor.js";
 import { buildRunProvenance, publicRunnerCapability, semanticCaseSetHash } from "../regression/provenance.js";
-import { verifyWorkflowTraceBundle } from "../observer/workflowTrace.js";
+import { verifyWorkflowTraceBundle, workflowTraceAttemptId } from "../observer/workflowTrace.js";
 import { assertQualifiedWorkflowTraceEvidence, runReferenceObserverQualification, verifyObserverQualificationArtifact } from "../observer/qualification.js";
 import { observeWithReferenceObserver } from "../observer/referenceObserver.js";
 import { createComparisonBundle, renderComparisonReport, verifyComparisonBundle } from "../regression/compare.js";
 import { evaluateGate, gateExitCode, renderGateReport } from "../regression/gate.js";
-import { getEvaluationContract } from "../evaluation/evaluationContract.js";
+import { getEvaluationContract, getReliabilityPolicy } from "../evaluation/evaluationContract.js";
 import { DEFAULT_GOLD_CORPUS_PATH, evaluateGoldCorpus, loadGoldCorpus, loadGoldCorpusPlannerView } from "../evaluation/goldCorpus.js";
 import { profileEvidenceSensitiveValues, publicAiCasePlan, publicProfileEvidence } from "../utils/redaction.js";
+import { renderReliabilityMarkdown } from "../reliability/reliability.js";
+import { runReliabilityStudy } from "../reliability/study.js";
 const program = new Command();
 program.name(CLI_NAME).description(`${PRODUCT_NAME} — ${PRODUCT_TAGLINE}`).version(AWB_VERSION);
 program
@@ -177,6 +180,7 @@ program
     .option("--coverage-mode <mode>", "smoke, full, or adaptive")
     .option("--strategy <strategy>", "template or ai", "template")
     .option("--ai-plan <path>", "AI planner JSON artifact for --strategy ai")
+    .option("--seed <seed>", "recorded deterministic study seed", getReliabilityPolicy().defaultSeed)
     .requiredOption("--out <dir>")
     .action(async (options) => {
     const profile = await profileTarget(await loadTargetPack(options.target, { rootOverride: options.targetRoot }));
@@ -192,9 +196,13 @@ program
             model: aiPlan.model,
             plan: aiPlan,
             suite: options.suite,
+            seed: options.seed,
             sensitiveValues
         })
-        : materializeSmokeSuite(profile.contract, { suite: options.suite });
+        : materializeSmokeSuite(profile.contract, {
+            suite: options.suite,
+            seed: options.seed
+        });
     await ensureDir(options.out);
     if (aiPlan) {
         const coverageMode = options.coverageMode ? normalizeCoverageMode(options.coverageMode) : aiPlan.coverageMode ?? "smoke";
@@ -217,6 +225,7 @@ program
     .option("--runner <id>", "runner id", "codex")
     .option("--execution <mode>", "simulated, live, or auto", "simulated")
     .option("--live-model <model>", "model for live Codex execution")
+    .option("--seed <seed>", "recorded execution and reliability-study seed", getReliabilityPolicy().defaultSeed)
     .option("--timeout-ms <ms>", "live runner timeout in milliseconds", "120000")
     .option("--mode <mode>", "gate or diagnostic", "diagnostic")
     .option("--mutation <path>", "simulated mutation overlay to inject into each case")
@@ -225,6 +234,7 @@ program
     .option("--dry-run", "prepare without external runner", false)
     .action(async (options) => {
     const runDir = options.out ?? path.join("reports/runs", `run-${Date.now()}`);
+    const attemptId = `attempt-${randomUUID()}`;
     await ensureDir(runDir);
     const { target, profile, contract, cases } = await resolveRunInputs(options);
     const runnerCapability = await detectRunnerCapability(normalizeRunnerName(options.runner));
@@ -243,12 +253,14 @@ program
         await writeP0CaseArtifacts(runDir, suiteResult, options.p0CaseLog);
         const runtimeManifestPath = path.join(runDir, "runtime-manifest.json");
         await writeJson(runtimeManifestPath, {
+            attemptId,
             runner: {
                 ...publicRunnerCapability(runnerCapability),
                 executionMode
             },
             mode: options.mode,
             dryRun: true,
+            seed: options.seed,
             contractHash: contract.contractHash,
             caseCount: 0,
             skippedCaseCount: cases.length,
@@ -256,11 +268,13 @@ program
             mutation
         });
         await writeJson(path.join(runDir, "provenance.json"), await buildRunProvenance({
+            attemptId,
             profile,
             cases,
             suite: options.suite,
             runner: runnerCapability,
             executionMode,
+            seed: options.seed,
             model: options.liveModel,
             mutation,
             artifacts: [
@@ -297,12 +311,14 @@ program
     await writeP0CaseArtifacts(runDir, suiteResult, options.p0CaseLog);
     const runtimeManifestPath = path.join(runDir, "runtime-manifest.json");
     await writeJson(runtimeManifestPath, {
+        attemptId,
         runner: {
             ...publicRunnerCapability(runnerCapability),
             executionMode
         },
         mode: options.mode,
         dryRun: options.dryRun,
+        seed: options.seed,
         contractHash: contract.contractHash,
         caseCount: cases.length,
         liveTranscriptCount,
@@ -310,11 +326,13 @@ program
         mutation
     });
     await writeJson(path.join(runDir, "provenance.json"), await buildRunProvenance({
+        attemptId,
         profile,
         cases,
         suite: options.suite,
         runner: runnerCapability,
         executionMode,
+        seed: options.seed,
         model: options.liveModel,
         mutation,
         artifacts: [
@@ -351,6 +369,7 @@ program
         caseIds: cases.map((testCase) => testCase.id),
         cases: cases.map((testCase) => ({ id: testCase.id, templateId: testCase.templateId }))
     });
+    const attemptId = workflowTraceAttemptId(verifiedTrace.traceHash);
     const verifiedQualification = await resolveObserverQualification(options, verifiedTrace, contract.contractHash, semanticCaseSetHash(cases));
     const runnerCapability = workflowTraceRunnerCapability(verifiedTrace.bundle.subject.runner);
     const runByCaseId = new Map(verifiedTrace.runs.map((run) => [run.caseId, run]));
@@ -385,12 +404,14 @@ program
     }
     const runtimeManifestPath = path.join(options.out, "runtime-manifest.json");
     await writeJson(runtimeManifestPath, {
+        attemptId,
         runner: {
             ...publicRunnerCapability(runnerCapability),
             executionMode: "live"
         },
         mode: "diagnostic",
         dryRun: false,
+        seed: verifiedTrace.bundle.subject.seed,
         contractHash: contract.contractHash,
         caseCount: cases.length,
         liveTranscriptCount: 0,
@@ -417,6 +438,7 @@ program
         }
     });
     await writeJson(path.join(options.out, "provenance.json"), await buildRunProvenance({
+        attemptId,
         profile,
         cases,
         suite: options.suite,
@@ -451,6 +473,7 @@ program
     .option("--suite <name>", "suite name", "smoke")
     .option("--execution <mode>", "simulated, live, or auto", "simulated")
     .option("--live-model <model>", "model for live Codex/Claude planning or execution")
+    .option("--seed <seed>", "recorded execution and reliability-study seed", getReliabilityPolicy().defaultSeed)
     .option("--timeout-ms <ms>", "AI planner and live runner timeout in milliseconds", "120000")
     .option("--max-cases <n>", "maximum AI cases to request")
     .option("--mutation <path>", "simulated mutation overlay to inject into each case")
@@ -462,6 +485,7 @@ program
     const planDir = path.join(outDir, "ai-plan");
     const casesDir = path.join(outDir, "cases");
     const runDir = path.join(outDir, "run");
+    const attemptId = `attempt-${randomUUID()}`;
     const timeoutMs = parsePositiveInt(options.timeoutMs, "--timeout-ms");
     const coverageMode = normalizeCoverageMode(options.coverageMode);
     const executionMode = normalizeExecutionMode(options.execution);
@@ -500,6 +524,7 @@ program
         model: aiPlanRun.plan.model,
         plan: aiPlanRun.plan,
         suite: options.suite,
+        seed: options.seed,
         sensitiveValues: profileEvidenceSensitiveValues(profile.evidence)
     });
     await ensureDir(casesDir);
@@ -540,12 +565,14 @@ program
     await writeP0CaseArtifacts(runDir, suiteResult, options.p0CaseLog ?? path.join(outDir, "p0-cases.jsonl"));
     const runtimeManifestPath = path.join(runDir, "runtime-manifest.json");
     await writeJson(runtimeManifestPath, {
+        attemptId,
         runner: {
             ...publicRunnerCapability(runnerCapability),
             executionMode
         },
         mode: "diagnostic",
         dryRun: false,
+        seed: options.seed,
         contractHash: profile.contract.contractHash,
         caseCount: suite.cases.length,
         liveTranscriptCount,
@@ -554,11 +581,13 @@ program
     });
     await writeReport(path.join(runDir, "report.md"), suiteResult);
     await writeJson(path.join(runDir, "provenance.json"), await buildRunProvenance({
+        attemptId,
         profile,
         cases: suite.cases,
         suite: options.suite,
         runner: runnerCapability,
         executionMode,
+        seed: options.seed,
         model: options.liveModel,
         mutation,
         artifacts: [
@@ -572,6 +601,7 @@ program
         targetId: profile.contract.targetId,
         contractHash: profile.contract.contractHash,
         suite: options.suite,
+        seed: options.seed,
         coverageMode,
         caseCount: suite.cases.length,
         releaseDecision: suiteResult.releaseDecision,
@@ -675,6 +705,27 @@ program
     console.log(`report written: ${options.run}`);
 });
 const debug = program.command("debug");
+debug
+    .command("reliability")
+    .description("Analyze repeated matched runs for diagnostic reliability and quarantine risk")
+    .requiredOption("--study <path>", "reliability-study.json")
+    .option("--trusted-observer-key <path>", "trusted Ed25519 observer public key for workflow_trace evidence")
+    .option("--trusted-qualification-key <path>", "trusted Ed25519 qualification authority public key")
+    .requiredOption("--out <dir>")
+    .action(async (options) => {
+    const report = await runReliabilityStudy(await resolveExistingPath(options.study), {
+        trustedObserverKeyPath: options.trustedObserverKey
+            ? await resolveExistingPath(options.trustedObserverKey)
+            : undefined,
+        trustedQualificationKeyPath: options.trustedQualificationKey
+            ? await resolveExistingPath(options.trustedQualificationKey)
+            : undefined
+    });
+    await writeJson(path.join(options.out, "reliability-report.json"), report);
+    await writeReportFile(path.join(options.out, "reliability-report.md"), renderReliabilityMarkdown(report));
+    console.log(`reliability report written: ${options.out}`);
+    process.exitCode = reliabilityExitCode(report);
+});
 const goldCorpus = program.command("gold-corpus");
 goldCorpus
     .command("validate")
@@ -1129,6 +1180,8 @@ async function validateSchemasAndTargets() {
     let validateGoldCorpusTrajectories;
     let validateGoldCorpusLabels;
     let validateObserverQualification;
+    let validateReliabilityStudy;
+    let validateReliabilityReport;
     for (const file of schemaFiles) {
         const schema = JSON.parse(await readFile(path.join(schemaDir, file), "utf8"));
         const validate = ajv.compile(schema);
@@ -1159,6 +1212,12 @@ async function validateSchemasAndTargets() {
         if (file === "observer-qualification.schema.json") {
             validateObserverQualification = validate;
         }
+        if (file === "reliability-study.schema.json") {
+            validateReliabilityStudy = validate;
+        }
+        if (file === "reliability-report.schema.json") {
+            validateReliabilityReport = validate;
+        }
     }
     if (!validateTarget) {
         throw new Error("target-pack.schema.json missing");
@@ -1174,6 +1233,9 @@ async function validateSchemasAndTargets() {
     }
     if (!validateObserverQualification) {
         throw new Error("observer-qualification.schema.json missing");
+    }
+    if (!validateReliabilityStudy || !validateReliabilityReport) {
+        throw new Error("Reliability schemas are missing.");
     }
     if (!validateGoldCorpus ||
         !validateGoldCorpusBase ||
@@ -1256,7 +1318,10 @@ async function resolveRunInputs(options) {
     }
     const target = await loadTargetPack(options.target, { rootOverride: options.targetRoot });
     const profile = await profileTarget(target);
-    const suite = materializeSmokeSuite(profile.contract, { suite: options.suite });
+    const suite = materializeSmokeSuite(profile.contract, {
+        suite: options.suite,
+        seed: options.seed
+    });
     return { target, profile, contract: profile.contract, cases: suite.cases };
 }
 async function resolveDebugInputs(options) {
@@ -1330,6 +1395,12 @@ function enforceGateMode(mode, suiteResult) {
     if (suiteResult.releaseDecision !== "APPROVE" || failedCaseIds.length > 0) {
         throw new Error(`Gate mode blocked run: releaseDecision=${suiteResult.releaseDecision}${failedCaseIds.length > 0 ? ` failedCases=${failedCaseIds.join(",")}` : ""}`);
     }
+}
+function reliabilityExitCode(report) {
+    if (report.gateEligibility === "BLOCK" || report.conclusion === "INVALID") {
+        return 1;
+    }
+    return report.strongConclusionAllowed ? 0 : 2;
 }
 async function resolveExistingPath(value, relativeTo) {
     const candidates = path.isAbsolute(value)

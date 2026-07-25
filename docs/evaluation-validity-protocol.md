@@ -43,12 +43,38 @@ holdout labels, unresolved adjudication, or any false PASS.
 ## Reliability
 
 Reliability requires deterministic replay, repeated live runs, A/A checks, variance analysis,
-environment fingerprints, and flaky quarantine. It is not established in Stage 1.
+environment fingerprints, and flaky quarantine. AWB implements this as a separate diagnostic
+study over existing, provenance-validated baseline/candidate run pairs:
 
-Planned threshold: deterministic fixtures agree 100%, P0 false PASS is 0, and stable live cases
-have at least 95% gate agreement with adequate sample size. Failure condition: insufficient
-sample size, non-reproducible deterministic fixtures, unstable cases outside quarantine, or
-missing environment reproducibility evidence.
+```bash
+awb debug reliability \
+  --study reliability-study.json \
+  --out reports/reliability
+```
+
+The frozen policy requires five deterministic repeats or twenty live repeats, 100% deterministic
+agreement, zero missing attempts, at least 95% gate and per-case consistency, at least 75%
+telemetry completeness, no duplicated evidence or fixed-context drift, and zero P0 false PASS.
+Live A/A additionally requires every validated comparison to be `UNCHANGED`. The report preserves
+every requested attempt, publishes Wilson and deterministic seeded-bootstrap intervals, records
+paired deltas and dimension variance, and sets `debugHealth.environmentReproducibility` to a
+non-null value without changing target scores.
+
+Each run receives a harness-generated attempt identity that is bound across the runtime manifest
+and provenance. Reliability reports hash that identity and quarantine replayed attempts even if a
+copied suite is renamed and its unsigned simulated digest is recomputed. This is diagnostic
+replay detection for simulated evidence, not an Observer trust substitute: qualified live
+attempt identity is derived from the signed workflow-trace hash.
+
+Only qualified independent live `workflow_trace` samples can make a stable live study
+`ELIGIBLE`; simulated studies remain `DIAGNOSTIC_ONLY` even when perfectly reproducible.
+Deterministic fixture studies therefore use conclusion `DIAGNOSTIC_REPRODUCIBLE` with
+`strongConclusionAllowed: false`; unsigned simulated artifacts cannot establish adversarial
+sample independence.
+Insufficient samples, missing evidence, unqualified/summary-only evidence, or telemetry gaps
+refuse a strong conclusion. Unstable cases, repeated evidence, or context drift are quarantined
+without deleting failures. Any P0 that is not blocked makes the study `INVALID` and gate
+eligibility `BLOCK`.
 
 ## Observer Qualification
 
@@ -107,7 +133,7 @@ qualification is missing or invalid, P0 evidence exists, privacy or isolation po
 violated, holdout leakage occurs, deterministic replay diverges, or a required schema cannot be
 validated. AI semantic judgment and aggregate scores cannot override any of these conditions.
 
-## Stage 3 Status
+## Stage 4 Status
 
 Proven for the harness: canonical vocabulary, contract hashing boundary, owner-review admission
 boundary, deterministic hard-failure precedence, diagnostic evidence ceilings, content-hashed
@@ -115,11 +141,14 @@ Gold Corpus fixtures, split label isolation, 12-family good/bad/boundary coverag
 kill 100%, false PASS 0, no known-good block, and a Darwin reference Observer
 whose independent authority-signed qualification covers all implemented P0
 failures, active isolation canaries, forged events, wrong keys, stale
-evaluation contracts, and repeated runs.
+evaluation contracts, and repeated runs. Reliability studies now bind the
+case set, contract, conditions, seed, runner, environment, Observer version,
+model, permissions, and budgets; deterministic fixtures reproduce exactly,
+and undersized or unstable studies fail closed.
 
 Diagnostic only: signed but unqualified traces and all built-in live contract summaries.
 
 Requires human input: criterion labels and production blocking authorization.
 
-Deferred by protocol: statistical reliability, calibration, external validity,
-CI canary, trends, and adapter conformance.
+Deferred by protocol: calibration, external validity, CI canary, trends, and
+adapter conformance.

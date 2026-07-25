@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "reliability-study.schema.json",
+  "title": "Agent Workflow Bench reliability study manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "studyId", "kind", "seed", "pairs"],
+  "properties": {
+    "schemaVersion": { "const": "0.1.0" },
+    "studyId": { "$ref": "#/$defs/semanticId" },
+    "kind": {
+      "enum": ["deterministic_repeat", "live_aa", "live_paired"]
+    },
+    "seed": { "type": "string", "minLength": 1, "maxLength": 256 },
+    "pairs": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["sampleId", "baseline", "candidate"],
+        "properties": {
+          "sampleId": { "$ref": "#/$defs/semanticId" },
+          "baseline": { "$ref": "#/$defs/portableRunRef" },
+          "candidate": { "$ref": "#/$defs/portableRunRef" }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "semanticId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+    },
+    "portableRunRef": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512,
+      "pattern": "^(?!/)(?![A-Za-z][A-Za-z0-9+.-]*:)(?!.*\\\\)(?!.*(?:^|/)\\.\\.(?:/|$))[^\\u0000]+$"
+    }
+  }
+}

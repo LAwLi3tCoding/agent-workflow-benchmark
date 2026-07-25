@@ -22,6 +22,7 @@ plugins/agent-workflow-bench/
 2. 用同一 target、suite、runner mode 和 contract hash 跑 matched baseline / candidate。
 3. 用 `awb compare --baseline <baseline-run> --candidate <candidate-run> --out <comparison-dir>` 比较回归和证据缺口。
 4. 用 `awb gate --comparison <comparison-dir>/comparison-result.json --out <gate-dir>` 执行 CI gate：PASS exit `0`，DIAGNOSTIC_ONLY exit `2`，BLOCK exit `1`。
+5. 需要验证重复运行稳定性时，用 `awb debug reliability --study <reliability-study.json> --out <reliability-dir>`；它保留所有 attempt，统计 A/A、方差、置信区间、missing、P0 detection 和 quarantine。Unsigned simulated repeat 最多得到 `DIAGNOSTIC_REPRODUCIBLE`，不会输出 strong conclusion；只有稳定且已认证的 live `workflow_trace` 能得到 `RELIABLE`。
 
 传统分步 evaluate 流程仍兼容：
 
