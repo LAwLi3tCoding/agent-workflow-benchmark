@@ -61,6 +61,19 @@ awb artifact migrate --input <artifact.json> --out <migration-dir>
 
 Add `--artifact-type <type>` for non-canonical filenames. Migration writes `migration-result.json` and, only when safe, `migrated-artifact.json`; exits are `0` for `CURRENT`/`MIGRATED`, `2` for `DIAGNOSTIC_ONLY`, and `1` for `INCOMPATIBLE`. It never invents trust: missing Observer attestation, policy hashes, integrity hashes, provenance bindings, runtime identity, or conditions identity stay diagnostic-only. See `docs/artifact-schema-compatibility.md`.
 
+For Stage 9 reporting, keep the legacy run renderer and use the evidence-bound subcommands when reporting on comparisons, traces, trends, or public static views:
+
+```bash
+awb report --run <run-dir> --format md,json
+awb report decision --comparison <comparison-result.json> --gate-result <gate-result.json> --out <decision-dir>
+awb report trace-diff --mode baseline-candidate --baseline <baseline-workflow-trace.json> --candidate <candidate-workflow-trace.json> --out <trace-diff-dir>
+awb report trace-diff --mode baseline-mutant-restore --baseline <baseline-workflow-trace.json> --mutant <mutant-workflow-trace.json> --restore <restore-workflow-trace.json> --out <trace-diff-dir>
+awb report trend --input <trend-input.json> --out <trend-dir>
+awb report viewer --decision <decision-report.json> --comparison <comparison-result.json> --trace-diff <trace-diff.json> --trend <trend-report.json> --out <viewer-dir>
+```
+
+`decision` revalidates the comparison and recomputes the matching gate; optional reliability and validity inputs add only supplied statistics and never invent human truth. `trace-diff` writes event refs, source positions, and payload/actor hashes only; `verified_live` requires trusted Observer and qualification evidence, otherwise the diff is diagnostic. `trend` splits incompatible schema, policy, runner, conditions, contract, target, suite, or observation eras and never connects them. `viewer` reads already-redacted public artifacts and writes static read-only HTML with no remote assets, commands, gate mutation, artifact writes, or unredacted-trace reads. See `docs/reporting-and-trends.md`.
+
 Qualify the reference Observer without changing any trust root:
 
 ```bash

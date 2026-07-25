@@ -1,0 +1,276 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "trace-diff.schema.json",
+  "title": "Agent Workflow Bench trace diff",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "artifactType",
+    "product",
+    "targetId",
+    "suite",
+    "mode",
+    "evidenceLevel",
+    "comparability",
+    "verification",
+    "sources",
+    "baselineTraceHash",
+    "summary",
+    "caseDiffs",
+    "integrity"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "0.1.0" },
+    "artifactType": { "const": "trace_diff" },
+    "product": { "const": "Agent Workflow Bench" },
+    "targetId": { "$ref": "#/$defs/text" },
+    "suite": { "$ref": "#/$defs/text" },
+    "mode": { "enum": ["baseline_candidate", "baseline_mutant_restore"] },
+    "evidenceLevel": { "enum": ["verified_live", "diagnostic_simulated"] },
+    "comparability": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "reasons"],
+      "properties": {
+        "status": { "enum": ["COMPARABLE", "INCOMPARABLE"] },
+        "reasons": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/text" }
+        }
+      }
+    },
+    "verification": { "$ref": "#/$defs/verification" },
+    "sources": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["baseline"],
+      "properties": {
+        "baseline": { "$ref": "#/$defs/sourceRef" },
+        "candidate": { "$ref": "#/$defs/sourceRef" },
+        "mutant": { "$ref": "#/$defs/sourceRef" },
+        "restore": { "$ref": "#/$defs/sourceRef" }
+      }
+    },
+    "baselineTraceHash": { "$ref": "#/$defs/hash" },
+    "candidateTraceHash": { "$ref": "#/$defs/hash" },
+    "mutantTraceHash": { "$ref": "#/$defs/hash" },
+    "restoreTraceHash": { "$ref": "#/$defs/hash" },
+    "restoreStatus": { "enum": ["RESTORED", "REGRESSED"] },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["added", "removed", "changed", "unchanged"],
+      "properties": {
+        "added": { "type": "integer", "minimum": 0 },
+        "removed": { "type": "integer", "minimum": 0 },
+        "changed": { "type": "integer", "minimum": 0 },
+        "unchanged": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "caseDiffs": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/caseDiff" }
+    },
+    "integrity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "contentHash", "sourceTraceHashes"],
+      "properties": {
+        "status": { "const": "VERIFIED_AT_WRITE" },
+        "contentHash": { "$ref": "#/$defs/hash" },
+        "sourceTraceHashes": {
+          "type": "array",
+          "minItems": 2,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/hash" }
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "comparability": {
+            "properties": { "status": { "const": "INCOMPARABLE" } },
+            "required": ["status"]
+          }
+        },
+        "required": ["comparability"]
+      },
+      "then": {
+        "properties": {
+          "comparability": {
+            "properties": { "reasons": { "minItems": 1 } }
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "comparability": {
+            "properties": { "reasons": { "maxItems": 0 } }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "evidenceLevel": { "const": "verified_live" } },
+        "required": ["evidenceLevel"]
+      },
+      "then": {
+        "properties": {
+          "verification": {
+            "properties": {
+              "status": { "const": "QUALIFIED_SIGNED_TRACES" },
+              "observerKeyFingerprints": { "minItems": 1 },
+              "qualificationArtifacts": { "minItems": 1 }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "hash": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "text": { "type": "string", "minLength": 1, "maxLength": 1000 },
+    "traceRef": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512,
+      "pattern": "^[a-z][a-z0-9_-]*:[A-Za-z0-9][A-Za-z0-9._/#:=+-]*$"
+    },
+    "sourceRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ref", "traceHash"],
+      "properties": {
+        "ref": { "$ref": "#/$defs/traceRef" },
+        "traceHash": { "$ref": "#/$defs/hash" }
+      }
+    },
+    "verification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "sourceTraceHashes",
+        "observerKeyFingerprints",
+        "qualificationArtifacts"
+      ],
+      "properties": {
+        "status": {
+          "enum": ["QUALIFIED_SIGNED_TRACES", "DIAGNOSTIC_UNVERIFIED"]
+        },
+        "sourceTraceHashes": {
+          "type": "array",
+          "minItems": 2,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/hash" }
+        },
+        "observerKeyFingerprints": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/hash" }
+        },
+        "qualificationArtifacts": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["ref", "sha256"],
+            "properties": {
+              "ref": { "$ref": "#/$defs/traceRef" },
+              "sha256": { "$ref": "#/$defs/hash" }
+            }
+          }
+        }
+      }
+    },
+    "eventType": {
+      "enum": [
+        "case_start",
+        "contract_observed",
+        "handoff",
+        "gate_decision",
+        "artifact_write",
+        "state_read",
+        "side_effect_attempt",
+        "token_usage",
+        "runner_start",
+        "runner_transcript",
+        "runner_result",
+        "runner_exit",
+        "filesystem_access",
+        "tool_call",
+        "process_spawn",
+        "network_access",
+        "hard_failure",
+        "case_end"
+      ]
+    },
+    "deltaKind": {
+      "enum": [
+        "added",
+        "removed",
+        "changed",
+        "unchanged",
+        "mutant_added",
+        "mutant_removed",
+        "mutant_changed",
+        "mutant_unchanged",
+        "restore_added",
+        "restore_removed",
+        "restore_changed",
+        "restore_unchanged"
+      ]
+    },
+    "caseDiff": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["caseId", "eventDeltas"],
+      "properties": {
+        "caseId": { "$ref": "#/$defs/text" },
+        "templateId": { "$ref": "#/$defs/text" },
+        "eventDeltas": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/eventDelta" }
+        }
+      }
+    },
+    "eventDelta": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "type", "provenance"],
+      "properties": {
+        "kind": { "$ref": "#/$defs/deltaKind" },
+        "type": { "$ref": "#/$defs/eventType" },
+        "baselineRef": { "$ref": "#/$defs/traceRef" },
+        "candidateRef": { "$ref": "#/$defs/traceRef" },
+        "mutantRef": { "$ref": "#/$defs/traceRef" },
+        "restoreRef": { "$ref": "#/$defs/traceRef" },
+        "baselinePosition": { "type": "integer", "minimum": 0 },
+        "candidatePosition": { "type": "integer", "minimum": 0 },
+        "mutantPosition": { "type": "integer", "minimum": 0 },
+        "restorePosition": { "type": "integer", "minimum": 0 },
+        "baselinePayloadHash": { "$ref": "#/$defs/hash" },
+        "candidatePayloadHash": { "$ref": "#/$defs/hash" },
+        "mutantPayloadHash": { "$ref": "#/$defs/hash" },
+        "restorePayloadHash": { "$ref": "#/$defs/hash" },
+        "provenance": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "baselineActorHash": { "$ref": "#/$defs/hash" },
+            "candidateActorHash": { "$ref": "#/$defs/hash" },
+            "mutantActorHash": { "$ref": "#/$defs/hash" },
+            "restoreActorHash": { "$ref": "#/$defs/hash" }
+          }
+        }
+      }
+    }
+  }
+}

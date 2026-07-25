@@ -1,6 +1,6 @@
 import { Command } from "commander";
 import { Ajv2020 } from "ajv/dist/2020.js";
-import { access, appendFile, copyFile, readdir, readFile } from "node:fs/promises";
+import { access, appendFile, copyFile, readdir, readFile, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
@@ -38,7 +38,11 @@ import { artifactMigrationExitCode, migrateArtifact, writeArtifactMigration } fr
 import { assertArtifactRegistryComplete } from "../artifacts/registry.js";
 import { buildProductionCanaryReport } from "../ci/canary.js";
 import { assessProductionCiGate, PRODUCTION_CANARY_POLICY, validateProductionIsolationManifest } from "../ci/productionGate.js";
-import { sha256Text, stableJson } from "../utils/hash.js";
+import { buildDecisionReport, renderDecisionReportMarkdown } from "../report/decisionReport.js";
+import { buildTraceDiff } from "../report/traceDiff.js";
+import { buildTrendReport } from "../report/trends.js";
+import { buildHtmlViewerArtifacts } from "../report/htmlViewer.js";
+import { hashFile, sha256Text, stableJson } from "../utils/hash.js";
 const program = new Command();
 program.name(CLI_NAME).description(`${PRODUCT_NAME} — ${PRODUCT_TAGLINE}`).version(AWB_VERSION);
 program
@@ -804,11 +808,15 @@ program
         scope: "collected benchmark evidence only; not release approval unless real workflow trace events are emitted"
     }));
 });
-program
+const reportCommands = program
     .command("report")
-    .requiredOption("--run <dir>")
+    .description("Render legacy run reports or evidence-bound decision, trace, trend, and viewer artifacts")
+    .option("--run <dir>", "legacy suite-result run directory")
     .option("--format <format>", "md,json", "md,json")
     .action(async (options) => {
+    if (!options.run) {
+        throw new Error("--run is required when report is used without a Stage 9 subcommand.");
+    }
     const suiteResult = await readJson(path.join(options.run, "suite-result.json"));
     if (options.format.includes("md")) {
         await writeReport(path.join(options.run, "report.md"), suiteResult);
@@ -817,6 +825,195 @@ program
         await writeJson(path.join(options.run, "suite-result.json"), suiteResult);
     }
     console.log(`report written: ${options.run}`);
+});
+reportCommands
+    .command("decision")
+    .description("Build a maintainer decision report from a revalidated comparison and matching gate result")
+    .requiredOption("--comparison <path>", "comparison-result.json")
+    .requiredOption("--gate-result <path>", "gate-result.json")
+    .option("--reliability <path>", "optional reliability-report.json; statistics are omitted when absent")
+    .option("--validity <path>", "optional validity-report.json; human truth is never inferred when absent")
+    .option("--trusted-observer-key <path>", "trusted Ed25519 Observer public key for comparison revalidation")
+    .option("--trusted-qualification-key <path>", "trusted Ed25519 qualification-authority public key")
+    .option("--gate-policy <path>", "gate-policy.json used to revalidate the comparison and gate result")
+    .requiredOption("--out <dir>")
+    .action(async (options) => {
+    const comparisonPath = await resolveExistingPath(options.comparison);
+    const comparison = await readJsonWithSchema(comparisonPath, "comparison-result.schema.json", "Comparison result");
+    const policy = options.gatePolicy
+        ? loadGatePolicy(await resolveExistingPath(options.gatePolicy))
+        : loadCanonicalGatePolicy();
+    const verification = await verifyComparisonBundle(comparisonPath, comparison, {
+        trustedObserverKeyPath: options.trustedObserverKey
+            ? await resolveExistingPath(options.trustedObserverKey)
+            : undefined,
+        trustedQualificationKeyPath: options.trustedQualificationKey
+            ? await resolveExistingPath(options.trustedQualificationKey)
+            : undefined,
+        gatePolicy: policy
+    });
+    const expectedGate = evaluateGate(comparison, verification, policy, options.gatePolicy
+        ? `${policy.policyId}@${policy.policyVersion}#${policy.policyHash}`
+        : "configs/evaluation/gate-policy.json");
+    const gateResultPath = await resolveExistingPath(options.gateResult);
+    const suppliedGate = await readJsonWithSchema(gateResultPath, "gate-result.schema.json", "Gate result");
+    if (stableJson(suppliedGate) !== stableJson(expectedGate)) {
+        throw new Error("Gate result does not match a fresh evaluation of the verified comparison and selected policy.");
+    }
+    const reliabilityPath = options.reliability
+        ? await resolveExistingPath(options.reliability)
+        : undefined;
+    const reliability = reliabilityPath
+        ? await readJsonWithSchema(reliabilityPath, "reliability-report.schema.json", "Reliability report")
+        : undefined;
+    const validityPath = options.validity
+        ? await resolveExistingPath(options.validity)
+        : undefined;
+    const validity = validityPath
+        ? await readJsonWithSchema(validityPath, "validity-report.schema.json", "Validity report")
+        : undefined;
+    const candidateSuite = verification.status === "VALID"
+        ? await readJsonWithSchema(path.join(path.dirname(comparisonPath), "evidence", "candidate", "suite-result.json"), "suite-result.schema.json", "Candidate suite result")
+        : undefined;
+    const report = buildDecisionReport({
+        comparison,
+        gate: expectedGate,
+        reliability,
+        validity,
+        sourceFileHashes: {
+            comparison: await hashFile(comparisonPath),
+            gate: await hashFile(gateResultPath),
+            ...(reliabilityPath
+                ? { reliability: await hashFile(reliabilityPath) }
+                : {}),
+            ...(validityPath ? { validity: await hashFile(validityPath) } : {})
+        },
+        ...(candidateSuite
+            ? {
+                caseEvidence: candidateSuite.caseResults.flatMap((caseResult) => caseResult.hardFailures.map((failure) => ({
+                    caseId: caseResult.caseId,
+                    failureCode: failure.code,
+                    evidenceEventIds: failure.evidenceEventIds
+                })))
+            }
+            : {})
+    });
+    await assertJsonSchema(report, "decision-report.schema.json", "Decision report");
+    await writeJson(path.join(options.out, "decision-report.json"), report);
+    await writeReportFile(path.join(options.out, "decision-report.md"), renderDecisionReportMarkdown(report));
+    console.log(`decision report written: ${options.out}`);
+});
+reportCommands
+    .command("trace-diff")
+    .description("Diff redacted workflow traces; only independently qualified signed traces are marked verified_live")
+    .requiredOption("--mode <mode>", "baseline-candidate or baseline-mutant-restore")
+    .requiredOption("--baseline <path>", "baseline workflow-trace.json")
+    .option("--candidate <path>", "candidate workflow-trace.json")
+    .option("--mutant <path>", "mutant workflow-trace.json")
+    .option("--restore <path>", "restored workflow-trace.json")
+    .option("--trusted-observer-key <path>", "trusted Ed25519 Observer public key")
+    .option("--observer-qualification <path>", "Observer qualification artifact; requires both trusted keys")
+    .option("--trusted-qualification-key <path>", "trusted Ed25519 qualification-authority public key")
+    .requiredOption("--out <dir>")
+    .action(async (options) => {
+    const mode = normalizeTraceDiffMode(options.mode);
+    assertTraceDiffModeInputs(mode, options);
+    assertTraceDiffTrustInputs(options);
+    const roles = mode === "baseline_candidate"
+        ? [
+            ["baseline", options.baseline],
+            ["candidate", options.candidate]
+        ]
+        : [
+            ["baseline", options.baseline],
+            ["mutant", options.mutant],
+            ["restore", options.restore]
+        ];
+    const loaded = [];
+    for (const [role, tracePath] of roles) {
+        loaded.push(await loadTraceForDiff(role, tracePath, {
+            trustedObserverKey: options.trustedObserverKey,
+            observerQualification: options.observerQualification,
+            trustedQualificationKey: options.trustedQualificationKey
+        }));
+    }
+    const baseline = loaded[0];
+    const comparability = traceComparability(loaded.map((item) => item.bundle));
+    const byRole = new Map(loaded.map((item) => [item.role, item.trace]));
+    const report = buildTraceDiff({
+        mode,
+        targetId: baseline.bundle.subject.targetId,
+        suite: baseline.bundle.subject.suite,
+        comparability,
+        evidenceLevel: loaded.every((item) => item.qualified)
+            ? "verified_live"
+            : "diagnostic_simulated",
+        ...(loaded.every((item) => item.qualified)
+            ? {
+                verification: {
+                    status: "QUALIFIED_SIGNED_TRACES",
+                    sourceTraceHashes: loaded.map((item) => item.trace.traceHash),
+                    observerKeyFingerprints: [
+                        ...new Set(loaded.map((item) => item.observerKeyFingerprint))
+                    ],
+                    qualificationArtifacts: [
+                        ...new Map(loaded.map((item) => [
+                            item.qualificationArtifactHash,
+                            {
+                                ref: "observer:observer-qualification.json",
+                                sha256: item.qualificationArtifactHash
+                            }
+                        ])).values()
+                    ]
+                }
+            }
+            : {}),
+        baseline: byRole.get("baseline"),
+        candidate: byRole.get("candidate"),
+        mutant: byRole.get("mutant"),
+        restore: byRole.get("restore")
+    });
+    await assertJsonSchema(report, "trace-diff.schema.json", "Trace diff");
+    await writeJson(path.join(options.out, "trace-diff.json"), report);
+    console.log(`trace diff written: ${options.out}`);
+});
+reportCommands
+    .command("trend")
+    .description("Build a bounded trend report that never connects incompatible historical points")
+    .requiredOption("--input <path>", "JSON object containing seriesId and ordered points")
+    .requiredOption("--out <dir>")
+    .action(async (options) => {
+    const input = await readJson(await resolveExistingPath(options.input));
+    const report = buildTrendReport(input);
+    await assertJsonSchema(report, "trend-report.schema.json", "Trend report");
+    await writeJson(path.join(options.out, "trend-report.json"), report);
+    console.log(`trend report written: ${options.out}`);
+});
+reportCommands
+    .command("viewer")
+    .description("Render a static read-only HTML viewer from already-redacted public artifacts")
+    .option("--decision <path>", "decision-report.json")
+    .option("--comparison <path>", "comparison-result.json")
+    .option("--trace-diff <path>", "trace-diff.json")
+    .option("--trend <path>", "trend-report.json")
+    .option("--title <title>", "viewer title", "Agent Workflow Bench Report")
+    .requiredOption("--out <dir>")
+    .action(async (options) => {
+    const { input, manifestInputs } = await loadHtmlViewerInputs(options);
+    const artifacts = buildHtmlViewerArtifacts({ title: options.title, ...input }, {
+        viewerRef: "viewer.html",
+        inputs: manifestInputs
+    });
+    await assertJsonSchema(artifacts.manifest, "html-viewer-manifest.schema.json", "HTML viewer manifest");
+    await ensureDir(options.out);
+    const viewerPath = path.join(options.out, "viewer.html");
+    await writeFile(viewerPath, artifacts.html);
+    if ((await hashFile(viewerPath)) !==
+        artifacts.manifest.integrity.viewerHash) {
+        throw new Error("HTML viewer file hash does not match its manifest.");
+    }
+    await writeJson(path.join(options.out, "html-viewer-manifest.json"), artifacts.manifest);
+    console.log(`read-only HTML viewer written: ${options.out}`);
 });
 const debug = program.command("debug");
 debug
@@ -1800,6 +1997,195 @@ function productionCiGateExitCode(result) {
         return 0;
     }
     return result.decision === "BLOCK" ? 1 : 2;
+}
+function normalizeTraceDiffMode(value) {
+    if (value === "baseline-candidate" || value === "baseline_candidate") {
+        return "baseline_candidate";
+    }
+    if (value === "baseline-mutant-restore" ||
+        value === "baseline_mutant_restore") {
+        return "baseline_mutant_restore";
+    }
+    throw new Error("--mode must be baseline-candidate or baseline-mutant-restore.");
+}
+function assertTraceDiffModeInputs(mode, options) {
+    if (mode === "baseline_candidate") {
+        if (!options.candidate || options.mutant || options.restore) {
+            throw new Error("baseline-candidate mode requires --candidate and forbids --mutant/--restore.");
+        }
+        return;
+    }
+    if (!options.mutant || !options.restore || options.candidate) {
+        throw new Error("baseline-mutant-restore mode requires --mutant and --restore and forbids --candidate.");
+    }
+}
+function assertTraceDiffTrustInputs(options) {
+    const hasQualification = Boolean(options.observerQualification);
+    const hasQualificationKey = Boolean(options.trustedQualificationKey);
+    if (hasQualification !== hasQualificationKey) {
+        throw new Error("--observer-qualification and --trusted-qualification-key must be provided together.");
+    }
+    if ((hasQualification || hasQualificationKey) &&
+        !options.trustedObserverKey) {
+        throw new Error("Qualified trace diffs also require --trusted-observer-key.");
+    }
+}
+async function loadTraceForDiff(role, value, trust) {
+    const tracePath = await resolveExistingPath(value);
+    const bundle = await readJsonWithSchema(tracePath, "workflow-trace.schema.json", `${role} workflow trace`);
+    let verified;
+    let qualified = false;
+    let qualificationArtifactHash;
+    if (trust.trustedObserverKey) {
+        verified = await verifyWorkflowTraceBundle(tracePath, await resolveExistingPath(trust.trustedObserverKey), {
+            targetId: bundle.subject.targetId,
+            contractHash: bundle.subject.contractHash,
+            suite: bundle.subject.suite,
+            seed: bundle.subject.seed,
+            caseSetHash: bundle.subject.caseSetHash,
+            caseIds: bundle.cases.map((item) => item.caseId),
+            cases: bundle.cases.map((item) => ({
+                id: item.caseId,
+                templateId: item.templateId
+            })),
+            runner: bundle.subject.runner
+        });
+        const qualification = await resolveObserverQualification({
+            observerQualification: trust.observerQualification,
+            trustedQualificationKey: trust.trustedQualificationKey
+        }, verified, bundle.subject.contractHash, bundle.subject.caseSetHash);
+        qualified = Boolean(qualification);
+        qualificationArtifactHash = qualification?.artifactHash;
+    }
+    return {
+        role,
+        bundle,
+        trace: {
+            ref: `${role}:workflow-trace.json`,
+            traceHash: verified?.traceHash ?? (await hashFile(tracePath)),
+            cases: bundle.cases.map((item) => ({
+                caseId: item.caseId,
+                templateId: item.templateId,
+                events: item.events
+            }))
+        },
+        qualified,
+        ...(verified
+            ? { observerKeyFingerprint: verified.keyFingerprint }
+            : {}),
+        ...(qualificationArtifactHash
+            ? { qualificationArtifactHash }
+            : {})
+    };
+}
+function traceComparability(bundles) {
+    const baseline = bundles[0];
+    if (!baseline) {
+        throw new Error("Trace diff requires a baseline workflow trace.");
+    }
+    const reasons = new Set();
+    for (const candidate of bundles.slice(1)) {
+        if (candidate.schemaVersion !== baseline.schemaVersion) {
+            reasons.add("TRACE_SCHEMA_VERSION_MISMATCH");
+        }
+        if (candidate.subject.targetId !== baseline.subject.targetId) {
+            reasons.add("TRACE_TARGET_MISMATCH");
+        }
+        if (candidate.subject.contractHash !== baseline.subject.contractHash) {
+            reasons.add("TRACE_CONTRACT_MISMATCH");
+        }
+        if (candidate.subject.suite !== baseline.subject.suite) {
+            reasons.add("TRACE_SUITE_MISMATCH");
+        }
+        if (candidate.subject.caseSetHash !== baseline.subject.caseSetHash) {
+            reasons.add("TRACE_CASE_SET_MISMATCH");
+        }
+        if (stableJson(candidate.subject.runner) !==
+            stableJson(baseline.subject.runner)) {
+            reasons.add("TRACE_RUNNER_MISMATCH");
+        }
+        if (candidate.subject.isolation !== baseline.subject.isolation) {
+            reasons.add("TRACE_ISOLATION_MISMATCH");
+        }
+        if (candidate.subject.permissionMode !== baseline.subject.permissionMode) {
+            reasons.add("TRACE_PERMISSION_MISMATCH");
+        }
+        if (candidate.subject.model !== baseline.subject.model) {
+            reasons.add("TRACE_MODEL_MISMATCH");
+        }
+        if (candidate.subject.seed !== baseline.subject.seed) {
+            reasons.add("TRACE_SEED_MISMATCH");
+        }
+        if (candidate.observer.id !== baseline.observer.id ||
+            candidate.observer.version !== baseline.observer.version ||
+            candidate.observer.keyFingerprint !== baseline.observer.keyFingerprint ||
+            candidate.observer.implementationHash !==
+                baseline.observer.implementationHash ||
+            stableJson(candidate.observer.evidenceCapabilities) !==
+                stableJson(baseline.observer.evidenceCapabilities)) {
+            reasons.add("TRACE_OBSERVER_MISMATCH");
+        }
+    }
+    return {
+        status: reasons.size === 0 ? "COMPARABLE" : "INCOMPARABLE",
+        reasons: [...reasons].sort()
+    };
+}
+async function loadHtmlViewerInputs(options) {
+    const input = {};
+    const manifestInputs = [];
+    const specs = [
+        {
+            option: options.decision,
+            key: "decisionReport",
+            artifactType: "decision_report",
+            ref: "decision-report.json",
+            schema: "decision-report.schema.json",
+            label: "Decision report"
+        },
+        {
+            option: options.comparison,
+            key: "comparison",
+            artifactType: "comparison_result",
+            ref: "comparison-result.json",
+            schema: "comparison-result.schema.json",
+            label: "Comparison result"
+        },
+        {
+            option: options.traceDiff,
+            key: "traceDiff",
+            artifactType: "trace_diff",
+            ref: "trace-diff.json",
+            schema: "trace-diff.schema.json",
+            label: "Trace diff"
+        },
+        {
+            option: options.trend,
+            key: "trends",
+            artifactType: "trend_report",
+            ref: "trend-report.json",
+            schema: "trend-report.schema.json",
+            label: "Trend report"
+        }
+    ];
+    for (const spec of specs) {
+        if (!spec.option) {
+            continue;
+        }
+        const filePath = await resolveExistingPath(spec.option);
+        const value = await readJsonWithSchema(filePath, spec.schema, spec.label);
+        input[spec.key] = value;
+        manifestInputs.push({
+            artifactType: spec.artifactType,
+            ref: spec.ref,
+            schemaVersion: "0.1.0",
+            value
+        });
+    }
+    if (manifestInputs.length === 0) {
+        throw new Error("HTML viewer requires at least one of --decision, --comparison, --trace-diff, or --trend.");
+    }
+    return { input, manifestInputs };
 }
 function normalizeProductionCanarySamples(input) {
     if (Array.isArray(input)) {

@@ -112,6 +112,18 @@ describe("agent workflow bench plugin package", () => {
       stat(path.join(runtimeRoot, "schemas", "artifact-migration-result.schema.json"))
     ).resolves.toBeTruthy();
     await expect(
+      stat(path.join(runtimeRoot, "schemas", "decision-report.schema.json"))
+    ).resolves.toBeTruthy();
+    await expect(
+      stat(path.join(runtimeRoot, "schemas", "trace-diff.schema.json"))
+    ).resolves.toBeTruthy();
+    await expect(
+      stat(path.join(runtimeRoot, "schemas", "trend-report.schema.json"))
+    ).resolves.toBeTruthy();
+    await expect(
+      stat(path.join(runtimeRoot, "schemas", "html-viewer-manifest.schema.json"))
+    ).resolves.toBeTruthy();
+    await expect(
       stat(path.join(runtimeRoot, "configs", "artifacts", "schema-registry.json"))
     ).resolves.toBeTruthy();
     await expect(
@@ -164,6 +176,18 @@ describe("agent workflow bench plugin package", () => {
     await expect(
       stat(path.join(runtimeRoot, "dist", "src", "artifacts", "registry.js"))
     ).resolves.toBeTruthy();
+    await expect(
+      stat(path.join(runtimeRoot, "dist", "src", "report", "decisionReport.js"))
+    ).resolves.toBeTruthy();
+    await expect(
+      stat(path.join(runtimeRoot, "dist", "src", "report", "traceDiff.js"))
+    ).resolves.toBeTruthy();
+    await expect(
+      stat(path.join(runtimeRoot, "dist", "src", "report", "trends.js"))
+    ).resolves.toBeTruthy();
+    await expect(
+      stat(path.join(runtimeRoot, "dist", "src", "report", "htmlViewer.js"))
+    ).resolves.toBeTruthy();
 
     const wrapper = await readFile(path.join(pluginRoot, "bin", "awb"), "utf8");
     expect(wrapper).toContain("RUNTIME_DIR");
@@ -190,6 +214,18 @@ describe("agent workflow bench plugin package", () => {
         }
       );
       expect(artifactHelp.stdout).toContain("migrate");
+      const reportHelp = await execa(
+        path.join(install.pluginPath, "bin", "awb"),
+        ["report", "--help"],
+        {
+          cwd: outsideCwd,
+          env: { ...process.env, AWB_PROJECT_ROOT: "" }
+        }
+      );
+      expect(reportHelp.stdout).toContain("decision");
+      expect(reportHelp.stdout).toContain("trace-diff");
+      expect(reportHelp.stdout).toContain("trend");
+      expect(reportHelp.stdout).toContain("viewer");
       const legacyRuntimePath = path.join(
         outsideCwd,
         "runtime-manifest.json"

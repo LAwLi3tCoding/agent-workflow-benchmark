@@ -31,12 +31,17 @@ external_validity_report
 suite
 comparison_result
 gate_result
+decision_report
+trace_diff
+trend_report
+html_viewer_manifest
 provenance
 ```
 
 Formal schemas now cover `ContractModel`, public profile evidence, generation
 manifest, runtime manifest, Observer qualification, reliability report, validity
-report, and the existing run/comparison/gate/provenance artifacts.
+report, run/comparison/gate/provenance artifacts, decision reports, trace
+diffs, trend reports, and static viewer manifests.
 
 ## Semver Policy
 
@@ -109,6 +114,13 @@ Examples:
 - a `suite-result.json` without gate-policy hashes is `DIAGNOSTIC_ONLY`;
 - an `observer-qualification.json` without authority attestation is
   `DIAGNOSTIC_ONLY`;
+- a `decision-report.json` cannot be reused as gate evidence unless its source
+  comparison and gate can still be revalidated;
+- a `trace-diff.json` with no qualified Observer binding remains diagnostic;
+- a `trend-report.json` separates incompatible eras instead of migrating them
+  into one chart series;
+- an `html-viewer-manifest.json` is read-only display metadata, not a gate
+  decision artifact;
 - a `provenance.json` without integrity bindings is `DIAGNOSTIC_ONLY`;
 - unknown artifact types or unsupported schema versions are `INCOMPATIBLE`.
 

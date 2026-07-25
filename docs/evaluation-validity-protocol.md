@@ -247,7 +247,7 @@ qualification, failed canary thresholds, or absent approval keeps the result
 diagnostic-only. AWB validates isolation evidence; it does not provide or claim
 its own Linux isolation backend.
 
-## Stage 8 Status
+## Stage 9 Status
 
 Proven for the harness: canonical vocabulary, contract hashing boundary, owner-review admission
 boundary, deterministic hard-failure precedence, diagnostic evidence ceilings, content-hashed
@@ -272,6 +272,18 @@ Diagnostic only: signed but unqualified traces and all built-in live contract su
 Public Gold Corpus policy PASS is also harness-diagnostic and records `releaseEligible: false`;
 it does not establish production criterion validity.
 
+Stage 9 adds reporting artifacts but does not raise evidence ceilings. `awb
+report decision` revalidates the comparison bundle and recomputes the matching
+gate before writing a maintainer report; optional reliability and validity
+inputs add statistics only when supplied. `awb report trace-diff` marks a diff
+`verified_live` only when every source trace has trusted Observer and
+qualification evidence; otherwise it is diagnostic and stores payload/actor
+hashes rather than raw payloads or identities. `awb report trend` separates
+incompatible schema, policy, runner, conditions, contract, target, suite, and
+observation eras. `awb report viewer` renders already-redacted artifacts into
+static read-only HTML and cannot mutate gates, read unredacted traces, execute
+commands, write artifacts, or load remote assets.
+
 Requires human input before an external-validity PASS: a completed 120-item private study with
 owner-reviewed real external contracts (the public template is 112 items short and is not
 evidence), qualified independent Codex and Claude live traces, two-rater labels, adjudication for
@@ -281,4 +293,11 @@ Implemented mechanism through Stage 8: repository CI definition, observe-only
 external workflow template, production-blocking authorization guardrails, and
 privacy-safe CI documentation.
 
-Deferred by protocol: canary evidence, trends, and adapter conformance.
+Implemented mechanism through Stage 9: legacy run report rendering, decision
+report generation, redacted trace diffing for baseline/candidate and
+baseline/mutant/restore, era-separated trend reports, static public-safe HTML
+viewer manifests, and registered schemas for those artifacts.
+
+Deferred by protocol: canary evidence and adapter conformance. Automatic repair
+PR generation remains deferred; current self-debug repair planning does not
+open or apply production PRs by itself.

@@ -160,6 +160,46 @@
       "missingTrustDisposition": "DIAGNOSTIC_ONLY",
       "unsupportedCode": "ARTIFACT_SCHEMA_VERSION_UNSUPPORTED",
       "action": "Reassess production readiness from verified gate, isolation, canary, and authorization evidence."
+    },
+    {
+      "artifactType": "decision_report",
+      "currentVersion": "0.1.0",
+      "readableVersions": ["0.1.x"],
+      "migrationMode": "diagnostic_on_missing_trust",
+      "requiredTrustFields": ["integrity.contentHash", "gatePolicyHash", "provenance.comparisonHash", "provenance.gateResultHash", "provenance.gatePolicyHash", "provenance.sourceArtifacts", "gateDecision", "releaseAuthority"],
+      "missingTrustDisposition": "DIAGNOSTIC_ONLY",
+      "unsupportedCode": "ARTIFACT_SCHEMA_VERSION_UNSUPPORTED",
+      "action": "Regenerate the decision report from verified comparison, gate, provenance, and owner-review evidence."
+    },
+    {
+      "artifactType": "trace_diff",
+      "currentVersion": "0.1.0",
+      "readableVersions": ["0.1.x"],
+      "migrationMode": "diagnostic_on_missing_trust",
+      "requiredTrustFields": ["integrity.contentHash", "integrity.sourceTraceHashes", "evidenceLevel", "verification.status", "verification.sourceTraceHashes", "sources.baseline.traceHash", "baselineTraceHash", "caseDiffs"],
+      "missingTrustDisposition": "DIAGNOSTIC_ONLY",
+      "unsupportedCode": "ARTIFACT_SCHEMA_VERSION_UNSUPPORTED",
+      "action": "Regenerate the trace diff from verified source trace bundles; raw event payloads are not accepted as portable diff evidence."
+    },
+    {
+      "artifactType": "trend_report",
+      "currentVersion": "0.1.0",
+      "readableVersions": ["0.1.x"],
+      "migrationMode": "diagnostic_on_missing_trust",
+      "requiredTrustFields": ["integrity.contentHash", "inputHash", "points", "segments", "chartSeries", "manifest.inputHash"],
+      "missingTrustDisposition": "DIAGNOSTIC_ONLY",
+      "unsupportedCode": "ARTIFACT_SCHEMA_VERSION_UNSUPPORTED",
+      "action": "Rebuild the trend from comparable comparison points; split or downgrade segments when comparability fingerprints diverge."
+    },
+    {
+      "artifactType": "html_viewer_manifest",
+      "currentVersion": "0.1.0",
+      "readableVersions": ["0.1.x"],
+      "migrationMode": "diagnostic_on_missing_trust",
+      "requiredTrustFields": ["integrity.contentHash", "integrity.viewerHash", "integrity.viewerRef", "integrity.artifacts", "publicSafe", "readOnly", "inputs", "restrictions.mayChangeGateResult", "restrictions.mayReadUnredactedTrace", "restrictions.mayLoadRemoteAssets"],
+      "missingTrustDisposition": "DIAGNOSTIC_ONLY",
+      "unsupportedCode": "ARTIFACT_SCHEMA_VERSION_UNSUPPORTED",
+      "action": "Regenerate the viewer manifest from hashed public artifacts and a read-only viewer bundle."
     }
   ]
 }

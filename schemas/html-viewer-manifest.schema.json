@@ -1,0 +1,136 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "html-viewer-manifest.schema.json",
+  "title": "Agent Workflow Bench HTML viewer manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "artifactType",
+    "product",
+    "generatedAt",
+    "publicSafe",
+    "readOnly",
+    "inputs",
+    "display",
+    "restrictions",
+    "integrity"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "0.1.0" },
+    "artifactType": { "const": "html_viewer_manifest" },
+    "product": { "const": "Agent Workflow Bench" },
+    "generatedAt": { "$ref": "#/$defs/timestamp" },
+    "publicSafe": { "const": true },
+    "readOnly": { "const": true },
+    "inputs": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/inputArtifact" }
+    },
+    "display": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["title", "sections", "redactionMode"],
+      "properties": {
+        "title": { "$ref": "#/$defs/nonEmptyString" },
+        "sections": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "enum": ["summary", "decision", "trend", "trace_diff", "evidence", "diagnostics"]
+          }
+        },
+        "redactionMode": { "const": "public_redacted" }
+      }
+    },
+    "restrictions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mayChangeGateResult",
+        "mayReadUnredactedTrace",
+        "mayLoadRemoteAssets",
+        "mayExecuteCommands",
+        "mayWriteArtifacts"
+      ],
+      "properties": {
+        "mayChangeGateResult": { "const": false },
+        "mayReadUnredactedTrace": { "const": false },
+        "mayLoadRemoteAssets": { "const": false },
+        "mayExecuteCommands": { "const": false },
+        "mayWriteArtifacts": { "const": false }
+      }
+    },
+    "integrity": { "$ref": "#/$defs/integrity" }
+  },
+  "$defs": {
+    "hash": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "nonEmptyString": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 500
+    },
+    "portableRef": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256,
+      "pattern": "^(?!/)(?![A-Za-z]:)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*@)(?!.*\\\\)[A-Za-z0-9][A-Za-z0-9._/-]*$"
+    },
+    "inputArtifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["artifactType", "ref", "sha256", "schemaVersion"],
+      "properties": {
+        "artifactType": {
+          "enum": [
+            "decision_report",
+            "trace_diff",
+            "trend_report",
+            "comparison_result",
+            "gate_result",
+            "reliability_report",
+            "external_validity_report",
+            "provenance",
+            "runtime_manifest"
+          ]
+        },
+        "ref": { "$ref": "#/$defs/portableRef" },
+        "sha256": { "$ref": "#/$defs/hash" },
+        "schemaVersion": { "const": "0.1.0" }
+      }
+    },
+    "integrity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "contentHash", "viewerRef", "viewerHash", "artifacts"],
+      "properties": {
+        "status": { "const": "VERIFIED_AT_WRITE" },
+        "contentHash": { "$ref": "#/$defs/hash" },
+        "viewerRef": { "$ref": "#/$defs/portableRef" },
+        "viewerHash": { "$ref": "#/$defs/hash" },
+        "artifacts": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["ref", "sha256"],
+            "properties": {
+              "ref": { "$ref": "#/$defs/portableRef" },
+              "sha256": { "$ref": "#/$defs/hash" }
+            }
+          }
+        }
+      }
+    }
+  }
+}

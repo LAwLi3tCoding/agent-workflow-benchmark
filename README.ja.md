@@ -317,7 +317,7 @@ Committed public synthetic evidence は `fixtures/calibration/v1/fit` と
 | `compare` | 揃った baseline/candidate 証拠を比較 |
 | `gate` | 決定論的 CI release policy の適用 |
 | `gate-policy ...` | Versioned score/gate policy の校正または holdout 検証 |
-| `score` / `report` | 既存 Run の確認・描画 |
+| `score` / `report` | Run 確認、decision、trace-diff、trend、静的 viewer の描画 |
 | `criterion-validity ...` | 盲検化した外部研究 package の生成・独立ラベル分析 |
 | `debug ...` | Benchmark Harness の逆検証と診断 |
 
@@ -333,7 +333,8 @@ Committed public synthetic evidence は `fixtures/calibration/v1/fit` と
 | `comparison-result.json` | 完全性に結び付いたペア比較 |
 | `gate-result.json` | 決定論的リリース判定 |
 | `gate-policy.json` / `calibration-report.*` | Versioned policy、fit evidence、holdout diagnostics |
-| `report.md` / `validity-report.*` | 人間向け診断と外部妥当性の証拠 |
+| `report.md` / `decision-report.*` / `trace-diff.json` / `trend-report.json` / `viewer.html` | 診断、判定、Redacted trace diff、era 別 trend、静的 viewer |
+| `validity-report.*` / `reliability-report.*` | 外部妥当性、信頼性、quarantine の証拠 |
 
 完全なオプションは `awb <command> --help` で確認できます。
 
@@ -389,10 +390,9 @@ schema、config、fixture を変更したら `npm run plugin:build` を実行し
 
 - [Human guide](docs/agent-workflow-bench-human-guide.md)
 - [Plugin guide](docs/agent-workflow-bench-plugin-guide.md)
-- [Evaluation methodology](docs/ai-workflow-evaluation-methodology.md)
+- [Evaluation methodology](docs/ai-workflow-evaluation-methodology.md) / [Reporting and trends](docs/reporting-and-trends.md)
 - [Workflow-Trace Observer Contract](docs/workflow-trace-observer-contract.md)
-- [English README](README.md)
-- [简体中文 README](README.zh-CN.md)
+- [English README](README.md) / [简体中文 README](README.zh-CN.md)
 
 ## ライセンス
 

@@ -191,6 +191,27 @@ MVP 先做 10 类通用 smoke 模板。每个新的 agent workflow 都用自己�
 | Workflow 维护者 | 技术明细、case 失败、contractPath、owner hint | 修改 Target Pack、workflow 合同、agent prompt 或 state/artifact 路径 |
 | QA / 质量工程 | 轨迹证据、oracle、coverage report、notApplicable 矩阵 | 补 fixture、扩展 case、复核回归和覆盖缺口 |
 
+### 7.4 Stage 9 报告与趋势
+
+Stage 9 保留旧的 `awb report --run <run-dir> --format md,json`，并新增四个
+只读报告命令：
+
+```bash
+awb report decision --comparison <comparison-result.json> --gate-result <gate-result.json> --out <decision-dir>
+awb report trace-diff --mode baseline-candidate --baseline <baseline-workflow-trace.json> --candidate <candidate-workflow-trace.json> --out <trace-diff-dir>
+awb report trend --input <trend-input.json> --out <trend-dir>
+awb report viewer --decision <decision-report.json> --comparison <comparison-result.json> --trace-diff <trace-diff.json> --trend <trend-report.json> --out <viewer-dir>
+```
+
+`decision` 会重新校验 comparison bundle，并用同一 gate policy 重新计算 gate；传入
+`--reliability` 或 `--validity` 时只读取已有统计，不会凭空推断人工 truth。
+`trace-diff` 只有在所有 trace 都带可信 Observer 公钥、资格公钥和有效资格制品时才标记
+`verified_live`，否则只是 diagnostic；输出只含 event ref、payload hash 和 actor hash。
+`trend` 遇到 schema、policy、runner、conditions、contract、target、suite 或
+observation level 变化时会切分 era，不跨不可比边界连线。`viewer` 只读取已脱敏公共制品，
+输出静态只读 HTML 和 manifest，不加载远程资源、不执行命令、不改 gate、不读未脱敏 trace。
+详细示例见 `docs/reporting-and-trends.md`。
+
 ## 8. 分数、比较和 Gate 动作
 
 推荐准入流程：
@@ -417,23 +438,20 @@ CI 准入 PASS。
 不包含：
 
 1. 真实生产外部系统。
-2. HTML trace viewer。
-3. Claude/opencode 可比排名。
-4. LLM judge 进入总分。
-5. 某个真实 target 专用 scorer 或 target-only case generator。
-6. 自动修改被测 target workflow 源码。
+2. Claude/opencode 可比排名。
+3. LLM judge 进入总分。
+4. 某个真实 target 专用 scorer 或 target-only case generator。
+5. 自动修改被测 target workflow 源码。
 
 ### 后续增强
 
 1. Full 30 case。
 2. Claude runner。
 3. opencode runner。
-4. HTML trace viewer。
-5. LLM semantic judge。
-6. 趋势 dashboard。
-7. 自动生成 benchmark 修复 PR。
-8. 更大规模 mutation library。
-9. baseline / mutant / restore 可视化 trace diff。
+4. LLM semantic judge。
+5. 自动生成 benchmark 修复 PR。
+6. 更大规模 mutation library。
+7. adapter conformance。
 
 ## 12. 真实 Target Pack 的边界
 

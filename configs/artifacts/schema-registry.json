@@ -13,6 +13,7 @@
     "contract-validity.schema.json",
     "debug-dossier.schema.json",
     "debug-environment.schema.json",
+    "decision-report.schema.json",
     "doctor-result.schema.json",
     "evaluation-contract.schema.json",
     "external-validity-human-labels.schema.json",
@@ -27,6 +28,7 @@
     "gold-corpus-report.schema.json",
     "gold-corpus-trajectories.schema.json",
     "gold-corpus.schema.json",
+    "html-viewer-manifest.schema.json",
     "mutation.schema.json",
     "observer-qualification.schema.json",
     "production-blocking-authorization.schema.json",
@@ -44,6 +46,8 @@
     "runtime-manifest.schema.json",
     "suite-result.schema.json",
     "target-pack.schema.json",
+    "trace-diff.schema.json",
+    "trend-report.schema.json",
     "validity-report.schema.json",
     "workflow-trace.schema.json"
   ],
@@ -166,6 +170,38 @@
       "schemaFile": "production-ci-gate-result.schema.json",
       "currentVersion": "0.1.0",
       "compatibilityPolicyRef": "compatibility-matrix.json#production_ci_gate_result",
+      "migrationSupported": true
+    },
+    {
+      "artifactType": "decision_report",
+      "fileNames": ["decision-report.json"],
+      "schemaFile": "decision-report.schema.json",
+      "currentVersion": "0.1.0",
+      "compatibilityPolicyRef": "compatibility-matrix.json#decision_report",
+      "migrationSupported": true
+    },
+    {
+      "artifactType": "trace_diff",
+      "fileNames": ["trace-diff.json"],
+      "schemaFile": "trace-diff.schema.json",
+      "currentVersion": "0.1.0",
+      "compatibilityPolicyRef": "compatibility-matrix.json#trace_diff",
+      "migrationSupported": true
+    },
+    {
+      "artifactType": "trend_report",
+      "fileNames": ["trend-report.json"],
+      "schemaFile": "trend-report.schema.json",
+      "currentVersion": "0.1.0",
+      "compatibilityPolicyRef": "compatibility-matrix.json#trend_report",
+      "migrationSupported": true
+    },
+    {
+      "artifactType": "html_viewer_manifest",
+      "fileNames": ["html-viewer-manifest.json"],
+      "schemaFile": "html-viewer-manifest.schema.json",
+      "currentVersion": "0.1.0",
+      "compatibilityPolicyRef": "compatibility-matrix.json#html_viewer_manifest",
       "migrationSupported": true
     }
   ]

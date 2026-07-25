@@ -308,7 +308,7 @@ PASS 仍然只是 harness 诊断，`releaseEligible: false`；真实 criterion v
 | `compare` | 比较匹配的 baseline/candidate 证据 |
 | `gate` | 执行确定性 CI 发布策略 |
 | `gate-policy ...` | 校准或 holdout 验证版本化评分和 Gate 策略 |
-| `score` / `report` | 查看或渲染已有运行 |
+| `score` / `report` | 查看运行；渲染 decision、trace-diff、trend 和静态 viewer |
 | `criterion-validity ...` | 生成盲化外部研究包或分析独立人工标签 |
 | `debug ...` | 反向验证并诊断 benchmark harness |
 
@@ -324,7 +324,8 @@ PASS 仍然只是 harness 诊断，`releaseEligible: false`；真实 criterion v
 | `comparison-result.json` | 完整性绑定的配对比较 |
 | `gate-result.json` | 确定性发布结论 |
 | `gate-policy.json` / `calibration-report.*` | 版本化策略、拟合证据和 holdout 诊断 |
-| `report.md` / `validity-report.*` | 人读诊断与外部效度证据 |
+| `report.md` / `decision-report.*` / `trace-diff.json` / `trend-report.json` / `viewer.html` | 人读诊断、决策、脱敏轨迹差异、分 era 趋势和静态查看 |
+| `validity-report.*` / `reliability-report.*` | 外部效度、可靠性和 quarantine 证据 |
 
 完整参数请执行 `awb <command> --help`。
 
@@ -379,6 +380,7 @@ schema、config 或 fixture 后必须执行 `npm run plugin:build`。
 - [建设方案说明](docs/agent-workflow-bench-human-guide.md)
 - [Plugin 使用说明](docs/agent-workflow-bench-plugin-guide.md)
 - [测评方法论](docs/ai-workflow-evaluation-methodology.md)
+- [报告与趋势](docs/reporting-and-trends.md)
 - [Workflow-Trace Observer Contract](docs/workflow-trace-observer-contract.md)
 - [English README](README.md)
 - [日本語 README](README.ja.md)

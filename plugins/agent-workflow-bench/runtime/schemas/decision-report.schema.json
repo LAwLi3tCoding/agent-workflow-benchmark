@@ -1,0 +1,302 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "decision-report.schema.json",
+  "title": "Agent Workflow Bench decision report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "artifactType",
+    "product",
+    "targetId",
+    "suite",
+    "generatedAt",
+    "gateDecision",
+    "gateRuleId",
+    "classification",
+    "releaseAuthority",
+    "gatePolicy",
+    "gatePolicyHash",
+    "policyVersion",
+    "executiveSummary",
+    "caseImpacts",
+    "recommendations",
+    "retest",
+    "evidenceRefs",
+    "provenance",
+    "diagnostics",
+    "integrity"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "0.1.0" },
+    "artifactType": { "const": "decision_report" },
+    "product": { "const": "Agent Workflow Bench" },
+    "targetId": { "$ref": "#/$defs/text" },
+    "suite": { "$ref": "#/$defs/text" },
+    "generatedAt": { "$ref": "#/$defs/timestamp" },
+    "gateDecision": { "$ref": "#/$defs/gateDecision" },
+    "gateRuleId": { "$ref": "#/$defs/gateRuleId" },
+    "classification": { "$ref": "#/$defs/comparisonClassification" },
+    "releaseAuthority": { "const": "source_gate_only" },
+    "gatePolicy": { "$ref": "#/$defs/gatePolicy" },
+    "gatePolicyHash": { "$ref": "#/$defs/hash" },
+    "policyVersion": { "$ref": "#/$defs/semver" },
+    "candidateComparabilityFingerprint": { "$ref": "#/$defs/text" },
+    "ownerSource": { "$ref": "#/$defs/text" },
+    "executiveSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["releaseAction", "topRisks", "reasons"],
+      "properties": {
+        "releaseAction": { "$ref": "#/$defs/gateDecision" },
+        "topRisks": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/decisionRisk" }
+        },
+        "reasons": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/text" }
+        }
+      }
+    },
+    "caseImpacts": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/caseImpact" }
+    },
+    "recommendations": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/recommendation" }
+    },
+    "retest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["required", "conditions"],
+      "properties": {
+        "required": { "type": "boolean" },
+        "conditions": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/text" }
+        }
+      }
+    },
+    "statistics": { "$ref": "#/$defs/statistics" },
+    "evidenceRefs": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/evidenceRef" }
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "comparisonHash",
+        "gateResultHash",
+        "gatePolicyHash",
+        "sourceArtifacts"
+      ],
+      "properties": {
+        "comparisonHash": { "$ref": "#/$defs/hash" },
+        "gateResultHash": { "$ref": "#/$defs/hash" },
+        "gatePolicyHash": { "$ref": "#/$defs/hash" },
+        "sourceArtifacts": {
+          "type": "array",
+          "minItems": 2,
+          "items": { "$ref": "#/$defs/sourceArtifact" }
+        }
+      }
+    },
+    "diagnostics": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/text" }
+    },
+    "integrity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "contentHash"],
+      "properties": {
+        "status": { "const": "VERIFIED_AT_WRITE" },
+        "contentHash": { "$ref": "#/$defs/hash" }
+      }
+    }
+  },
+  "$defs": {
+    "hash": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "timestamp": { "type": "string", "format": "date-time" },
+    "semver": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(?:-[0-9A-Za-z.-]+)?(?:\\+[0-9A-Za-z.-]+)?$"
+    },
+    "text": { "type": "string", "minLength": 1, "maxLength": 1000 },
+    "artifactRef": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256,
+      "pattern": "^(?!/)(?![A-Za-z]:)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*@)(?!.*\\\\)[A-Za-z0-9][A-Za-z0-9._/-]*$"
+    },
+    "evidenceRef": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512,
+      "pattern": "^[a-z][a-z0-9_-]*:[A-Za-z0-9][A-Za-z0-9._/#:=+-]*$"
+    },
+    "gateDecision": { "enum": ["PASS", "DIAGNOSTIC_ONLY", "BLOCK"] },
+    "comparisonClassification": {
+      "enum": ["IMPROVED", "REGRESSED", "UNCHANGED", "MIXED", "HARD_FAILURE", "INCOMPARABLE"]
+    },
+    "caseClassification": {
+      "enum": ["IMPROVED", "REGRESSED", "UNCHANGED", "HARD_FAILURE", "INCOMPARABLE"]
+    },
+    "gateRuleId": {
+      "enum": [
+        "GATE-HARD-FAILURE",
+        "GATE-COMPARISON-INTEGRITY",
+        "GATE-POLICY-INCOMPARABLE",
+        "GATE-REGRESSION",
+        "GATE-CANDIDATE-BLOCK",
+        "GATE-INCOMPARABLE",
+        "GATE-EVIDENCE-NOT-WORKFLOW-TRACE",
+        "GATE-OBSERVER-UNQUALIFIED",
+        "GATE-CANDIDATE-DIAGNOSTIC",
+        "GATE-CANDIDATE-BELOW-PASS",
+        "GATE-PASS"
+      ]
+    },
+    "gatePolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["policyId", "policyVersion", "policyHash", "rulesHash"],
+      "properties": {
+        "policyId": { "const": "awb-gate-policy" },
+        "policyVersion": { "$ref": "#/$defs/semver" },
+        "policyHash": { "$ref": "#/$defs/hash" },
+        "rulesHash": { "$ref": "#/$defs/hash" }
+      }
+    },
+    "decisionRisk": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["severity", "code", "owner", "affectedCaseIds", "why", "evidenceRefs"],
+      "properties": {
+        "severity": { "enum": ["P0", "P1"] },
+        "code": { "$ref": "#/$defs/text" },
+        "owner": { "$ref": "#/$defs/text" },
+        "affectedCaseIds": { "type": "array", "items": { "$ref": "#/$defs/text" } },
+        "why": { "$ref": "#/$defs/text" },
+        "evidenceRefs": { "type": "array", "items": { "$ref": "#/$defs/evidenceRef" } }
+      }
+    },
+    "caseImpact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "caseId",
+        "classification",
+        "scoreDelta",
+        "newHardFailures",
+        "resolvedHardFailures",
+        "evidenceRefs",
+        "retestCondition"
+      ],
+      "properties": {
+        "caseId": { "$ref": "#/$defs/text" },
+        "classification": { "$ref": "#/$defs/caseClassification" },
+        "baselineVerdict": { "$ref": "#/$defs/text" },
+        "candidateVerdict": { "$ref": "#/$defs/text" },
+        "scoreDelta": { "type": ["number", "null"] },
+        "newHardFailures": { "type": "array", "items": { "$ref": "#/$defs/text" } },
+        "resolvedHardFailures": { "type": "array", "items": { "$ref": "#/$defs/text" } },
+        "evidenceRefs": { "type": "array", "items": { "$ref": "#/$defs/evidenceRef" } },
+        "retestCondition": { "$ref": "#/$defs/text" }
+      }
+    },
+    "recommendation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["failureCode", "owner", "affectedCaseIds", "action", "evidenceRefs"],
+      "properties": {
+        "failureCode": { "$ref": "#/$defs/text" },
+        "owner": { "$ref": "#/$defs/text" },
+        "affectedCaseIds": { "type": "array", "items": { "$ref": "#/$defs/text" } },
+        "action": { "$ref": "#/$defs/text" },
+        "evidenceRefs": { "type": "array", "items": { "$ref": "#/$defs/evidenceRef" } }
+      }
+    },
+    "statistics": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "sampleSize": { "$ref": "#/$defs/sampleSize" },
+        "missingRate": { "type": "number", "minimum": 0, "maximum": 1 },
+        "variance": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["dimension", "variance"],
+            "properties": {
+              "dimension": { "$ref": "#/$defs/text" },
+              "variance": { "type": "number" }
+            }
+          }
+        },
+        "pairedDelta": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "score": { "type": "number" },
+            "mean": { "type": "number" },
+            "variance": { "type": "number" }
+          }
+        },
+        "confidenceIntervals": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["metric", "lower", "upper"],
+            "properties": {
+              "metric": { "$ref": "#/$defs/text" },
+              "lower": { "type": "number" },
+              "upper": { "type": "number" }
+            }
+          }
+        },
+        "validity": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "sampleSize": { "$ref": "#/$defs/sampleSize" },
+            "p0Recall": { "type": ["number", "null"], "minimum": 0, "maximum": 1 },
+            "falsePassCount": { "type": ["integer", "null"], "minimum": 0 },
+            "overallAgreement": { "type": ["number", "null"], "minimum": 0, "maximum": 1 },
+            "cohenKappa": { "type": ["number", "null"] }
+          }
+        }
+      }
+    },
+    "sampleSize": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "observed": { "type": "integer", "minimum": 0 },
+        "minimum": { "type": "integer", "minimum": 0 },
+        "requested": { "type": "integer", "minimum": 0 },
+        "required": { "type": "integer", "minimum": 0 },
+        "missing": { "type": "integer", "minimum": 0 },
+        "planned": { "type": "integer", "minimum": 0 },
+        "labeled": { "type": "integer", "minimum": 0 },
+        "adjudicated": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "sourceArtifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["role", "ref", "sha256", "hashKind"],
+      "properties": {
+        "role": { "enum": ["comparison", "gate", "reliability", "validity"] },
+        "ref": { "$ref": "#/$defs/artifactRef" },
+        "sha256": { "$ref": "#/$defs/hash" },
+        "hashKind": { "enum": ["file_bytes", "canonical_json"] }
+      }
+    }
+  }
+}

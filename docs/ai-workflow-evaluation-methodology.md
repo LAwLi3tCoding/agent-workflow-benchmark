@@ -62,7 +62,10 @@ Reference URLs:
 15. **Persist P0 cases as local reusable regression evidence.**
    Every P0 hard failure must be recorded as structured local evidence, not only rendered in a report. AWB writes `p0-cases.json`, `p0-cases.md`, and can append durable JSONL records with `--p0-case-log`. These records identify the target, run, case, contract hash, failure code, evidence events, and recommended action so previously evaluated agent workflows can be retested against their most important failures.
 
-16. **Use reverse validation to test the benchmark itself.**
+16. **Produce read-only reporting artifacts without changing evidence truth.**
+   Stage 9 reporting keeps the legacy `awb report --run` renderer and adds `awb report decision`, `trace-diff`, `trend`, and `viewer`. Decision reports revalidate the comparison and matching gate before writing. Trace diffs expose event refs, source positions, and payload and actor hashes only; `verified_live` requires trusted Observer and qualification evidence. Trend reports split incompatible schema, policy, runner, conditions, contract, target, suite, or observation eras. The static viewer reads already-redacted artifacts and cannot mutate gates, fetch remote assets, execute commands, or read unredacted traces.
+
+17. **Use reverse validation to test the benchmark itself.**
    Overlay-only mutation reverse validation checks configured simulated mutations against the benchmark scorer and oracle fixtures without mutating the real target source. If a mutation survives, repair the benchmark oracle, fixture, observer, target pack, or scorer before trusting the suite. Live Codex/Claude runner behavior must be validated separately through live execution artifacts.
 
 ## Gate Policy Calibration
@@ -121,6 +124,16 @@ old artifacts, and treat migration status `DIAGNOSTIC_ONLY` as non-gateable.
 Stable failures return typed reason codes such as
 `ARTIFACT_SCHEMA_VERSION_UNSUPPORTED` and an action hint instead of silently
 coercing historical evidence.
+
+## Reporting and Trends
+
+Stage 9 reporting is documented in
+[`reporting-and-trends.md`](reporting-and-trends.md). Use `awb report decision`
+for maintainer-facing release evidence, `awb report trace-diff` for redacted
+event-level deltas, `awb report trend` for era-separated historical series,
+and `awb report viewer` for static public-safe viewing. These reports summarize
+and bind existing evidence; they do not create trust, infer missing human
+labels, or change gate decisions.
 
 ## Trusted Workflow-Trace Admission
 

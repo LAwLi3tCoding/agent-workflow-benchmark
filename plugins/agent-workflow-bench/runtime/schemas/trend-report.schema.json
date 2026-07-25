@@ -1,0 +1,174 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "trend-report.schema.json",
+  "title": "Agent Workflow Bench trend report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "artifactType",
+    "product",
+    "seriesId",
+    "inputHash",
+    "points",
+    "segments",
+    "chartSeries",
+    "manifest",
+    "integrity"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "0.1.0" },
+    "artifactType": { "const": "trend_report" },
+    "product": { "const": "Agent Workflow Bench" },
+    "seriesId": { "$ref": "#/$defs/text" },
+    "inputHash": { "$ref": "#/$defs/hash" },
+    "points": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 10000,
+      "items": { "$ref": "#/$defs/point" }
+    },
+    "segments": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/segment" }
+    },
+    "chartSeries": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/chartSeries" }
+    },
+    "manifest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["artifactType", "seriesId", "inputHash", "pointCount", "segmentCount"],
+      "properties": {
+        "artifactType": { "const": "trend_report" },
+        "seriesId": { "$ref": "#/$defs/text" },
+        "inputHash": { "$ref": "#/$defs/hash" },
+        "pointCount": { "type": "integer", "minimum": 1, "maximum": 10000 },
+        "segmentCount": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "integrity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "contentHash"],
+      "properties": {
+        "status": { "const": "VERIFIED_AT_WRITE" },
+        "contentHash": { "$ref": "#/$defs/hash" }
+      }
+    }
+  },
+  "$defs": {
+    "hash": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "timestamp": { "type": "string", "format": "date-time" },
+    "semver": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(?:-[0-9A-Za-z.-]+)?(?:\\+[0-9A-Za-z.-]+)?$"
+    },
+    "text": { "type": "string", "minLength": 1, "maxLength": 1000 },
+    "driftReason": {
+      "enum": [
+        "SCHEMA_VERSION_DRIFT",
+        "GATE_POLICY_DRIFT",
+        "RUNNER_DRIFT",
+        "CONDITIONS_DRIFT",
+        "CONTRACT_DRIFT",
+        "TARGET_DRIFT",
+        "SUITE_DRIFT",
+        "OBSERVATION_LEVEL_DRIFT"
+      ]
+    },
+    "point": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "pointId",
+        "generatedAt",
+        "schemaVersion",
+        "policyVersion",
+        "policyHash",
+        "rulesHash",
+        "runnerName",
+        "runnerCapabilitiesHash",
+        "conditionsHash",
+        "contractHash",
+        "suite",
+        "targetId",
+        "observationLevel",
+        "score"
+      ],
+      "properties": {
+        "pointId": { "$ref": "#/$defs/text" },
+        "generatedAt": { "$ref": "#/$defs/timestamp" },
+        "schemaVersion": { "$ref": "#/$defs/semver" },
+        "policyVersion": { "$ref": "#/$defs/semver" },
+        "policyHash": { "$ref": "#/$defs/hash" },
+        "rulesHash": { "$ref": "#/$defs/hash" },
+        "runnerName": { "$ref": "#/$defs/text" },
+        "runnerCapabilitiesHash": { "$ref": "#/$defs/hash" },
+        "conditionsHash": { "$ref": "#/$defs/hash" },
+        "contractHash": { "$ref": "#/$defs/hash" },
+        "suite": { "$ref": "#/$defs/text" },
+        "targetId": { "$ref": "#/$defs/text" },
+        "observationLevel": { "$ref": "#/$defs/text" },
+        "gateDecision": { "enum": ["PASS", "DIAGNOSTIC_ONLY", "BLOCK", "APPROVE", "CONDITIONAL_APPROVE"] },
+        "score": { "type": "number" }
+      }
+    },
+    "segment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["segmentId", "status", "reasonCodes", "pointIds", "comparabilityKeyHash"],
+      "properties": {
+        "segmentId": { "$ref": "#/$defs/text" },
+        "status": { "enum": ["COMPARABLE", "INCOMPARABLE"] },
+        "reasonCodes": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/driftReason" }
+        },
+        "pointIds": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/text" }
+        },
+        "comparabilityKeyHash": { "$ref": "#/$defs/hash" }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "status": { "const": "INCOMPARABLE" } },
+            "required": ["status"]
+          },
+          "then": {
+            "properties": { "reasonCodes": { "minItems": 1 } }
+          }
+        }
+      ]
+    },
+    "chartSeries": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["segmentId", "points"],
+      "properties": {
+        "segmentId": { "$ref": "#/$defs/text" },
+        "points": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["pointId", "generatedAt", "score"],
+            "properties": {
+              "pointId": { "$ref": "#/$defs/text" },
+              "generatedAt": { "$ref": "#/$defs/timestamp" },
+              "score": { "type": "number" },
+              "gateDecision": { "enum": ["PASS", "DIAGNOSTIC_ONLY", "BLOCK", "APPROVE", "CONDITIONAL_APPROVE"] }
+            }
+          }
+        }
+      }
+    }
+  }
+}

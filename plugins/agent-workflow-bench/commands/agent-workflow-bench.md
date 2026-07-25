@@ -57,6 +57,28 @@ for `CURRENT`/`MIGRATED`, `2` for `DIAGNOSTIC_ONLY`, and `1` for
 policy hashes, integrity hashes, provenance bindings, runtime identity, or
 conditions identity remain diagnostic-only.
 
+Stage 9 reporting keeps the legacy run renderer and adds evidence-bound
+subcommands:
+
+```bash
+awb report --run <run-dir> --format md,json
+awb report decision --comparison <comparison-result.json> --gate-result <gate-result.json> --out <decision-dir>
+awb report trace-diff --mode baseline-candidate --baseline <baseline-workflow-trace.json> --candidate <candidate-workflow-trace.json> --out <trace-diff-dir>
+awb report trace-diff --mode baseline-mutant-restore --baseline <baseline-workflow-trace.json> --mutant <mutant-workflow-trace.json> --restore <restore-workflow-trace.json> --out <trace-diff-dir>
+awb report trend --input <trend-input.json> --out <trend-dir>
+awb report viewer --decision <decision-report.json> --comparison <comparison-result.json> --trace-diff <trace-diff.json> --trend <trend-report.json> --out <viewer-dir>
+```
+
+`decision` revalidates the comparison and matching gate before writing; optional
+reliability/validity inputs add supplied statistics only. `trace-diff` stores
+event refs, source positions, and payload and actor hashes, not raw payloads or
+actor ids; `verified_live`
+requires trusted Observer and qualification evidence. `trend` splits
+incompatible schema, policy, runner, conditions, contract, target, suite, and
+observation eras. `viewer` reads already-redacted artifacts and writes static
+read-only HTML with no remote assets, commands, gate mutation, artifact writes,
+or unredacted trace reads.
+
 Qualify the reference Observer first. This writes evidence and an integrity-bound artifact but never changes a trust root:
 
 ```bash

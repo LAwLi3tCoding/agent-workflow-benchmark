@@ -319,7 +319,7 @@ target source and do not prove live runner behavior.
 | `gate` | Apply deterministic CI release policy |
 | `gate-policy ...` | Calibrate or holdout-validate a versioned scoring and gate policy |
 | `artifact migrate` | Read or migrate registered artifacts with stable status and reason codes |
-| `score` / `report` | Inspect or render an existing run |
+| `score` / `report` | Inspect runs; render decision, trace-diff, trend, and static viewer artifacts |
 | `criterion-validity ...` | Package blinded external studies or analyze independent labels |
 | `debug ...` | Reverse-validate the harness or analyze repeated-run reliability |
 
@@ -336,7 +336,8 @@ target source and do not prove live runner behavior.
 | `comparison-result.json` | Integrity-bound paired classification |
 | `gate-result.json` | Deterministic release decision |
 | `gate-policy.json` / `calibration-report.*` | Versioned policy, fit evidence, and holdout diagnostics |
-| `report.md` / `reliability-report.*` / `validity-report.*` | Diagnosis, reliability, quarantine, and external-validity evidence |
+| `report.md` / `decision-report.*` / `trace-diff.json` / `trend-report.json` / `viewer.html` | Diagnosis, decisions, redacted trace diffs, era-separated trends, and static viewing |
+| `reliability-report.*` / `validity-report.*` | Reliability, quarantine, and external-validity evidence |
 
 Unsigned simulated repeats can report `DIAGNOSTIC_REPRODUCIBLE`, but only stable qualified live `workflow_trace` studies can report a strong `RELIABLE` conclusion.
 Run `awb <command> --help` for the complete option set.
@@ -380,6 +381,7 @@ followed by `npm run plugin:build`.
 - [Human guide](docs/agent-workflow-bench-human-guide.md)
 - [Plugin guide](docs/agent-workflow-bench-plugin-guide.md)
 - [Evaluation methodology](docs/ai-workflow-evaluation-methodology.md)
+- [Reporting and trends](docs/reporting-and-trends.md)
 - [Workflow-trace observer contract](docs/workflow-trace-observer-contract.md)
 - [Gate policy calibration](docs/gate-policy-calibration.md)
 - [Artifact schema compatibility](docs/artifact-schema-compatibility.md)
