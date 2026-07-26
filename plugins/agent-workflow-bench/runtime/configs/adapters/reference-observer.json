@@ -1,0 +1,86 @@
+{
+  "schemaVersion": "0.1.0",
+  "artifactType": "adapter_contract",
+  "id": "reference-observer",
+  "kind": "observer",
+  "version": "1.0.0",
+  "protocolVersion": "1.0.0",
+  "displayName": "Reference Observer Adapter",
+  "implementation": {
+    "runtime": "node",
+    "entrypoint": "src/observer/referenceObserver.ts"
+  },
+  "capabilities": {
+    "entrypointKinds": ["file", "cli"],
+    "eventTypes": [
+      "case_start",
+      "contract_observed",
+      "filesystem_access",
+      "tool_call",
+      "process_spawn",
+      "network_access",
+      "artifact_write",
+      "state_read",
+      "side_effect_attempt",
+      "runner_start",
+      "runner_transcript",
+      "runner_result",
+      "hard_failure",
+      "runner_exit",
+      "token_usage",
+      "case_end"
+    ],
+    "evidenceKinds": [
+      "filesystem",
+      "tool",
+      "process",
+      "network",
+      "artifact",
+      "state",
+      "side_effect",
+      "token"
+    ],
+    "tokenEvidence": {
+      "source": "unavailable",
+      "confidence": "unavailable",
+      "aggregation": "unavailable",
+      "required": false
+    },
+    "signing": {
+      "algorithm": "ed25519",
+      "redactionBeforeSigning": true,
+      "independentProcessRequired": true
+    }
+  },
+  "errorCodes": [
+    "ADAPTER_CONTRACT_INVALID",
+    "ADAPTER_CAPABILITY_UNSUPPORTED",
+    "ADAPTER_EXECUTABLE_UNAVAILABLE",
+    "ADAPTER_EXECUTION_FAILED",
+    "ADAPTER_TIMEOUT",
+    "ADAPTER_OUTPUT_INVALID",
+    "ADAPTER_EVENT_INVALID",
+    "ADAPTER_EVENT_ORDER_INVALID",
+    "ADAPTER_EVIDENCE_LIMIT_EXCEEDED",
+    "ADAPTER_TOKEN_EVIDENCE_INVALID",
+    "ADAPTER_PRIVATE_DATA_REJECTED"
+  ],
+  "evidenceLimits": {
+    "maxEventsPerCase": 10000,
+    "maxPayloadBytes": 1048576,
+    "maxTranscriptBytes": 10485760,
+    "maxTotalEvidenceBytes": 20971520,
+    "maxErrorMessageBytes": 4096
+  },
+  "compatibility": {
+    "awb": "^0.1.0",
+    "caseRunSchema": "0.1.0",
+    "workflowTraceSchema": "0.1.0"
+  },
+  "safety": {
+    "automaticTrustEnrollment": false,
+    "automaticWorkflowModification": false,
+    "automaticFixPullRequest": false,
+    "observerPrivateKeyAccessibleToRunner": false
+  }
+}

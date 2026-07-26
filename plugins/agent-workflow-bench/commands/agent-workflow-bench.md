@@ -57,6 +57,22 @@ for `CURRENT`/`MIGRATED`, `2` for `DIAGNOSTIC_ONLY`, and `1` for
 policy hashes, integrity hashes, provenance bindings, runtime identity, or
 conditions identity remain diagnostic-only.
 
+Stage 10 Adapter conformance is implemented for the OpenCode Runner Adapter:
+
+```bash
+awb adapter conformance --adapter opencode --target <target-id> --adapter-executable "$(command -v opencode)" --out reports/adapters/<target-id>-opencode
+```
+
+The Adapter invokes `opencode run --format json --dir <sandbox-root>` and may
+add `--model <provider/model>` when requested. It never adds `--auto`, `--yolo`,
+`--dangerously-skip-permissions`, or equivalent automatic approval flags. The
+contract requires native token evidence, stable error codes, bounded evidence,
+canonical runner lifecycle events, and disabled automatic trust enrollment,
+workflow modification, fix PR creation, and Runner access to Observer private
+keys. Conformance `PASS` only means the Adapter contract and emitted `CaseRun`
+are scorer-compatible; `adapter-conformance-report.json` always carries
+`releaseDisposition: DIAGNOSTIC_ONLY` and cannot grant workflow PASS.
+
 Stage 9 reporting keeps the legacy run renderer and adds evidence-bound
 subcommands:
 
@@ -109,6 +125,7 @@ Production CI assessment uses:
 ```bash
 awb ci evaluate-canary --samples <samples.json> --isolation-manifest <manifest.json> --gate-policy <gate-policy.json> --out <canary-dir>
 awb ci assess --gate-result <gate-result.json> --runtime-manifest <runtime-manifest.json> --provenance <provenance.json> --isolation-manifest <manifest.json> --canary-report <production-canary-report.json> --out <assessment-dir>
+awb ci benchmark-health --input <benchmark-health-input.json> --out <benchmark-health-dir>
 ```
 
 The frozen canary policy requires at least 30 observe-only samples, false
@@ -116,6 +133,25 @@ positive rate <= 0.02, false negative rate 0, flaky rate <= 0.05, runtime p95
 <= 900 seconds, and cost p95 <= 10 USD. False-positive and false-negative
 rates use known-good and known-bad denominators respectively; both classes are
 required, and `sampleSetHash` binds the full sample set.
+
+`benchmark-health` aggregates Gold Corpus, P0 mutation, Observer
+qualification, A/A reliability, schema compatibility, plugin install, and
+privacy evidence for the AWB version. Any P0 false negative, false PASS,
+invalid Observer qualification, schema incompatibility, missing check, plugin
+install failure, privacy finding, or failed reliability check sets
+`versionDisposition: DIAGNOSTIC_ONLY`. It records automatic trust enrollment,
+workflow modification, and fix PR creation as disabled.
+
+Rank runners only with exact comparable bindings:
+
+```bash
+awb report runner-ranking --input <runner-ranking-input.json> --out <runner-ranking-dir>
+```
+
+Ranking requires the same task, target contract, case set, qualified Observer,
+budget, live `workflow_trace` telemetry, native token source, and comparable
+workflowScore, efficiency, and tokenCost axes. Otherwise the report is
+`INCOMPARABLE` and has no gate effect.
 
 Do not enable production blocking from this slash command alone. Blocking
 requires explicit workflow-owner authorization, a qualified independent live

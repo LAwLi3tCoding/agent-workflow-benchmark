@@ -12,8 +12,11 @@ import { materializeAiSuite, materializeSmokeSuite } from "../generator/material
 import { runAiCasePlanner } from "../generator/aiPlanner.js";
 import { recommendedAiCaseCount, validateAiCasePlan } from "../generator/coverage.js";
 import { runCase } from "../runner/simulatedRunner.js";
-import { detectRunnerCapability } from "../runner/runnerCapabilities.js";
+import { detectRunnerCapability, runnerCapabilityHash } from "../runner/runnerCapabilities.js";
 import { runLiveClaudeCase, runLiveCodexCase } from "../runner/liveCodexRunner.js";
+import { loadAdapterContract } from "../adapters/sdk.js";
+import { createOpenCodeRunnerAdapter } from "../adapters/openCodeAdapter.js";
+import { assertAdapterConformanceReportIntegrity, runRunnerAdapterConformance } from "../adapters/conformance.js";
 import { scoreCase, scoreSuite } from "../scorer/score.js";
 import { prepareDebugEnvironment, reverseValidate } from "../debug/debugWorkflow.js";
 import { renderMarkdownReport } from "../report/report.js";
@@ -42,6 +45,8 @@ import { buildDecisionReport, renderDecisionReportMarkdown } from "../report/dec
 import { buildTraceDiff } from "../report/traceDiff.js";
 import { buildTrendReport } from "../report/trends.js";
 import { buildHtmlViewerArtifacts } from "../report/htmlViewer.js";
+import { assertBenchmarkHealthReportIntegrity, benchmarkHealthExitCode, buildBenchmarkHealthReport } from "../ci/benchmarkHealth.js";
+import { assertRunnerRankingReportIntegrity, buildRunnerRankingReport } from "../report/runnerRanking.js";
 import { hashFile, sha256Text, stableJson } from "../utils/hash.js";
 const program = new Command();
 program.name(CLI_NAME).description(`${PRODUCT_NAME} — ${PRODUCT_TAGLINE}`).version(AWB_VERSION);
@@ -64,6 +69,7 @@ program.command("validate-schema").action(async () => {
     await validateSchemasAndTargets();
     console.log("schemas valid");
     console.log("runner configs valid");
+    console.log("adapter configs valid");
 });
 const artifactCommands = program.command("artifact");
 artifactCommands
@@ -79,6 +85,55 @@ artifactCommands
     await writeArtifactMigration(options.out, migration);
     console.log(`artifact migration ${migration.result.status}: ${options.out}`);
     process.exitCode = artifactMigrationExitCode(migration.result);
+});
+const adapterCommands = program
+    .command("adapter")
+    .description("Validate evidence-bounded Runner and Observer Adapter contracts");
+adapterCommands
+    .command("conformance")
+    .description("Run the built-in Adapter conformance suite; conformance is diagnostic and never workflow PASS evidence")
+    .requiredOption("--adapter <id>", "built-in Adapter id (opencode)")
+    .requiredOption("--target <id>", "owner-reviewed target used by the fixture case")
+    .requiredOption("--adapter-executable <path>", "executable implementing the Adapter CLI contract")
+    .option("--model <model>", "optional provider/model for OpenCode")
+    .option("--timeout-ms <ms>", "Adapter execution timeout", "10000")
+    .requiredOption("--out <dir>")
+    .action(async (options) => {
+    if (options.adapter !== "opencode") {
+        throw new Error(`Unsupported built-in Adapter: ${options.adapter}.`);
+    }
+    const profile = await profileTarget(await loadTargetPack(options.target));
+    const testCase = materializeSmokeSuite(profile.contract).cases[0];
+    if (!testCase) {
+        throw new Error(`Target ${options.target} did not materialize a conformance case.`);
+    }
+    const adapterContract = await loadAdapterContract(path.join(getBenchmarkRoot(), "configs/adapters/opencode.json"));
+    const executable = await resolveExistingPath(options.adapterExecutable);
+    const capability = opencodeConformanceCapability(executable, adapterContract);
+    const adapter = createOpenCodeRunnerAdapter(adapterContract, {
+        executable
+    });
+    const outputDir = path.resolve(options.out);
+    const report = await runRunnerAdapterConformance({
+        adapter,
+        context: {
+            testCase,
+            contract: profile.contract,
+            capability,
+            sandboxRoot: path.join(outputDir, "sandbox"),
+            transcriptPath: path.join(outputDir, "transcripts", `${testCase.id}.jsonl`),
+            lastMessagePath: path.join(outputDir, "last-messages", `${testCase.id}.json`),
+            timeoutMs: parsePositiveInt(options.timeoutMs, "--timeout-ms"),
+            model: options.model
+        }
+    });
+    assertAdapterConformanceReportIntegrity(report);
+    await assertJsonSchema(report, "adapter-conformance-report.schema.json", "Adapter conformance report");
+    await writeJson(path.join(outputDir, "adapter-conformance-report.json"), report);
+    console.log(`Adapter conformance ${report.decision}: ${outputDir}`);
+    if (report.decision !== "PASS") {
+        process.exitCode = 1;
+    }
 });
 const observer = program.command("observer");
 observer
@@ -793,6 +848,20 @@ ci
     console.log(`production CI assessment ${result.decision}: ${options.out}`);
     process.exitCode = productionCiGateExitCode(result);
 });
+ci
+    .command("benchmark-health")
+    .description("Aggregate periodic Gold, P0, Observer, A/A, schema, plugin, and privacy checks into a fail-closed version disposition")
+    .requiredOption("--input <path>", "benchmark-health-input.json")
+    .requiredOption("--out <dir>")
+    .action(async (options) => {
+    const input = await readJsonWithSchema(await resolveExistingPath(options.input), "benchmark-health-input.schema.json", "Benchmark health input");
+    const report = buildBenchmarkHealthReport(input);
+    assertBenchmarkHealthReportIntegrity(report);
+    await assertJsonSchema(report, "benchmark-health-report.schema.json", "Benchmark health report");
+    await writeJson(path.join(options.out, "benchmark-health-report.json"), report);
+    console.log(`benchmark health ${report.status}; version ${report.versionDisposition}: ${options.out}`);
+    process.exitCode = benchmarkHealthExitCode(report);
+});
 program
     .command("score")
     .option("--run <dir>")
@@ -825,6 +894,19 @@ const reportCommands = program
         await writeJson(path.join(options.run, "suite-result.json"), suiteResult);
     }
     console.log(`report written: ${options.run}`);
+});
+reportCommands
+    .command("runner-ranking")
+    .description("Rank runners only when task, cases, qualified Observer, budget, Telemetry, and all score axes are comparable")
+    .requiredOption("--input <path>", "runner-ranking-input.json")
+    .requiredOption("--out <dir>")
+    .action(async (options) => {
+    const input = await readJsonWithSchema(await resolveExistingPath(options.input), "runner-ranking-input.schema.json", "Runner ranking input");
+    const report = buildRunnerRankingReport(input);
+    assertRunnerRankingReportIntegrity(report);
+    await assertJsonSchema(report, "runner-ranking-report.schema.json", "Runner ranking report");
+    await writeJson(path.join(options.out, "runner-ranking-report.json"), report);
+    console.log(`runner ranking ${report.status}: ${options.out}`);
 });
 reportCommands
     .command("decision")
@@ -1092,6 +1174,7 @@ const goldCorpus = program.command("gold-corpus");
 goldCorpus
     .command("validate")
     .requiredOption("--corpus <path>")
+    .option("--out <dir>", "optional Gold Corpus report output directory")
     .action(async (options) => {
     const corpusPath = await resolveExistingPath(options.corpus);
     const corpus = await loadGoldCorpus(corpusPath);
@@ -1099,6 +1182,10 @@ goldCorpus
     const contract = (await profileTarget(target)).contract;
     const suite = materializeSmokeSuite(contract);
     const report = evaluateGoldCorpus(corpus, contract, suite.cases);
+    await assertJsonSchema(report, "gold-corpus-report.schema.json", "Gold Corpus report");
+    if (options.out) {
+        await writeJson(path.join(options.out, "gold-corpus-report.json"), report);
+    }
     if (report.status !== "PASS") {
         throw new Error(`Gold Corpus validation failed with ${report.blindSpots.length} blind spot(s).`);
     }
@@ -1404,6 +1491,32 @@ function normalizeRunnerName(value) {
     }
     throw new Error(`Unsupported runner: ${value}`);
 }
+function opencodeConformanceCapability(executable, adapterContract) {
+    const capability = {
+        schemaVersion: "0.1.0",
+        name: "opencode",
+        supported: true,
+        executable,
+        adapterVersion: adapterContract.version,
+        executionMode: "live",
+        supportsEntrypointKinds: [
+            ...adapterContract.capabilities.entrypointKinds
+        ],
+        tokenSourceDetail: {
+            source: "native",
+            confidence: "high"
+        },
+        comparability: adapterContract.comparability ?? {
+            workflowScore: "directional_only",
+            efficiency: "comparable",
+            tokenCost: "comparable"
+        }
+    };
+    return {
+        ...capability,
+        capabilitiesHash: runnerCapabilityHash(capability)
+    };
+}
 function workflowTraceRunnerCapability(runner) {
     return {
         schemaVersion: "0.1.0",
@@ -1629,6 +1742,7 @@ async function validateSchemasAndTargets() {
     let validateGenerationManifest;
     let validateRuntimeManifest;
     let validateProductionCanaryPolicy;
+    let validateAdapterContractSchema;
     for (const file of schemaFiles) {
         const schema = JSON.parse(await readFile(path.join(schemaDir, file), "utf8"));
         const validate = ajv.compile(schema);
@@ -1685,6 +1799,9 @@ async function validateSchemasAndTargets() {
         }
         if (file === "production-canary-policy.schema.json") {
             validateProductionCanaryPolicy = validate;
+        }
+        if (file === "adapter-contract.schema.json") {
+            validateAdapterContractSchema = validate;
         }
     }
     if (!validateTarget) {
@@ -1745,6 +1862,9 @@ async function validateSchemasAndTargets() {
     loadGatePolicy(canonicalGatePolicyPath);
     if (!validateProductionCanaryPolicy) {
         throw new Error("Production canary policy schema is missing.");
+    }
+    if (!validateAdapterContractSchema) {
+        throw new Error("Adapter contract schema is missing.");
     }
     const productionCanaryPolicyPath = path.join(benchmarkRoot, "configs", "ci", "production-canary-policy.json");
     if (!existsSync(productionCanaryPolicyPath)) {
@@ -1826,6 +1946,15 @@ async function validateSchemasAndTargets() {
         if (!validateRunner(runnerConfig)) {
             throw new Error(`Runner config ${file} failed schema validation: ${ajv.errorsText(validateRunner.errors)}`);
         }
+    }
+    const adapterDir = path.join(benchmarkRoot, "configs/adapters");
+    for (const file of (await readdir(adapterDir)).filter((entry) => entry.endsWith(".json"))) {
+        const adapterPath = path.join(adapterDir, file);
+        const adapterConfig = await readJson(adapterPath);
+        if (!validateAdapterContractSchema(adapterConfig)) {
+            throw new Error(`Adapter config ${file} failed schema validation: ${ajv.errorsText(validateAdapterContractSchema.errors)}`);
+        }
+        await loadAdapterContract(adapterPath);
     }
     const calibrationArtifactRoot = path.join(benchmarkRoot, "fixtures/calibration/v1");
     const committedFitPolicyPath = path.join(calibrationArtifactRoot, "fit/gate-policy.json");
@@ -2278,7 +2407,18 @@ async function runLiveCase(testCase, contract, runnerCapability, runDir, options
     if (runnerCapability.name === "claude") {
         return runLiveClaudeCase(testCase, contract, runnerCapability, optionsForRunner);
     }
-    throw new Error(`Live execution is currently implemented for codex and claude only, got ${runnerCapability.name}`);
+    if (runnerCapability.name === "opencode") {
+        const adapterContract = await loadAdapterContract(path.join(getBenchmarkRoot(), "configs/adapters/opencode.json"));
+        return createOpenCodeRunnerAdapter(adapterContract, {
+            executable: runnerCapability.executable ?? ""
+        }).run({
+            testCase,
+            contract,
+            capability: runnerCapability,
+            ...optionsForRunner
+        });
+    }
+    throw new Error(`Live execution is implemented for codex, claude, and opencode, got ${runnerCapability.name}`);
 }
 async function writeReport(filePath, suiteResult) {
     await writeReportFile(filePath, renderMarkdownReport(suiteResult));

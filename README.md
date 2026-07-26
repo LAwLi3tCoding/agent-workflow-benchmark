@@ -4,12 +4,10 @@
 
 [English](README.md) · [简体中文](README.zh-CN.md) · [日本語](README.ja.md)
 
-Agent Workflow Bench (AWB) evaluates the workflow around a coding agent—not
-just its final answer. It tests rules, skills, hooks, sub-agents, routing,
-handoffs, gates, artifacts, state, budgets, side-effect policy, and recovery.
+Agent Workflow Bench (AWB) evaluates the workflow around a coding agent—not just its final answer.
+It tests rules, skills, hooks, sub-agents, routing, handoffs, gates, artifacts, state, budgets, side-effect policy, and recovery.
 
-The canonical product name is **Agent Workflow Bench**. The package, repository,
-plugin, Skill, and command slug is `agent-workflow-bench`; the CLI is `awb`.
+The canonical product name is **Agent Workflow Bench**. The package, repository, plugin, Skill, and command slug is `agent-workflow-bench`; the CLI is `awb`.
 
 > AWB is evidence-first. Deterministic contract violations and invalid
 > provenance take precedence over aggregate scores and AI judgment. Simulated,
@@ -138,7 +136,7 @@ hard-failure codes. P0 failures block; P1 failures cap a case below PASS.
 | --- | --- | --- |
 | Codex | Live `contract_summary` | Diagnostic-only without external observation |
 | Claude Code | Live `contract_summary` | Diagnostic-only without external observation |
-| OpenCode | Capability detection | Adapter required |
+| OpenCode | Live Adapter contract and conformance | Diagnostic-only unless admitted through qualified workflow-trace observation |
 | Simulated | Synthetic events | Harness/scorer validation only |
 
 ### Signed workflow-trace admission
@@ -319,7 +317,9 @@ target source and do not prove live runner behavior.
 | `gate` | Apply deterministic CI release policy |
 | `gate-policy ...` | Calibrate or holdout-validate a versioned scoring and gate policy |
 | `artifact migrate` | Read or migrate registered artifacts with stable status and reason codes |
-| `score` / `report` | Inspect runs; render decision, trace-diff, trend, and static viewer artifacts |
+| `adapter conformance` | Validate a Runner Adapter contract and emitted `CaseRun` shape as diagnostic evidence |
+| `ci benchmark-health` | Aggregate periodic benchmark self-checks into a fail-closed version disposition |
+| `score` / `report` | Inspect runs; render decision, trace-diff, trend, runner-ranking, and static viewer artifacts |
 | `criterion-validity ...` | Package blinded external studies or analyze independent labels |
 | `debug ...` | Reverse-validate the harness or analyze repeated-run reliability |
 
@@ -338,6 +338,9 @@ target source and do not prove live runner behavior.
 | `gate-policy.json` / `calibration-report.*` | Versioned policy, fit evidence, and holdout diagnostics |
 | `report.md` / `decision-report.*` / `trace-diff.json` / `trend-report.json` / `viewer.html` | Diagnosis, decisions, redacted trace diffs, era-separated trends, and static viewing |
 | `reliability-report.*` / `validity-report.*` | Reliability, quarantine, and external-validity evidence |
+| `adapter-conformance-report.json` | Adapter contract and runtime conformance diagnostics; never workflow PASS evidence |
+| `benchmark-health-report.json` | Periodic benchmark health and version disposition |
+| `runner-ranking-report.json` | Cross-runner ranking or explicit incomparability reason codes |
 
 Unsigned simulated repeats can report `DIAGNOSTIC_REPRODUCIBLE`, but only stable qualified live `workflow_trace` studies can report a strong `RELIABLE` conclusion.
 Run `awb <command> --help` for the complete option set.
@@ -381,6 +384,8 @@ followed by `npm run plugin:build`.
 - [Human guide](docs/agent-workflow-bench-human-guide.md)
 - [Plugin guide](docs/agent-workflow-bench-plugin-guide.md)
 - [Evaluation methodology](docs/ai-workflow-evaluation-methodology.md)
+- [Adapter SDK](docs/adapter-sdk.md)
+- [Benchmark health](docs/benchmark-health.md)
 - [Reporting and trends](docs/reporting-and-trends.md)
 - [Workflow-trace observer contract](docs/workflow-trace-observer-contract.md)
 - [Gate policy calibration](docs/gate-policy-calibration.md)

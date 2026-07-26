@@ -71,6 +71,9 @@ describe("agent workflow bench plugin package", () => {
     expect(command).toContain("gate-policy calibrate");
     expect(command).toContain("gate-policy validate-holdout");
     expect(command).toContain("artifact migrate");
+    expect(command).toContain("adapter conformance");
+    expect(command).toContain("ci benchmark-health");
+    expect(command).toContain("report runner-ranking");
   });
 
   test("ships a self-contained plugin runtime for installs without a source checkout", async () => {
@@ -124,6 +127,18 @@ describe("agent workflow bench plugin package", () => {
       stat(path.join(runtimeRoot, "schemas", "html-viewer-manifest.schema.json"))
     ).resolves.toBeTruthy();
     await expect(
+      stat(path.join(runtimeRoot, "schemas", "adapter-contract.schema.json"))
+    ).resolves.toBeTruthy();
+    await expect(
+      stat(path.join(runtimeRoot, "schemas", "adapter-conformance-report.schema.json"))
+    ).resolves.toBeTruthy();
+    await expect(
+      stat(path.join(runtimeRoot, "schemas", "benchmark-health-report.schema.json"))
+    ).resolves.toBeTruthy();
+    await expect(
+      stat(path.join(runtimeRoot, "schemas", "runner-ranking-report.schema.json"))
+    ).resolves.toBeTruthy();
+    await expect(
       stat(path.join(runtimeRoot, "configs", "artifacts", "schema-registry.json"))
     ).resolves.toBeTruthy();
     await expect(
@@ -131,6 +146,12 @@ describe("agent workflow bench plugin package", () => {
     ).resolves.toBeTruthy();
     await expect(
       stat(path.join(runtimeRoot, "configs", "evaluation", "gate-policy.json"))
+    ).resolves.toBeTruthy();
+    await expect(
+      stat(path.join(runtimeRoot, "configs", "adapters", "opencode.json"))
+    ).resolves.toBeTruthy();
+    await expect(
+      stat(path.join(runtimeRoot, "configs", "adapters", "reference-observer.json"))
     ).resolves.toBeTruthy();
     await expect(stat(path.join(runtimeRoot, "fixtures", "mutations", "core.yaml"))).resolves.toBeTruthy();
     await expect(
@@ -188,6 +209,21 @@ describe("agent workflow bench plugin package", () => {
     await expect(
       stat(path.join(runtimeRoot, "dist", "src", "report", "htmlViewer.js"))
     ).resolves.toBeTruthy();
+    await expect(
+      stat(path.join(runtimeRoot, "dist", "src", "adapters", "sdk.js"))
+    ).resolves.toBeTruthy();
+    await expect(
+      stat(path.join(runtimeRoot, "dist", "src", "adapters", "conformance.js"))
+    ).resolves.toBeTruthy();
+    await expect(
+      stat(path.join(runtimeRoot, "dist", "src", "adapters", "openCodeAdapter.js"))
+    ).resolves.toBeTruthy();
+    await expect(
+      stat(path.join(runtimeRoot, "dist", "src", "ci", "benchmarkHealth.js"))
+    ).resolves.toBeTruthy();
+    await expect(
+      stat(path.join(runtimeRoot, "dist", "src", "report", "runnerRanking.js"))
+    ).resolves.toBeTruthy();
 
     const wrapper = await readFile(path.join(pluginRoot, "bin", "awb"), "utf8");
     expect(wrapper).toContain("RUNTIME_DIR");
@@ -205,6 +241,7 @@ describe("agent workflow bench plugin package", () => {
 
       expect(result.stdout).toContain("schemas valid");
       expect(result.stdout).toContain("runner configs valid");
+      expect(result.stdout).toContain("adapter configs valid");
       const artifactHelp = await execa(
         path.join(install.pluginPath, "bin", "awb"),
         ["artifact", "--help"],

@@ -200,6 +200,36 @@
       "missingTrustDisposition": "DIAGNOSTIC_ONLY",
       "unsupportedCode": "ARTIFACT_SCHEMA_VERSION_UNSUPPORTED",
       "action": "Regenerate the viewer manifest from hashed public artifacts and a read-only viewer bundle."
+    },
+    {
+      "artifactType": "adapter_conformance_report",
+      "currentVersion": "0.1.0",
+      "readableVersions": ["0.1.x"],
+      "migrationMode": "diagnostic_on_missing_trust",
+      "requiredTrustFields": ["adapter.contractHash", "checks", "releaseDisposition", "safety.automaticTrustEnrollment", "safety.automaticWorkflowModification", "safety.automaticFixPullRequest", "safety.observerPrivateKeyAccessibleToRunner", "integrity.contentHash"],
+      "missingTrustDisposition": "DIAGNOSTIC_ONLY",
+      "unsupportedCode": "ARTIFACT_SCHEMA_VERSION_UNSUPPORTED",
+      "action": "Rerun the Adapter conformance suite against the current contract; conformance never substitutes for workflow evidence."
+    },
+    {
+      "artifactType": "benchmark_health_report",
+      "currentVersion": "0.1.0",
+      "readableVersions": ["0.1.x"],
+      "migrationMode": "diagnostic_on_missing_trust",
+      "requiredTrustFields": ["inputHash", "checks", "versionDisposition", "automaticActions.versionDispositionApplied", "automaticActions.trustEnrollment", "automaticActions.workflowModification", "automaticActions.fixPullRequestCreation", "integrity.contentHash"],
+      "missingTrustDisposition": "DIAGNOSTIC_ONLY",
+      "unsupportedCode": "ARTIFACT_SCHEMA_VERSION_UNSUPPORTED",
+      "action": "Rerun all periodic benchmark-health checks; missing governance evidence forces diagnostic-only disposition."
+    },
+    {
+      "artifactType": "runner_ranking_report",
+      "currentVersion": "0.1.0",
+      "readableVersions": ["0.1.x"],
+      "migrationMode": "diagnostic_on_missing_trust",
+      "requiredTrustFields": ["comparabilityFingerprint", "entries", "rankingAllowed", "integrity.contentHash"],
+      "missingTrustDisposition": "DIAGNOSTIC_ONLY",
+      "unsupportedCode": "ARTIFACT_SCHEMA_VERSION_UNSUPPORTED",
+      "action": "Rebuild the ranking from task, Case, qualified Observer, budget, and Telemetry-compatible inputs."
     }
   ]
 }

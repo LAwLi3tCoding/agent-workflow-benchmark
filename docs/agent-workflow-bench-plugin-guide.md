@@ -94,6 +94,59 @@ conditions identity 的旧制品保持 `DIAGNOSTIC_ONLY`，不能用于 CI PASS 
 blocking。完整策略见
 [`artifact-schema-compatibility.md`](artifact-schema-compatibility.md)。
 
+Stage 10 开始，插件包含 Adapter SDK 合约、OpenCode live Runner Adapter、Adapter
+conformance、benchmark health 和 cross-runner ranking。OpenCode Adapter 调用的是：
+
+```bash
+opencode run --format json --dir <sandbox-root>
+```
+
+可选 `--model <provider/model>`。Adapter 不会添加 `--auto`、`--yolo`、
+`--dangerously-skip-permissions` 或等价自动授权参数。它要求 OpenCode JSON 输出中包含
+native assistant token evidence；缺失 token、证据超限、JSONL 无效、事件顺序错误、
+输出含需脱敏私密数据或进程执行失败都会得到稳定 Adapter reason code。
+
+运行 conformance：
+
+```bash
+awb adapter conformance \
+  --adapter opencode \
+  --target minimal-directory-agent \
+  --adapter-executable "$(command -v opencode)" \
+  --out reports/adapters/opencode
+```
+
+`adapter-conformance-report.json` 的 `decision: PASS` 只代表 Adapter 合约和 `CaseRun`
+可被 AWB scorer 接受。报告固定 `releaseDisposition: DIAGNOSTIC_ONLY`，不能授权 workflow
+gate PASS。Adapter 合约还固定声明证据上限、stable error codes、runner lifecycle
+events、native token source，以及禁用自动 trust enrollment、自动 workflow 修改、
+自动 fix PR 和 Runner 读取 Observer 私钥。
+
+周期性 benchmark health 聚合 Gold Corpus、P0 mutation、Observer qualification、
+A/A reliability、schema compatibility、plugin install 和 privacy scan：
+
+```bash
+awb ci benchmark-health \
+  --input health/benchmark-health-input.json \
+  --out reports/health/current
+```
+
+出现 P0 false negative、false PASS、Observer 无效、schema incompatible、缺检查、
+plugin install 失败、privacy finding 或 reliability 失败时，报告自动将 AWB 版本处置为
+`DIAGNOSTIC_ONLY`。该命令不会登记信任根、修改 workflow 或创建修复 PR。
+
+跨 runner 排名必须显式输入完全可比的 evidence：
+
+```bash
+awb report runner-ranking \
+  --input reports/ranking/runner-ranking-input.json \
+  --out reports/ranking/current
+```
+
+只有 exact task、Target Contract、Case Set、已认证 Observer、budget、live
+`workflow_trace` Telemetry、native token source，以及 workflowScore、efficiency、
+tokenCost 三轴都可比时才输出排名。否则输出 `INCOMPARABLE` 和 reason codes。
+
 ```bash
 awb ingest-trace \
   --cases-dir cases/generated/<target-id>/ai-smoke \
@@ -256,6 +309,11 @@ awb run --cases-dir cases/generated/<target-id>/ai-smoke --runner claude --execu
 
 当前实现中，Codex live case runner 已用真实 Codex CLI 验证；Claude 已接入 AI case planner 和 live case runner 适配器，并通过 fake Claude CLI 测试覆盖参数和 JSON 解析路径。这些验证覆盖 live runner prompt、transcript 和结构化输出解析，不等同于真实 target entrypoint 观察器或生产发布批准。
 
+OpenCode 已接入 live Runner Adapter 和 conformance CLI，并通过 fixture executable
+测试覆盖 `opencode run --format json --dir` 参数、native token 解析、stable Adapter
+failure codes 和 `DIAGNOSTIC_ONLY` evidence ceiling。真实 OpenCode target workflow
+PASS 仍需要 qualified independent `workflow_trace` admission。
+
 如果尚未安装 `claude` CLI，可以在安装 Claude Code 后先用官方支持的本地插件加载方式验证：
 
 ```bash
@@ -270,6 +328,7 @@ claude --plugin-dir "$(git rev-parse --show-toplevel)/plugins/agent-workflow-ben
 
 - `npm run validate`：运行 typecheck 和 Vitest 全量测试。
 - `npm test -- tests/plugin-package.test.ts tests/live-runner.test.ts`：验证插件 wrapper、packaged runtime、live runner prompt/transcript 行为。
+- `npm test -- tests/stage10-adapter-sdk.test.ts tests/stage10-benchmark-health.test.ts tests/stage10-runner-ranking.test.ts tests/stage10-cli-schema.test.ts`：验证 Adapter SDK/OpenCode conformance、benchmark health、runner ranking 和 CLI/schema surface。
 - `plugins/agent-workflow-bench/bin/awb validate-schema`：验证插件 runtime 的 schema、runner config 和 target pack 可加载；带完整 `--target/--runner/--out` 参数的 `doctor` 验证 target profile、runner 能力和 evidence 上限。
 - `plan-cases --runner codex` 可以把 agent 文件摘录作为 transient LLM input 生成真实 case plan；持久化的 prompt artifact 只保留相对路径、hash 和字节数，response artifact 只保留内容 hash，不保存原始 excerpt 或原始模型响应。
 - `materialize --strategy ai` 成功生成 AI cases。

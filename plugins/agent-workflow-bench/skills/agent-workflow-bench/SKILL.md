@@ -61,6 +61,14 @@ awb artifact migrate --input <artifact.json> --out <migration-dir>
 
 Add `--artifact-type <type>` for non-canonical filenames. Migration writes `migration-result.json` and, only when safe, `migrated-artifact.json`; exits are `0` for `CURRENT`/`MIGRATED`, `2` for `DIAGNOSTIC_ONLY`, and `1` for `INCOMPATIBLE`. It never invents trust: missing Observer attestation, policy hashes, integrity hashes, provenance bindings, runtime identity, or conditions identity stay diagnostic-only. See `docs/artifact-schema-compatibility.md`.
 
+For Adapter conformance, use the Stage 10 Adapter SDK reference and the built-in OpenCode Runner Adapter:
+
+```bash
+awb adapter conformance --adapter opencode --target <target-id> --adapter-executable "$(command -v opencode)" --out reports/adapters/<target-id>-opencode
+```
+
+The Adapter invokes `opencode run --format json --dir <sandbox-root>` and may add `--model <provider/model>` when supplied. It must not add `--auto`, `--yolo`, `--dangerously-skip-permissions`, or equivalent automatic approval flags. It requires native assistant token evidence, bounded evidence, stable error codes, and canonical lifecycle events. A conformance PASS is always `releaseDisposition: DIAGNOSTIC_ONLY`; it proves scorer compatibility only and cannot grant workflow PASS. See `docs/adapter-sdk.md`.
+
 For Stage 9 reporting, keep the legacy run renderer and use the evidence-bound subcommands when reporting on comparisons, traces, trends, or public static views:
 
 ```bash
@@ -93,6 +101,22 @@ Use `--gate-policy <gate-policy.json>` on both `compare` and `gate` when recompu
 Both private signing keys must remain outside the evaluated Runner, repository, artifacts, and logs, and the Observer and qualification authority must use different key pairs. The bundled reference Observer currently requires Darwin plus `/usr/bin/sandbox-exec`; it fails closed elsewhere. Its deny-default boundary actively proves signing-key reads, direct network, and nested process execution are denied with `EPERM`; Runner HOME/TMPDIR changes stay observable, and the signed trace output must be outside every Runner workspace. The qualification suite binds known-good/P0/blind-spot/repeat evidence to the exact Observer implementation, Contract, case set, canonical evaluation-contract content, and Schemas. AWB never enrolls either key automatically.
 
 For repository CI, use `.github/workflows/ci.yml`; it covers `git diff --check`, typecheck, full tests, plugin build, runtime parity, schema validation, canonical naming scan, privacy scan, and fresh-install smoke. For external workflows, `.github/workflows/awb-external-observe-only.yml` is observe-only: it compares baseline/candidate runs and records PASS, DIAGNOSTIC_ONLY, or BLOCK without enforcing the AWB decision; command/runtime failures still fail closed. Redacted summary upload is explicit opt-in with short retention. Stage 8 production assessment uses `awb ci evaluate-canary` and `awb ci assess`; frozen canary thresholds are sample count >= 30, false positive rate <= 0.02, false negative rate 0, flaky rate <= 0.05, runtime p95 <= 900 seconds, and cost p95 <= 10 USD. False-positive and false-negative rates use known-good and known-bad denominators, both classes are required, and `sampleSetHash` binds the sample set. Production blocking requires explicit owner authorization, qualified independent live Observer evidence, caller-provided strong Runner isolation, separate public trust anchors, network denial or allowlist, read-only target inputs, controlled tool proxying, and redacted artifact retention. The signed authorization binds gate, runtime manifest, provenance, isolation, canary, and gate-policy hashes. AWB validates supplied isolation evidence; it does not provide a Linux isolation backend.
+
+Run periodic benchmark health before treating an AWB version as release-eligible:
+
+```bash
+awb ci benchmark-health --input <benchmark-health-input.json> --out <benchmark-health-dir>
+```
+
+The report downgrades the AWB version to `DIAGNOSTIC_ONLY` for P0 false negatives, false PASS, invalid Observer qualification, schema incompatibility, missing checks, plugin install failure, privacy findings, or failed reliability checks. It records automatic trust enrollment, workflow modification, and fix PR creation as disabled. See `docs/benchmark-health.md`.
+
+For cross-runner selection, rank only exact comparable evidence:
+
+```bash
+awb report runner-ranking --input <runner-ranking-input.json> --out <runner-ranking-dir>
+```
+
+Ranking requires the same task, Target Contract, Case Set, qualified Observer, budget, live `workflow_trace` Telemetry, native token source, and comparable workflowScore, efficiency, and tokenCost axes. Any mismatch writes `INCOMPARABLE` and has no workflow gate effect.
 
 For a complete local evaluation workflow, the legacy one-shot command remains supported:
 

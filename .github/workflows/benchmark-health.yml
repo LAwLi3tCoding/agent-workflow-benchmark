@@ -1,0 +1,48 @@
+name: Benchmark Health
+
+on:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  benchmark-health:
+    name: Periodic benchmark health
+    runs-on: macos-14
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Run benchmark health
+        run: node scripts/run-benchmark-health.mjs
+
+      - name: Upload public-safe benchmark health evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-health-evidence
+          path: |
+            reports/benchmark-health/benchmark-health-input.json
+            reports/benchmark-health/benchmark-health-report.json
+            reports/benchmark-health/evidence-manifest.json
+            reports/benchmark-health/HEALTH_*.marker
+            reports/benchmark-health/health/**/*.json
+            reports/benchmark-health/health/**/*.md
+          if-no-files-found: error

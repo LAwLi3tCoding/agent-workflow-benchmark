@@ -38,7 +38,7 @@ Agent workflow 的失败往往不是一个最终答案错了，而是过程错�
 |---|---|
 | 是否允许某个 workflow 准入 | matched baseline/candidate 是否可比，CI gate 是否 PASS |
 | 是否阻断一次 workflow 版本升级 | 相比 baseline 是否退化，关键 case 是否失败 |
-| Claude / Codex / opencode 哪个更适合 | 在可比前提下比较通过率、效率、token 成本 |
+| Claude / Codex / opencode 哪个更适合 | 只有 exact task、Case、已认证 Observer、budget、Telemetry 和所有轴都可比时才排名 |
 | 哪些流程需要优先整改 | Top 风险、P0/P1 问题、owner hint |
 | 成本是否可控 | token 总量、浪费比例、judge 成本、单 case 成本 |
 | workflow 文档是否漂移 | README、agent prompt、ORCHESTRATION、hooks 是否一致 |
@@ -118,6 +118,20 @@ Agent workflow 的失败往往不是一个最终答案错了，而是过程错�
 3. `not_comparable`：不能排名，只能诊断。
 
 可比性按三轴拆开：workflow score、执行效率、token/cost。只有参与排名的轴全部是 `comparable`，报告才输出 runner 名次；如果 workflow 可比但 token/cost 不可比，只展示诊断矩阵，不给综合 runner 排名。不可比不是失败，也不代表 workflow 差，只代表不能用于 runner 采购、选型或综合排名。
+
+跨 runner 排名使用独立命令：
+
+```bash
+awb report runner-ranking \
+  --input reports/ranking/runner-ranking-input.json \
+  --out reports/ranking/current
+```
+
+该命令要求每个 runner 绑定完全相同的 task、Target Contract、Case Set、已认证
+Observer 资格制品、预算、live `workflow_trace` Telemetry 形态和 native token source。
+workflow score、efficiency、tokenCost 三轴都必须是 `comparable`。任一绑定不同、
+Observer 未认证、Telemetry 不同、token 不是 native，或任一轴为 directional-only /
+incomparable 时，输出 `INCOMPARABLE` 和 reason codes，不给 runner 名次。
 
 ## 6. 通用 Smoke 模板与示例绑定
 
@@ -278,6 +292,33 @@ awb artifact migrate --input <artifact.json> --out reports/artifact-migration
 
 `DIAGNOSTIC_ONLY` 不是通过，也不是失败准入结论；它表示本次证据不足以做准入或排名判断，只能用于定位问题。进入准入判断前必须补齐缺失 telemetry、oracle 或 runner 可比性。
 
+Stage 10 新增 Adapter 合约和 conformance 诊断。OpenCode 内置 Adapter 的真实命令形态是：
+
+```bash
+opencode run --format json --dir <sandbox-root>
+```
+
+可选 `--model <provider/model>`，但不会附加 `--auto`、`--yolo`、
+`--dangerously-skip-permissions` 或等价的自动授权参数。Adapter 合约声明稳定错误码、
+runner 生命周期事件、证据上限、native token evidence，以及禁用自动 trust enrollment、
+自动 workflow 修改、自动 fix PR 和 Runner 读取 Observer 私钥。
+
+运行 conformance：
+
+```bash
+awb adapter conformance \
+  --adapter opencode \
+  --target minimal-directory-agent \
+  --adapter-executable "$(command -v opencode)" \
+  --out reports/adapters/opencode
+```
+
+`adapter-conformance-report.json` 的 `decision: PASS` 只说明 Adapter 合约和输出的
+`CaseRun` 能被 AWB scorer 接受。该报告固定 `releaseDisposition: DIAGNOSTIC_ONLY`，
+不能给 workflow gate PASS。OpenCode JSON 输出缺少 native assistant token、超过证据
+上限、JSONL 无效、事件顺序错误、输出含需脱敏私密数据或执行失败时，会给出稳定
+Adapter reason code。完整字段见 `docs/adapter-sdk.md`。
+
 Gate 使用版本化 `gate-policy.json`。`suite-result.json`、`comparison-result.json` 和
 `gate-result.json` 都记录 `policyId`、`policyVersion`、`rulesHash`、`policyHash`。
 重新计算历史结果时，`compare` 和 `gate` 都可以显式传入同一策略：
@@ -376,6 +417,22 @@ Runner 或 Observer 的稳定性；后者必须由 reliability study 证明。
 
 这些指标不直接给被测 workflow 加减分。它们衡量的是 benchmark 工具自身是否可信。benchmark 版本发布前，核心 mutation set 必须达到目标 kill rate；P0 hard failure mutation 出现 false negative 时，该 benchmark 版本不能用于准入 gate，只能用于诊断。
 
+周期性 benchmark health 用来给 AWB 版本本身做 fail-closed 处置：
+
+```bash
+awb ci benchmark-health \
+  --input health/benchmark-health-input.json \
+  --out reports/health/current
+```
+
+输入绑定 Gold Corpus、P0 mutation、Observer qualification、A/A reliability、
+schema compatibility、plugin install 和 privacy scan 的 evidence ref 与 SHA-256 hash。
+只要出现 P0 false negative、false PASS、Observer 无效、schema incompatible、缺检查、
+plugin install 失败、privacy finding 或 reliability 失败，报告自动把
+`versionDisposition` 设为 `DIAGNOSTIC_ONLY`。该命令不会自动登记信任根、修改 workflow
+或创建修复 PR，报告中会把这些 automatic actions 标记为 disabled。完整字段见
+`docs/benchmark-health.md`。
+
 重复运行的可靠性使用独立的 `reliability-study.json`，每个 sample 都声明匹配的
 baseline/candidate 相对路径和固定 seed，然后执行
 `awb debug reliability --study <study.json> --out <dir>`。报告保留全部请求过的
@@ -447,11 +504,11 @@ CI 准入 PASS。
 
 1. Full 30 case。
 2. Claude runner。
-3. opencode runner。
+3. 更多 runner / Observer Adapter。
 4. LLM semantic judge。
-5. 自动生成 benchmark 修复 PR。
+5. 自动生成 benchmark 修复 PR（当前禁用）。
 6. 更大规模 mutation library。
-7. adapter conformance。
+7. 更大规模外部效度研究。
 
 ## 12. 真实 Target Pack 的边界
 

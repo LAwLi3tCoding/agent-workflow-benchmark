@@ -1,0 +1,144 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "runner-ranking-input.schema.json",
+  "title": "Agent Workflow Bench runner ranking input",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["rankingId", "generatedAt", "entries"],
+  "properties": {
+    "rankingId": { "$ref": "#/$defs/semanticId" },
+    "generatedAt": { "$ref": "#/$defs/timestamp" },
+    "entries": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 64,
+      "items": { "$ref": "#/$defs/entry" }
+    }
+  },
+  "$defs": {
+    "binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "taskId",
+        "targetId",
+        "contractHash",
+        "caseSetHash",
+        "observer",
+        "budget",
+        "telemetry"
+      ],
+      "properties": {
+        "taskId": { "type": "string", "minLength": 1 },
+        "targetId": { "type": "string", "minLength": 1 },
+        "contractHash": { "$ref": "#/$defs/hash" },
+        "caseSetHash": { "$ref": "#/$defs/hash" },
+        "observer": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "id",
+            "version",
+            "keyFingerprint",
+            "qualificationArtifactHash",
+            "qualificationStatus"
+          ],
+          "properties": {
+            "id": { "$ref": "#/$defs/semanticId" },
+            "version": { "type": "string", "minLength": 1 },
+            "keyFingerprint": { "$ref": "#/$defs/hash" },
+            "qualificationArtifactHash": { "$ref": "#/$defs/hash" },
+            "qualificationStatus": { "enum": ["valid", "invalid", "missing"] }
+          }
+        },
+        "budget": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["wallClockSeconds", "tokenTotal"],
+          "properties": {
+            "wallClockSeconds": { "type": "number", "exclusiveMinimum": 0 },
+            "tokenTotal": { "type": "integer", "minimum": 1 }
+          }
+        },
+        "telemetry": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schemaVersion",
+            "evidenceKind",
+            "observationLevel",
+            "tokenSource",
+            "minimumCompleteness"
+          ],
+          "properties": {
+            "schemaVersion": { "const": "0.1.0" },
+            "evidenceKind": { "const": "live" },
+            "observationLevel": { "const": "workflow_trace" },
+            "tokenSource": { "const": "native" },
+            "minimumCompleteness": { "$ref": "#/$defs/rate" }
+          }
+        }
+      }
+    },
+    "comparability": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["workflowScore", "efficiency", "tokenCost"],
+      "properties": {
+        "workflowScore": { "$ref": "#/$defs/comparabilityValue" },
+        "efficiency": { "$ref": "#/$defs/comparabilityValue" },
+        "tokenCost": { "$ref": "#/$defs/comparabilityValue" }
+      }
+    },
+    "comparabilityValue": {
+      "enum": ["comparable", "directional_only", "not_comparable"]
+    },
+    "entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "runnerName",
+        "adapterVersion",
+        "capabilitiesHash",
+        "comparability",
+        "bindings",
+        "metrics"
+      ],
+      "properties": {
+        "runnerName": { "enum": ["codex", "claude", "opencode"] },
+        "adapterVersion": { "$ref": "#/$defs/semver" },
+        "capabilitiesHash": { "$ref": "#/$defs/hash" },
+        "comparability": { "$ref": "#/$defs/comparability" },
+        "bindings": { "$ref": "#/$defs/binding" },
+        "metrics": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["workflowScore", "wallClockSeconds", "tokenTotal", "telemetryCompleteness"],
+          "properties": {
+            "workflowScore": { "type": "number", "minimum": 0, "maximum": 100 },
+            "wallClockSeconds": { "type": "number", "minimum": 0 },
+            "tokenTotal": { "type": "integer", "minimum": 0 },
+            "telemetryCompleteness": { "$ref": "#/$defs/rate" }
+          }
+        }
+      }
+    },
+    "hash": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    },
+    "rate": { "type": "number", "minimum": 0, "maximum": 1 },
+    "semanticId": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+    },
+    "semver": {
+      "type": "string",
+      "pattern": "^(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)$"
+    },
+    "timestamp": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{3})?Z$"
+    }
+  }
+}

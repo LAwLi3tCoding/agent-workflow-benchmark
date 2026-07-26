@@ -1,9 +1,9 @@
 schemaVersion: 0.1.0
 name: opencode
-adapterVersion: 0.1.0
+adapterVersion: 1.0.0
 command: opencode
-defaultExecutionMode: disabled
+defaultExecutionMode: live
 supportsEntrypointKinds: [file, cli]
 tokenSourceDetail:
-  source: unavailable
-  confidence: unavailable
+  source: native
+  confidence: high

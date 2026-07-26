@@ -205,6 +205,8 @@ Deterministic P0 hard failures dominate scores and AI judgments. Current evidenc
 | simulated or synthetic events | DIAGNOSTIC_ONLY |
 | capability-only or missing evidence | DIAGNOSTIC_ONLY |
 | built-in Codex/Claude contract summary | DIAGNOSTIC_ONLY |
+| adapter conformance PASS | DIAGNOSTIC_ONLY |
+| OpenCode live adapter output without qualified Observer admission | DIAGNOSTIC_ONLY |
 | signed workflow trace without valid Observer qualification | DIAGNOSTIC_ONLY |
 | qualified independent signed workflow trace | eligible for PASS after all other gates |
 
@@ -247,7 +249,49 @@ qualification, failed canary thresholds, or absent approval keeps the result
 diagnostic-only. AWB validates isolation evidence; it does not provide or claim
 its own Linux isolation backend.
 
-## Stage 9 Status
+Periodic benchmark-health checks aggregate already collected Gold Corpus, P0
+mutation, Observer qualification, A/A reliability, schema compatibility, plugin
+install, and privacy-scan evidence:
+
+```bash
+awb ci benchmark-health \
+  --input <benchmark-health-input.json> \
+  --out <benchmark-health-dir>
+```
+
+The health report is about the AWB version, not a target workflow release. A
+P0 false negative, false PASS, invalid or missing Observer qualification, schema
+incompatibility, missing check, plugin-install failure, privacy finding, or
+failed reliability check automatically sets `versionDisposition:
+DIAGNOSTIC_ONLY`. The report records that trust enrollment, workflow
+modification, and fix pull request creation are disabled.
+
+Adapter conformance is a construct/runtime compatibility check. The OpenCode
+Runner Adapter invokes `opencode run --format json --dir <sandbox-root>` and
+requires native assistant token evidence from JSON output. Its contract declares
+stable error codes, deterministic evidence limits, lifecycle events, native token
+source, and disabled automatic trust enrollment, workflow modification, fix PR
+creation, and Runner access to Observer private keys. A conformance `PASS`
+proves that the Adapter contract and emitted `CaseRun` shape are acceptable to
+AWB's scorer; it always writes `releaseDisposition: DIAGNOSTIC_ONLY` and cannot
+grant workflow PASS.
+
+Cross-runner ranking is allowed only after evidence is already qualified and all
+comparison axes are comparable:
+
+```bash
+awb report runner-ranking \
+  --input <runner-ranking-input.json> \
+  --out <runner-ranking-dir>
+```
+
+Every entry must bind the exact same task, target contract, case set, qualified
+Observer artifact, budget, live `workflow_trace` telemetry shape, native token
+source, and comparable workflow-score, efficiency, and token-cost axes. Any
+difference produces `INCOMPARABLE`; AWB does not infer a best runner from
+directional-only token or workflow evidence.
+
+## Stage 10 Status
 
 Proven for the harness: canonical vocabulary, contract hashing boundary, owner-review admission
 boundary, deterministic hard-failure precedence, diagnostic evidence ceilings, content-hashed
@@ -298,6 +342,14 @@ report generation, redacted trace diffing for baseline/candidate and
 baseline/mutant/restore, era-separated trend reports, static public-safe HTML
 viewer manifests, and registered schemas for those artifacts.
 
-Deferred by protocol: canary evidence and adapter conformance. Automatic repair
-PR generation remains deferred; current self-debug repair planning does not
-open or apply production PRs by itself.
+Implemented mechanism through Stage 10: Adapter SDK contract validation,
+OpenCode live Runner Adapter conformance, native token evidence checks, evidence
+limits, stable adapter errors, benchmark-health aggregation, and strict
+cross-runner ranking. These mechanisms remain diagnostic unless their outputs
+are backed by qualified independent workflow-trace evidence where the gate
+requires it.
+
+Deferred or disabled by protocol: real production/human criterion validity,
+automatic trust enrollment, automatic target workflow modification, and automatic
+fix pull request creation. Current self-debug repair planning does not open or
+apply production PRs by itself.

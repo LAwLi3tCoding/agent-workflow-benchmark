@@ -22,7 +22,10 @@ export const ARTIFACT_TYPES = [
   "decision_report",
   "trace_diff",
   "trend_report",
-  "html_viewer_manifest"
+  "html_viewer_manifest",
+  "adapter_conformance_report",
+  "benchmark_health_report",
+  "runner_ranking_report"
 ] as const;
 
 export type RegisteredArtifactType = (typeof ARTIFACT_TYPES)[number];

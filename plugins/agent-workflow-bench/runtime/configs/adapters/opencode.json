@@ -1,0 +1,70 @@
+{
+  "schemaVersion": "0.1.0",
+  "artifactType": "adapter_contract",
+  "id": "opencode",
+  "kind": "runner",
+  "version": "1.0.0",
+  "protocolVersion": "1.0.0",
+  "displayName": "OpenCode Runner Adapter",
+  "implementation": {
+    "runtime": "node",
+    "entrypoint": "src/adapters/openCodeAdapter.ts"
+  },
+  "capabilities": {
+    "runnerName": "opencode",
+    "entrypointKinds": ["file", "cli"],
+    "eventTypes": [
+      "case_start",
+      "runner_start",
+      "runner_transcript",
+      "runner_result",
+      "hard_failure",
+      "runner_exit",
+      "token_usage",
+      "case_end"
+    ],
+    "evidenceKinds": ["process", "artifact", "token"],
+    "tokenEvidence": {
+      "source": "native",
+      "confidence": "high",
+      "aggregation": "step_sum",
+      "required": true
+    }
+  },
+  "errorCodes": [
+    "ADAPTER_CONTRACT_INVALID",
+    "ADAPTER_CAPABILITY_UNSUPPORTED",
+    "ADAPTER_EXECUTABLE_UNAVAILABLE",
+    "ADAPTER_EXECUTION_FAILED",
+    "ADAPTER_TIMEOUT",
+    "ADAPTER_OUTPUT_INVALID",
+    "ADAPTER_EVENT_INVALID",
+    "ADAPTER_EVENT_ORDER_INVALID",
+    "ADAPTER_EVIDENCE_LIMIT_EXCEEDED",
+    "ADAPTER_TOKEN_EVIDENCE_INVALID",
+    "ADAPTER_PRIVATE_DATA_REJECTED"
+  ],
+  "comparability": {
+    "workflowScore": "directional_only",
+    "efficiency": "comparable",
+    "tokenCost": "directional_only"
+  },
+  "evidenceLimits": {
+    "maxEventsPerCase": 10000,
+    "maxPayloadBytes": 1048576,
+    "maxTranscriptBytes": 10485760,
+    "maxTotalEvidenceBytes": 20971520,
+    "maxErrorMessageBytes": 4096
+  },
+  "compatibility": {
+    "awb": "^0.1.0",
+    "caseRunSchema": "0.1.0",
+    "workflowTraceSchema": "0.1.0"
+  },
+  "safety": {
+    "automaticTrustEnrollment": false,
+    "automaticWorkflowModification": false,
+    "automaticFixPullRequest": false,
+    "observerPrivateKeyAccessibleToRunner": false
+  }
+}

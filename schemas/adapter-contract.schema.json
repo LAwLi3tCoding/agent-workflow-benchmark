@@ -1,0 +1,268 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "adapter-contract.schema.json",
+  "title": "Agent Workflow Bench adapter contract",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "artifactType",
+    "id",
+    "kind",
+    "version",
+    "protocolVersion",
+    "displayName",
+    "implementation",
+    "capabilities",
+    "errorCodes",
+    "evidenceLimits",
+    "compatibility",
+    "safety"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "0.1.0" },
+    "artifactType": { "const": "adapter_contract" },
+    "id": { "$ref": "#/$defs/semanticId" },
+    "kind": { "enum": ["runner", "observer"] },
+    "version": { "type": "string", "minLength": 1 },
+    "protocolVersion": { "const": "1.0.0" },
+    "displayName": { "type": "string", "minLength": 1 },
+    "implementation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["runtime", "entrypoint"],
+      "properties": {
+        "runtime": { "const": "node" },
+        "entrypoint": { "$ref": "#/$defs/portableRef" }
+      }
+    },
+    "capabilities": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "entrypointKinds",
+        "eventTypes",
+        "evidenceKinds",
+        "tokenEvidence"
+      ],
+      "properties": {
+        "runnerName": { "enum": ["codex", "claude", "opencode"] },
+        "entrypointKinds": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "enum": ["file", "cli"] }
+        },
+        "eventTypes": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "case_start",
+              "contract_observed",
+              "handoff",
+              "gate_decision",
+              "artifact_write",
+              "state_read",
+              "side_effect_attempt",
+              "filesystem_access",
+              "tool_call",
+              "process_spawn",
+              "network_access",
+              "hard_failure",
+              "runner_start",
+              "runner_transcript",
+              "runner_result",
+              "runner_exit",
+              "token_usage",
+              "case_end"
+            ]
+          }
+        },
+        "evidenceKinds": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "filesystem",
+              "tool",
+              "process",
+              "network",
+              "artifact",
+              "state",
+              "side_effect",
+              "token"
+            ]
+          }
+        },
+        "tokenEvidence": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["source", "confidence", "aggregation", "required"],
+          "properties": {
+            "source": { "enum": ["native", "estimated", "unavailable"] },
+            "confidence": {
+              "enum": ["high", "medium", "low", "unavailable"]
+            },
+            "aggregation": {
+              "enum": ["message_final", "step_sum", "unavailable"]
+            },
+            "required": { "type": "boolean" }
+          }
+        },
+        "signing": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "algorithm",
+            "redactionBeforeSigning",
+            "independentProcessRequired"
+          ],
+          "properties": {
+            "algorithm": { "const": "ed25519" },
+            "redactionBeforeSigning": { "const": true },
+            "independentProcessRequired": { "const": true }
+          }
+        }
+      }
+    },
+    "errorCodes": {
+      "type": "array",
+      "minItems": 11,
+      "maxItems": 11,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/errorCode" }
+    },
+    "comparability": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["workflowScore", "efficiency", "tokenCost"],
+      "properties": {
+        "workflowScore": { "$ref": "#/$defs/comparabilityValue" },
+        "efficiency": { "$ref": "#/$defs/comparabilityValue" },
+        "tokenCost": { "$ref": "#/$defs/comparabilityValue" }
+      }
+    },
+    "evidenceLimits": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "maxEventsPerCase",
+        "maxPayloadBytes",
+        "maxTranscriptBytes",
+        "maxTotalEvidenceBytes",
+        "maxErrorMessageBytes"
+      ],
+      "properties": {
+        "maxEventsPerCase": { "$ref": "#/$defs/positiveInteger" },
+        "maxPayloadBytes": { "$ref": "#/$defs/positiveInteger" },
+        "maxTranscriptBytes": { "$ref": "#/$defs/positiveInteger" },
+        "maxTotalEvidenceBytes": { "$ref": "#/$defs/positiveInteger" },
+        "maxErrorMessageBytes": { "$ref": "#/$defs/positiveInteger" }
+      }
+    },
+    "compatibility": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["awb", "caseRunSchema", "workflowTraceSchema"],
+      "properties": {
+        "awb": {
+          "type": "string",
+          "pattern": "^\\^0\\.1\\.\\d+$"
+        },
+        "caseRunSchema": { "const": "0.1.0" },
+        "workflowTraceSchema": { "const": "0.1.0" }
+      }
+    },
+    "safety": { "$ref": "#/$defs/safety" }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": { "kind": { "const": "runner" } },
+        "required": ["kind"]
+      },
+      "then": {
+        "required": ["comparability"],
+        "properties": {
+          "capabilities": {
+            "required": ["runnerName"]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "kind": { "const": "observer" } },
+        "required": ["kind"]
+      },
+      "then": {
+        "properties": {
+          "capabilities": {
+            "required": ["signing"],
+            "not": { "required": ["runnerName"] }
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "comparabilityValue": {
+      "enum": ["comparable", "directional_only", "not_comparable"]
+    },
+    "errorCode": {
+      "enum": [
+        "ADAPTER_CONTRACT_INVALID",
+        "ADAPTER_CAPABILITY_UNSUPPORTED",
+        "ADAPTER_EXECUTABLE_UNAVAILABLE",
+        "ADAPTER_EXECUTION_FAILED",
+        "ADAPTER_TIMEOUT",
+        "ADAPTER_OUTPUT_INVALID",
+        "ADAPTER_EVENT_INVALID",
+        "ADAPTER_EVENT_ORDER_INVALID",
+        "ADAPTER_EVIDENCE_LIMIT_EXCEEDED",
+        "ADAPTER_TOKEN_EVIDENCE_INVALID",
+        "ADAPTER_PRIVATE_DATA_REJECTED"
+      ]
+    },
+    "portableRef": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256,
+      "not": {
+        "anyOf": [
+          { "pattern": "^/" },
+          { "pattern": "^[A-Za-z]:" },
+          { "pattern": "(^|/)\\.\\.(/|$)" },
+          { "pattern": "\\\\" }
+        ]
+      }
+    },
+    "semanticId": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*$"
+    },
+    "positiveInteger": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "safety": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "automaticTrustEnrollment",
+        "automaticWorkflowModification",
+        "automaticFixPullRequest",
+        "observerPrivateKeyAccessibleToRunner"
+      ],
+      "properties": {
+        "automaticTrustEnrollment": { "const": false },
+        "automaticWorkflowModification": { "const": false },
+        "automaticFixPullRequest": { "const": false },
+        "observerPrivateKeyAccessibleToRunner": { "const": false }
+      }
+    }
+  }
+}

@@ -39,7 +39,7 @@ export async function detectRunnerCapability(name: RunnerName): Promise<RunnerCa
       name,
       supported: false,
       disabledReason: override ? `${override} executable not found or not executable` : `${executable} executable not found in PATH`,
-      adapterVersion: "0.1.0",
+      adapterVersion: name === "opencode" ? "1.0.0" : "0.1.0",
       executionMode: "disabled",
       supportsEntrypointKinds: [],
       tokenSourceDetail: { source: "unavailable", confidence: "unavailable" },
@@ -52,21 +52,33 @@ export async function detectRunnerCapability(name: RunnerName): Promise<RunnerCa
   }
 
   const version = await detectVersion(executable);
+  const tokenSourceDetail =
+    name === "opencode"
+      ? ({ source: "native", confidence: "high" } as const)
+      : ({ source: "estimated", confidence: "medium" } as const);
+  const comparability =
+    name === "opencode"
+      ? ({
+          workflowScore: "directional_only",
+          efficiency: "comparable",
+          tokenCost: "directional_only"
+        } as const)
+      : ({
+          workflowScore: "directional_only",
+          efficiency: "directional_only",
+          tokenCost: "directional_only"
+        } as const);
   return withHash({
     schemaVersion: "0.1.0",
     name,
     supported: true,
     executable: which.stdout.trim(),
     version,
-    adapterVersion: "0.1.0",
+    adapterVersion: name === "opencode" ? "1.0.0" : "0.1.0",
     executionMode: "live",
     supportsEntrypointKinds: ["file", "cli"],
-    tokenSourceDetail: { source: "estimated", confidence: "medium" },
-    comparability: {
-      workflowScore: "directional_only",
-      efficiency: "directional_only",
-      tokenCost: "directional_only"
-    }
+    tokenSourceDetail,
+    comparability
   });
 }
 

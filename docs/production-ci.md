@@ -72,7 +72,7 @@ from `artifact-retention-days`.
 
 ## Canary and Assessment Commands
 
-Stage 8 introduces production-CI assessment artifacts:
+Production-CI assessment artifacts are:
 
 ```bash
 awb ci evaluate-canary --samples <samples.json> --isolation-manifest <manifest.json> --gate-policy <gate-policy.json> --out <canary-dir>
@@ -117,3 +117,36 @@ production release approval.
 
 AWB validates the isolation evidence supplied by the caller. It does not claim
 to provide a Linux isolation backend itself.
+
+## Benchmark Health
+
+`awb ci benchmark-health` is the periodic self-check for the AWB version itself.
+It consumes precomputed health evidence and writes a fail-closed version
+disposition:
+
+```bash
+awb ci benchmark-health \
+  --input health/benchmark-health-input.json \
+  --out reports/health/current
+```
+
+The input must bind portable evidence refs and SHA-256 hashes for:
+
+- Gold Corpus detection and P0 mutation kill rate;
+- P0 mutation reverse validation;
+- Observer qualification;
+- A/A reliability;
+- schema compatibility;
+- plugin fresh install and runtime parity;
+- privacy scan.
+
+The command writes `benchmark-health-report.json`. Exit code `0` means the AWB
+version is `RELEASE_ELIGIBLE`; exit code `2` means the version is
+`DIAGNOSTIC_ONLY`. A P0 false negative, false PASS, invalid Observer
+qualification, schema incompatibility, missing check, plugin install failure,
+privacy finding, or failed reliability check automatically downgrades the
+version to `DIAGNOSTIC_ONLY`.
+
+The report does not enroll trust roots, modify workflows, or create fix pull
+requests. It records those automatic actions as disabled. See
+[benchmark health](benchmark-health.md) for the input and reason-code contract.

@@ -3,9 +3,13 @@
   "artifactType": "artifact_schema_registry",
   "registryVersion": "1.0.0",
   "schemaFiles": [
+    "adapter-conformance-report.schema.json",
+    "adapter-contract.schema.json",
     "artifact-compatibility-matrix.schema.json",
     "artifact-migration-result.schema.json",
     "artifact-schema-registry.schema.json",
+    "benchmark-health-input.schema.json",
+    "benchmark-health-report.schema.json",
     "calibration-report.schema.json",
     "case.schema.json",
     "comparison-result.schema.json",
@@ -42,6 +46,8 @@
     "reliability-report.schema.json",
     "reliability-study.schema.json",
     "repair-plan.schema.json",
+    "runner-ranking-input.schema.json",
+    "runner-ranking-report.schema.json",
     "runner.schema.json",
     "runtime-manifest.schema.json",
     "suite-result.schema.json",
@@ -202,6 +208,30 @@
       "schemaFile": "html-viewer-manifest.schema.json",
       "currentVersion": "0.1.0",
       "compatibilityPolicyRef": "compatibility-matrix.json#html_viewer_manifest",
+      "migrationSupported": true
+    },
+    {
+      "artifactType": "adapter_conformance_report",
+      "fileNames": ["adapter-conformance-report.json"],
+      "schemaFile": "adapter-conformance-report.schema.json",
+      "currentVersion": "0.1.0",
+      "compatibilityPolicyRef": "compatibility-matrix.json#adapter_conformance_report",
+      "migrationSupported": true
+    },
+    {
+      "artifactType": "benchmark_health_report",
+      "fileNames": ["benchmark-health-report.json"],
+      "schemaFile": "benchmark-health-report.schema.json",
+      "currentVersion": "0.1.0",
+      "compatibilityPolicyRef": "compatibility-matrix.json#benchmark_health_report",
+      "migrationSupported": true
+    },
+    {
+      "artifactType": "runner_ranking_report",
+      "fileNames": ["runner-ranking-report.json"],
+      "schemaFile": "runner-ranking-report.schema.json",
+      "currentVersion": "0.1.0",
+      "compatibilityPolicyRef": "compatibility-matrix.json#runner_ranking_report",
       "migrationSupported": true
     }
   ]
