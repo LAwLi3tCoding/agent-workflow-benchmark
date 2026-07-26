@@ -117,7 +117,11 @@ describe("canonical product naming", () => {
       expect(content.split("\n").length, `${file} should remain a README, not a full manual`).toBeLessThanOrEqual(400);
       expect(content).toContain("agent-workflow-bench@agent-workflow-bench");
       expect(content).toContain("awb ingest-trace");
+      expect(content).toContain("awb observer qualify");
+      expect(content).toContain("--observer-qualification");
       expect(content).toContain("--trusted-observer-key");
+      expect(content).toContain("--trusted-qualification-key");
+      expect(content).toContain("DIAGNOSTIC_ONLY");
       expect(content).toContain("docs/workflow-trace-observer-contract.md");
     }
   });

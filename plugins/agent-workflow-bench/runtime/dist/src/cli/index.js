@@ -1,10 +1,10 @@
 import { Command } from "commander";
-import { Ajv2020 } from "ajv/dist/2020.js";
 import { access, appendFile, copyFile, readdir, readFile, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
 import YAML from "yaml";
+import { createAjv2020 } from "../utils/jsonSchema.js";
 import { getBenchmarkRoot, listTargetIds, loadTargetPack } from "../core/targetRegistry.js";
 import { profileTarget } from "../profiler/profileTarget.js";
 import { inferTargetPackDraft } from "../profiler/targetPackInitializer.js";
@@ -1774,7 +1774,7 @@ async function resolveObserverQualification(options, verifiedTrace, contractHash
 }
 async function validateSchemasAndTargets() {
     await assertArtifactRegistryComplete();
-    const ajv = new Ajv2020({ strict: false });
+    const ajv = createAjv2020();
     const benchmarkRoot = getBenchmarkRoot();
     const schemaDir = path.join(benchmarkRoot, "schemas");
     const schemaFiles = (await readdir(schemaDir)).filter((file) => file.endsWith(".schema.json"));
@@ -2050,7 +2050,7 @@ async function validateSchemasAndTargets() {
 async function validateArtifactAgainstSchema(schemaName, value) {
     const schemaPath = path.join(getBenchmarkRoot(), "schemas", schemaName);
     const schema = JSON.parse(await readFile(schemaPath, "utf8"));
-    const ajv = new Ajv2020({ strict: false });
+    const ajv = createAjv2020();
     const validate = ajv.compile(schema);
     if (!validate(value)) {
         throw new Error(`${schemaName} validation failed: ${ajv.errorsText(validate.errors)}`);
@@ -2390,7 +2390,7 @@ async function readJsonWithSchema(filePath, schemaName, label) {
 }
 async function assertJsonSchema(value, schemaName, label) {
     const schema = JSON.parse(await readFile(path.join(getBenchmarkRoot(), "schemas", schemaName), "utf8"));
-    const ajv = new Ajv2020({ strict: false });
+    const ajv = createAjv2020();
     const validate = ajv.compile(schema);
     if (!validate(value)) {
         throw new Error(`${label} failed schema validation: ${ajv.errorsText(validate.errors)}`);

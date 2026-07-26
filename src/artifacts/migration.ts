@@ -1,9 +1,9 @@
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { Ajv2020 } from "ajv/dist/2020.js";
 import { getBenchmarkRoot } from "../core/targetRegistry.js";
 import { ensureDir } from "../utils/io.js";
 import { sha256Text, stableJson } from "../utils/hash.js";
+import { createAjv2020 } from "../utils/jsonSchema.js";
 import {
   compatibilityPolicy,
   loadArtifactCompatibilityMatrix,
@@ -447,7 +447,7 @@ async function validateAgainstArtifactSchema(
   const schema = JSON.parse(
     await readFile(path.join(benchmarkRoot, "schemas", entry.schemaFile), "utf8")
   ) as object;
-  const validate = new Ajv2020({ strict: false }).compile(schema);
+  const validate = createAjv2020().compile(schema);
   return validate(value) === true;
 }
 
@@ -564,7 +564,7 @@ async function finalizeMigration(
       "utf8"
     )
   ) as object;
-  const ajv = new Ajv2020({ strict: false });
+  const ajv = createAjv2020();
   const validate = ajv.compile(schema);
   if (!validate(result)) {
     throw new Error(

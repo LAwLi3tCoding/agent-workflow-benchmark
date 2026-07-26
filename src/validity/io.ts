@@ -1,8 +1,9 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import { Ajv2020, type ValidateFunction } from "ajv/dist/2020.js";
+import type { ValidateFunction } from "ajv/dist/2020.js";
 import YAML from "yaml";
 import { getBenchmarkRoot } from "../core/targetRegistry.js";
+import { createAjv2020 } from "../utils/jsonSchema.js";
 import type {
   ExternalValidityHumanLabels,
   ExternalValidityLabelingPackage,
@@ -114,14 +115,14 @@ export async function assertExternalValiditySchema(
         "utf8"
       )
     ) as object;
-    validate = new Ajv2020({ strict: false }).compile(schema);
+    validate = createAjv2020().compile(schema);
     validators.set(schemaName, validate);
   }
   if (!validate(value)) {
     throw new Error(
-      `${label} failed schema validation: ${new Ajv2020({
-        strict: false
-      }).errorsText(validate.errors)}`
+      `${label} failed schema validation: ${createAjv2020().errorsText(
+        validate.errors
+      )}`
     );
   }
 }

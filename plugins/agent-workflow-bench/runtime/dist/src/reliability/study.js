@@ -1,12 +1,12 @@
 import { access, readFile, realpath } from "node:fs/promises";
 import path from "node:path";
-import { Ajv2020 } from "ajv/dist/2020.js";
 import { getBenchmarkRoot } from "../core/targetRegistry.js";
 import { getReliabilityPolicy } from "../evaluation/evaluationContract.js";
 import { compareRunArtifacts } from "../regression/compare.js";
 import { evaluateGate } from "../regression/gate.js";
 import { hashFile, sha256Text, stableJson } from "../utils/hash.js";
 import { readJson } from "../utils/io.js";
+import { createAjv2020 } from "../utils/jsonSchema.js";
 import { analyzeReliabilitySamples } from "./reliability.js";
 class ReliabilityStudySecurityError extends Error {
 }
@@ -30,7 +30,7 @@ export async function runReliabilityStudy(studyPath, trustOptions = {}) {
 export async function loadReliabilityStudyManifest(studyPath) {
     const raw = JSON.parse(await readFile(studyPath, "utf8"));
     const schema = JSON.parse(await readFile(path.join(getBenchmarkRoot(), "schemas", "reliability-study.schema.json"), "utf8"));
-    const ajv = new Ajv2020({ strict: false });
+    const ajv = createAjv2020();
     const validate = ajv.compile(schema);
     if (!validate(raw)) {
         throw new Error(`Reliability study manifest failed schema validation: ${ajv.errorsText(validate.errors)}`);
@@ -255,7 +255,7 @@ function runIdMatchesDirectory(runId, runDir) {
 }
 async function assertSchemaValid(schemaName, value, label) {
     const schema = JSON.parse(await readFile(path.join(getBenchmarkRoot(), "schemas", schemaName), "utf8"));
-    const ajv = new Ajv2020({ strict: false });
+    const ajv = createAjv2020();
     const validate = ajv.compile(schema);
     if (!validate(value)) {
         throw new Error(`${label} failed schema validation: ${ajv.errorsText(validate.errors)}`);

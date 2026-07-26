@@ -1,6 +1,6 @@
 {
   "name": "agent-workflow-bench",
-  "version": "0.1.0+codex.20260706202456",
+  "version": "0.1.0+codex.20260726094559",
   "description": "CI-grade regression testing for coding-agent workflows through Codex, Claude Code, and local runner evidence.",
   "author": {
     "name": "Project contributors"

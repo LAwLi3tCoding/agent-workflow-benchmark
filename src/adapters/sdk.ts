@@ -1,6 +1,5 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import { Ajv2020 } from "ajv/dist/2020.js";
 import type {
   BenchmarkCase,
   CaseRun,
@@ -14,6 +13,7 @@ import type {
   ReferenceObservationResult
 } from "../observer/referenceObserver.js";
 import { sha256Text, stableJson } from "../utils/hash.js";
+import { createAjv2020 } from "../utils/jsonSchema.js";
 
 export const ADAPTER_PROTOCOL_VERSION = "1.0.0" as const;
 
@@ -159,7 +159,7 @@ export async function loadAdapterContract(
       "utf8"
     )
   ) as object;
-  const ajv = new Ajv2020({ strict: false });
+  const ajv = createAjv2020();
   const validate = ajv.compile(schema);
   if (!validate(value)) {
     throw new AdapterError(

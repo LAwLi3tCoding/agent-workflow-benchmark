@@ -1,9 +1,9 @@
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { Ajv2020 } from "ajv/dist/2020.js";
 import { getBenchmarkRoot } from "../core/targetRegistry.js";
 import { ensureDir } from "../utils/io.js";
 import { sha256Text, stableJson } from "../utils/hash.js";
+import { createAjv2020 } from "../utils/jsonSchema.js";
 import { compatibilityPolicy, loadArtifactCompatibilityMatrix, loadArtifactSchemaRegistry, registryEntry } from "./registry.js";
 export async function migrateArtifact(inputPath, options = {}) {
     const benchmarkRoot = options.benchmarkRoot ?? getBenchmarkRoot();
@@ -277,7 +277,7 @@ function valueAtPath(value, dottedPath) {
 }
 async function validateAgainstArtifactSchema(benchmarkRoot, entry, value) {
     const schema = JSON.parse(await readFile(path.join(benchmarkRoot, "schemas", entry.schemaFile), "utf8"));
-    const validate = new Ajv2020({ strict: false }).compile(schema);
+    const validate = createAjv2020().compile(schema);
     return validate(value) === true;
 }
 function isReadableVersion(version, readableVersions) {
@@ -358,7 +358,7 @@ async function finalizeMigration(benchmarkRoot, base, artifact) {
         }
     };
     const schema = JSON.parse(await readFile(path.join(benchmarkRoot, "schemas/artifact-migration-result.schema.json"), "utf8"));
-    const ajv = new Ajv2020({ strict: false });
+    const ajv = createAjv2020();
     const validate = ajv.compile(schema);
     if (!validate(result)) {
         throw new Error(`Artifact migration result failed schema validation: ${ajv.errorsText(validate.errors)}`);

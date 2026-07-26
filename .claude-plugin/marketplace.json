@@ -11,7 +11,7 @@
       "source": "./plugins/agent-workflow-bench",
       "displayName": "Agent Workflow Bench",
       "description": "Evaluate and gate coding-agent workflows with AI-generated cases, matched comparisons, explainable scoring, token and efficiency metrics, and mutation-based self-debug validation.",
-      "version": "0.1.0+codex.20260706202456",
+      "version": "0.1.0+codex.20260726094559",
       "author": {
         "name": "Project contributors"
       },

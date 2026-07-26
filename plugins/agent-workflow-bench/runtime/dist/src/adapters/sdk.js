@@ -1,8 +1,8 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import { Ajv2020 } from "ajv/dist/2020.js";
 import { getBenchmarkRoot } from "../core/targetRegistry.js";
 import { sha256Text, stableJson } from "../utils/hash.js";
+import { createAjv2020 } from "../utils/jsonSchema.js";
 export const ADAPTER_PROTOCOL_VERSION = "1.0.0";
 export const ADAPTER_ERROR_CODES = [
     "ADAPTER_CONTRACT_INVALID",
@@ -43,7 +43,7 @@ export async function loadAdapterContract(filePath) {
         throw new AdapterError("ADAPTER_CONTRACT_INVALID", `Adapter contract could not be read as JSON: ${path.basename(filePath)}.`, { cause: error });
     }
     const schema = JSON.parse(await readFile(path.join(getBenchmarkRoot(), "schemas/adapter-contract.schema.json"), "utf8"));
-    const ajv = new Ajv2020({ strict: false });
+    const ajv = createAjv2020();
     const validate = ajv.compile(schema);
     if (!validate(value)) {
         throw new AdapterError("ADAPTER_CONTRACT_INVALID", `Adapter contract schema validation failed: ${ajv.errorsText(validate.errors)}.`);

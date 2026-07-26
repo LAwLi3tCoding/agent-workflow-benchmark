@@ -324,6 +324,29 @@ describe("Stage 9 report CLI", () => {
     expect(html).toContain("Content-Security-Policy");
     expect(html).not.toMatch(/<script\b|<form\b|fetch\(|localStorage/iu);
   }, 30_000);
+
+  test("rejects impossible RFC 3339 dates instead of silently normalizing them", async () => {
+    const trendInput = path.join(root, "invalid-date-trend-input.json");
+    await writeJson(trendInput, {
+      seriesId: "minimal-directory-agent-smoke",
+      points: [point("invalid-date", "2026-02-30T00:00:00.000Z")]
+    });
+
+    const result = await awb(
+      [
+        "report",
+        "trend",
+        "--input",
+        trendInput,
+        "--out",
+        path.join(root, "invalid-date-trend")
+      ],
+      false
+    );
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).not.toContain('unknown format "date-time"');
+  });
 });
 
 function awb(args: string[], reject = true) {

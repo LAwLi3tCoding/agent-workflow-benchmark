@@ -145,45 +145,34 @@ Join、artifact path drift、不安全生产副作用、无效 provenance 和未
 | --- | --- | --- |
 | Codex | live `contract_summary` | 没有外部观察时仅用于诊断 |
 | Claude Code | live `contract_summary` | 没有外部观察时仅用于诊断 |
-| OpenCode | capability detection | 需要独立 adapter |
+| OpenCode | live Adapter 合约与一致性验证 | 只有通过合格 workflow-trace Observer 准入后才能超过诊断级 |
 | Simulated | synthetic events | 仅验证 harness/scorer |
 
 ### 签名 Workflow Trace 准入
 
-独立 observer 可以使用 Ed25519 对完整标准化 Trace 签名。AWB 只接收签名后的
-Trace 和独立配置的公钥：
+内置 reference Observer 在默认拒绝的 macOS Seatbelt 边界和已清理环境中运行
+Runner，并用主动 canary 验证签名密钥读取、网络和未观察到的嵌套可执行文件都被
+`EPERM` 拒绝。Observer 收集、脱敏并签名 Trace；发布门禁前必须由独立 authority 鉴定：
 
 ```bash
-awb ingest-trace \
-  --cases-dir cases/generated/my-workflow \
-  --suite full \
-  --trace observer-output/workflow-trace.json \
-  --trusted-observer-key ci/observer-public.pem \
-  --out reports/observed/baseline
-
-awb compare \
-  --baseline reports/observed/baseline \
-  --candidate reports/observed/candidate \
-  --trusted-observer-key ci/observer-public.pem \
-  --out reports/observed/comparison
-
-awb gate \
-  --comparison reports/observed/comparison/comparison-result.json \
-  --trusted-observer-key ci/observer-public.pem \
-  --out reports/observed/gate
+awb observer observe --request observer-request.json --observer-private-key /secure/observer-private.pem --out observer-output/workflow-trace.json
+awb observer qualify --target my-workflow --suite full --observer-id my-observer --observer-version 1.0.0 --observer-private-key /secure/observer-private.pem --qualification-authority-private-key /secure/qualification-authority-private.pem --out observer-output/qualification
+awb ingest-trace --cases-dir cases/generated/my-workflow --suite full --trace observer-output/workflow-trace.json --trusted-observer-key ci/observer-public.pem --observer-qualification observer-output/qualification/observer-qualification.json --trusted-qualification-key ci/qualification-authority-public.pem --out reports/observed/baseline
+awb compare --baseline reports/observed/baseline --candidate reports/observed/candidate --trusted-observer-key ci/observer-public.pem --trusted-qualification-key ci/qualification-authority-public.pem --out reports/observed/comparison
+awb gate --comparison reports/observed/comparison/comparison-result.json --trusted-observer-key ci/observer-public.pem --trusted-qualification-key ci/qualification-authority-public.pem --out reports/observed/gate
 ```
 
 AWB 会重新验证签名、case 集合、生命周期证据、provenance、runtime manifest、
 comparison snapshot 和 gate 重算。Trace 被修改、公钥错误、case 缺失、证据缺失或
 没有 trust anchor 时都不能 PASS。
 
-签名只能证明 observer 身份和签名后的完整性，不能证明 observer 采集完备性或
-OS/网络隔离有效性。将公钥加入发布信任根前，必须先鉴定 observer。规范见
+Trace 签名证明 Observer 身份和签名后的完整性；authority 签名证明指定实现、能力、
+合约、case 集合和 qualification suite 已通过冻结检查。两者必须使用不同密钥，且
+两个公钥都由调用方显式提供，AWB 不会自动登记。缺失有效 qualification artifact
+的签名 Trace 仍是 `DIAGNOSTIC_ONLY`，修改运行元数据自称 `valid` 不会生效。私钥
+必须位于 Runner、仓库、制品和日志之外。内置隔离仅支持 Darwin，并依赖
+`/usr/bin/sandbox-exec`；不支持时会 fail closed。规范见
 [Workflow-Trace Observer Contract](docs/workflow-trace-observer-contract.md)。
-当前 Stage 1 导入路径会记录 `qualificationStatus: missing`，因此即使签名和公钥
-验证成功也只能得到 `DIAGNOSTIC_ONLY`；真实 `GATE-PASS` 保留给 Stage 3
-生成并验证完整性绑定 qualification artifact 之后的证据。手工把可编辑运行元数据
-改成 `valid` 不会生效。
 
 ## 常用工作流
 

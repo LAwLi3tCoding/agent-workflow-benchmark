@@ -7,6 +7,11 @@ export function normalizeHealthGateEligibility(value) {
     }
     return "BLOCK";
 }
+export function shouldIncludeRuntimeDigestPath(relativePath) {
+    const portablePath = relativePath.replaceAll("\\", "/");
+    return (portablePath !== "node_modules" &&
+        !portablePath.startsWith("node_modules/"));
+}
 export function portableCommandValue(value, options) {
     if (!path.isAbsolute(value)) {
         return value;

@@ -1,8 +1,8 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import { Ajv2020 } from "ajv/dist/2020.js";
 import YAML from "yaml";
 import { getBenchmarkRoot } from "../core/targetRegistry.js";
+import { createAjv2020 } from "../utils/jsonSchema.js";
 const validators = new Map();
 export async function loadExternalValidityStudy(filePath) {
     const value = await readStructured(filePath);
@@ -47,13 +47,11 @@ export async function assertExternalValiditySchema(schemaName, value, label) {
     let validate = validators.get(schemaName);
     if (!validate) {
         const schema = JSON.parse(await readFile(path.join(getBenchmarkRoot(), "schemas", schemaName), "utf8"));
-        validate = new Ajv2020({ strict: false }).compile(schema);
+        validate = createAjv2020().compile(schema);
         validators.set(schemaName, validate);
     }
     if (!validate(value)) {
-        throw new Error(`${label} failed schema validation: ${new Ajv2020({
-            strict: false
-        }).errorsText(validate.errors)}`);
+        throw new Error(`${label} failed schema validation: ${createAjv2020().errorsText(validate.errors)}`);
     }
 }
 async function readStructured(filePath) {

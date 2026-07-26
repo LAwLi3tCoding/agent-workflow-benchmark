@@ -4,7 +4,8 @@ import path from "node:path";
 import {
   normalizeHealthGateEligibility,
   portableCommandValue,
-  redactPublicCommandText
+  redactPublicCommandText,
+  shouldIncludeRuntimeDigestPath
 } from "../src/ci/benchmarkHealthWorkflow.js";
 
 describe("Stage 10 benchmark-health workflow safety", () => {
@@ -59,6 +60,19 @@ describe("Stage 10 benchmark-health workflow safety", () => {
     );
     expect(redacted).toContain("<ephemeral-temp>");
     expect(redacted).toContain("<output>");
+  });
+
+  test("excludes installed runtime dependencies, but not similarly named source paths, from parity digests", () => {
+    expect(shouldIncludeRuntimeDigestPath("node_modules/ajv/package.json")).toBe(
+      false
+    );
+    expect(
+      shouldIncludeRuntimeDigestPath("node_modules\\ajv\\package.json")
+    ).toBe(false);
+    expect(
+      shouldIncludeRuntimeDigestPath("node_modules-cache/fixture.json")
+    ).toBe(true);
+    expect(shouldIncludeRuntimeDigestPath("dist/src/cli/index.js")).toBe(true);
   });
 
   test("schedules qualification on the supported macOS isolation backend", async () => {

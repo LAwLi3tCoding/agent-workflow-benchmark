@@ -19,7 +19,8 @@ import { spawn } from "node:child_process";
 import {
   normalizeHealthGateEligibility,
   portableCommandValue,
-  redactPublicCommandText
+  redactPublicCommandText,
+  shouldIncludeRuntimeDigestPath
 } from "../dist/src/ci/benchmarkHealthWorkflow.js";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -630,7 +631,7 @@ async function materializeExpectedRuntime() {
 }
 
 async function digestDirectory(root) {
-  const files = await listFiles(root);
+  const files = await listFiles(root, root);
   const entries = [];
   for (const file of files) {
     entries.push({
@@ -641,15 +642,19 @@ async function digestDirectory(root) {
   return sha256(JSON.stringify(entries.sort((a, b) => a.path.localeCompare(b.path))));
 }
 
-async function listFiles(root) {
+async function listFiles(root, baseRoot) {
   const entries = await import("node:fs/promises").then(({ readdir }) =>
     readdir(root, { withFileTypes: true })
   );
   const output = [];
   for (const entry of entries) {
     const absolute = path.join(root, entry.name);
+    const relative = path.relative(baseRoot, absolute);
+    if (!shouldIncludeRuntimeDigestPath(relative)) {
+      continue;
+    }
     if (entry.isDirectory()) {
-      output.push(...(await listFiles(absolute)));
+      output.push(...(await listFiles(absolute, baseRoot)));
     } else if (entry.isFile()) {
       output.push(absolute);
     }

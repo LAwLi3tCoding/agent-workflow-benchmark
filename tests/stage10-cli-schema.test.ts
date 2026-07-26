@@ -181,6 +181,7 @@ describe("Stage 10 CLI and artifact schemas", () => {
     const result = await awb(["validate-schema"]);
     expect(result.stdout).toContain("schemas valid");
     expect(result.stdout).toContain("adapter configs valid");
+    expect(result.stderr).not.toContain('unknown format "date-time"');
   });
 });
 

@@ -1,6 +1,5 @@
 import { access, readFile, realpath } from "node:fs/promises";
 import path from "node:path";
-import { Ajv2020 } from "ajv/dist/2020.js";
 import type { SuiteResult } from "../core/types.js";
 import { getBenchmarkRoot } from "../core/targetRegistry.js";
 import { getReliabilityPolicy } from "../evaluation/evaluationContract.js";
@@ -12,6 +11,7 @@ import { evaluateGate } from "../regression/gate.js";
 import type { RunProvenance } from "../regression/provenance.js";
 import { hashFile, sha256Text, stableJson } from "../utils/hash.js";
 import { readJson } from "../utils/io.js";
+import { createAjv2020 } from "../utils/jsonSchema.js";
 import {
   analyzeReliabilitySamples,
   type ReliabilityMissingReason,
@@ -96,7 +96,7 @@ export async function loadReliabilityStudyManifest(
       "utf8"
     )
   ) as object;
-  const ajv = new Ajv2020({ strict: false });
+  const ajv = createAjv2020();
   const validate = ajv.compile<ReliabilityStudyManifest>(schema);
   if (!validate(raw)) {
     throw new Error(
@@ -421,7 +421,7 @@ async function assertSchemaValid(
       "utf8"
     )
   ) as object;
-  const ajv = new Ajv2020({ strict: false });
+  const ajv = createAjv2020();
   const validate = ajv.compile(schema);
   if (!validate(value)) {
     throw new Error(

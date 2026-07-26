@@ -148,46 +148,35 @@ provenance、未登録 failure code が対象です。runner failure と telemet
 | --- | --- | --- |
 | Codex | live `contract_summary` | 外部観測なしでは診断専用 |
 | Claude Code | live `contract_summary` | 外部観測なしでは診断専用 |
-| OpenCode | capability detection | Adapter が必要 |
+| OpenCode | live Adapter contract と conformance | 認定済み workflow-trace Observer を通した場合のみ診断を超えられる |
 | Simulated | synthetic events | Harness/scorer 検証専用 |
 
 ### 署名付き Workflow Trace
 
-独立 observer は、正規化した Trace 全体を Ed25519 で署名できます。AWB には
-署名済み Trace と、別に設定された公開鍵だけを渡します。
+reference Observer は、環境を scrub した deny-default の macOS Seatbelt 境界で
+Runner を実行し、署名鍵の読取、network、未観測の nested executable が `EPERM`
+になることを active canary で確認します。Trace は収集・redact・署名され、release Gate 前に別 authority が認定します。
 
 ```bash
-awb ingest-trace \
-  --cases-dir cases/generated/my-workflow \
-  --suite full \
-  --trace observer-output/workflow-trace.json \
-  --trusted-observer-key ci/observer-public.pem \
-  --out reports/observed/baseline
-
-awb compare \
-  --baseline reports/observed/baseline \
-  --candidate reports/observed/candidate \
-  --trusted-observer-key ci/observer-public.pem \
-  --out reports/observed/comparison
-
-awb gate \
-  --comparison reports/observed/comparison/comparison-result.json \
-  --trusted-observer-key ci/observer-public.pem \
-  --out reports/observed/gate
+awb observer observe --request observer-request.json --observer-private-key /secure/observer-private.pem --out observer-output/workflow-trace.json
+awb observer qualify --target my-workflow --suite full --observer-id my-observer --observer-version 1.0.0 --observer-private-key /secure/observer-private.pem --qualification-authority-private-key /secure/qualification-authority-private.pem --out observer-output/qualification
+awb ingest-trace --cases-dir cases/generated/my-workflow --suite full --trace observer-output/workflow-trace.json --trusted-observer-key ci/observer-public.pem --observer-qualification observer-output/qualification/observer-qualification.json --trusted-qualification-key ci/qualification-authority-public.pem --out reports/observed/baseline
+awb compare --baseline reports/observed/baseline --candidate reports/observed/candidate --trusted-observer-key ci/observer-public.pem --trusted-qualification-key ci/qualification-authority-public.pem --out reports/observed/comparison
+awb gate --comparison reports/observed/comparison/comparison-result.json --trusted-observer-key ci/observer-public.pem --trusted-qualification-key ci/qualification-authority-public.pem --out reports/observed/gate
 ```
 
 AWB は署名、Case Set、Lifecycle 証拠、provenance、runtime manifest、
 comparison snapshot、Gate 再計算を再検証します。Trace 改ざん、誤った鍵、
 Case 欠落、必須証拠欠落、trust anchor 欠落は PASS できません。
 
-署名が証明するのは observer の identity と署名後の完全性です。observer の
-観測完全性や OS/Network isolation までは証明しません。公開鍵を release trust root
-に追加する前に observer を検証してください。仕様は
+Trace 署名は Observer の identity と署名後の完全性を、authority 署名は固定された
+実装、能力、contract、Case Set、qualification suite の合格を証明します。両者は
+別の key pair を使い、公開 trust anchor は毎回明示します。AWB は鍵を自動登録しません。
+有効な qualification artifact がない署名 Trace は `DIAGNOSTIC_ONLY` のままで、
+run metadata の `valid` 自己申告は無視されます。秘密鍵は Runner、repository、artifact、
+log の外に置きます。bundled isolation は Darwin と `/usr/bin/sandbox-exec` 専用で、
+未対応環境では fail closed します。仕様は
 [Workflow-Trace Observer Contract](docs/workflow-trace-observer-contract.md) を参照してください。
-現在の Stage 1 admission は `qualificationStatus: missing` を記録するため、署名と
-公開鍵の検証に成功しても `DIAGNOSTIC_ONLY` です。実際の `GATE-PASS` は Stage 3
-の integrity-bound qualification artifact が検証された後にのみ利用できます。
-編集可能な run metadata で `valid` を自己申告しても無視されます。
 
 ## よく使うワークフロー
 

@@ -1,5 +1,5 @@
 import { Command } from "commander";
-import { Ajv2020, type ValidateFunction } from "ajv/dist/2020.js";
+import type { ValidateFunction } from "ajv/dist/2020.js";
 import {
   access,
   appendFile,
@@ -12,6 +12,7 @@ import { existsSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
 import YAML from "yaml";
+import { createAjv2020 } from "../utils/jsonSchema.js";
 import type {
   AiCasePlan,
   AiPlanValidation,
@@ -2870,7 +2871,7 @@ async function resolveObserverQualification(
 
 async function validateSchemasAndTargets(): Promise<void> {
   await assertArtifactRegistryComplete();
-  const ajv = new Ajv2020({ strict: false });
+  const ajv = createAjv2020();
   const benchmarkRoot = getBenchmarkRoot();
   const schemaDir = path.join(benchmarkRoot, "schemas");
   const schemaFiles = (await readdir(schemaDir)).filter((file) => file.endsWith(".schema.json"));
@@ -3275,7 +3276,7 @@ async function validateArtifactAgainstSchema(
 ): Promise<void> {
   const schemaPath = path.join(getBenchmarkRoot(), "schemas", schemaName);
   const schema = JSON.parse(await readFile(schemaPath, "utf8")) as object;
-  const ajv = new Ajv2020({ strict: false });
+  const ajv = createAjv2020();
   const validate = ajv.compile(schema);
   if (!validate(value)) {
     throw new Error(
@@ -3754,7 +3755,7 @@ async function assertJsonSchema(
   const schema = JSON.parse(
     await readFile(path.join(getBenchmarkRoot(), "schemas", schemaName), "utf8")
   ) as object;
-  const ajv = new Ajv2020({ strict: false });
+  const ajv = createAjv2020();
   const validate = ajv.compile(schema);
   if (!validate(value)) {
     throw new Error(`${label} failed schema validation: ${ajv.errorsText(validate.errors)}`);

@@ -683,7 +683,7 @@ describe("agent workflow bench plugin package", () => {
 
     expect(marketplace.name).toBe("agent-workflow-bench");
     expect(entry.source).toBe("./plugins/agent-workflow-bench");
-    expect(entry.version).toBe("0.1.0+codex.20260706202456");
+    expect(entry.version).toBe("0.1.0+codex.20260726094559");
     expect(entry.description).toContain("AI-generated cases");
   });
 });
