@@ -5,6 +5,10 @@ import {
   buildReferenceObserverIsolationManifest
 } from "../src/observer/referenceObserver.js";
 import {
+  buildQualificationBoundaryProbeSource,
+  isQualificationNetworkDenied
+} from "../src/observer/qualification.js";
+import {
   assertWorkflowTraceIsolationBinding,
   assertWorkflowTraceIsolationManifest
 } from "../src/observer/workflowTrace.js";
@@ -16,6 +20,20 @@ const IMAGE_ID = `sha256:${"b".repeat(64)}`;
 const HASH_C = `sha256:${"c".repeat(64)}`;
 
 describe("Linux OCI Docker reference Observer backend", () => {
+  test("uses a non-loopback qualification probe without accepting connection refusal", () => {
+    const source = buildQualificationBoundaryProbeSource();
+
+    expect(source).toContain(
+      'net.connect({ host: "1.1.1.1", port: 80, timeout: 1000 })'
+    );
+    expect(source).not.toContain("127.0.0.1");
+    expect(source).toContain('socket.once("timeout"');
+    expect(isQualificationNetworkDenied("ENETUNREACH")).toBe(true);
+    expect(isQualificationNetworkDenied("EPERM")).toBe(true);
+    expect(isQualificationNetworkDenied("ECONNREFUSED")).toBe(false);
+    expect(isQualificationNetworkDenied("TIMEOUT")).toBe(false);
+  });
+
   test("fails closed for mutable or unresolved Docker image identities", () => {
     expect(() =>
       assertReferenceObserverIsolationConfig({

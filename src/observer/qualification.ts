@@ -802,6 +802,45 @@ function expectedQualificationKind(
   return kinds[id];
 }
 
+export function buildQualificationBoundaryProbeSource(): string {
+  return [
+    'import { mkdir, writeFile } from "node:fs/promises";',
+    'import { spawnSync } from "node:child_process";',
+    'import net from "node:net";',
+    'import path from "node:path";',
+    "const workspace = process.env.AWB_OBSERVED_WORKSPACE;",
+    'await mkdir(path.join(workspace, "artifacts"), { recursive: true });',
+    'await writeFile(path.join(workspace, "artifacts", "result.json"), "{\\"ok\\":true}\\n");',
+    "const visible = Object.fromEntries(",
+    "  Object.entries(process.env).filter(([key, value]) =>",
+    "    /observer|private|signing|secret|credential/i.test(key) || /PRIVATE KEY/i.test(value ?? '')",
+    "  )",
+    ");",
+    'await writeFile(path.join(workspace, "artifacts", "runner-environment.json"), JSON.stringify(visible));',
+    "const networkDenied = await new Promise((resolve) => {",
+    '  const socket = net.connect({ host: "1.1.1.1", port: 80, timeout: 1000 });',
+    '  socket.once("connect", () => { socket.destroy(); resolve("CONNECTED"); });',
+    '  socket.once("timeout", () => { socket.destroy(); resolve("TIMEOUT"); });',
+    '  socket.once("error", (error) => resolve(error?.code ?? "UNKNOWN"));',
+    "});",
+    'const nested = spawnSync("/bin/echo", ["qualification-boundary-canary"]);',
+    "await writeFile(",
+    '  path.join(workspace, "artifacts", "isolation-probe.json"),',
+    "  JSON.stringify({",
+    "    networkDenied,",
+    '    nestedProcessDenied: nested.error?.code ?? (nested.status === 0 ? "ALLOWED" : "UNKNOWN")',
+    "  })",
+    ");",
+    'process.stdout.write("qualification runner complete\\n");'
+  ].join("\n");
+}
+
+export function isQualificationNetworkDenied(outcome: string): boolean {
+  return ["EPERM", "ENETUNREACH", "EHOSTUNREACH", "ENETDOWN"].includes(
+    outcome
+  );
+}
+
 async function runKnownGoodRepeats(options: {
   workspace: string;
   observerPrivateKeyPath: string;
@@ -812,35 +851,7 @@ async function runKnownGoodRepeats(options: {
   caseSetHash: string;
   isolation?: ReferenceObserverIsolationConfig;
 }): Promise<VerifiedWorkflowTrace[]> {
-  const runnerSource = [
-      'import { mkdir, writeFile } from "node:fs/promises";',
-      'import { spawnSync } from "node:child_process";',
-      'import net from "node:net";',
-      'import path from "node:path";',
-      "const workspace = process.env.AWB_OBSERVED_WORKSPACE;",
-      'await mkdir(path.join(workspace, "artifacts"), { recursive: true });',
-      'await writeFile(path.join(workspace, "artifacts", "result.json"), "{\\"ok\\":true}\\n");',
-      "const visible = Object.fromEntries(",
-      "  Object.entries(process.env).filter(([key, value]) =>",
-      "    /observer|private|signing|secret|credential/i.test(key) || /PRIVATE KEY/i.test(value ?? '')",
-      "  )",
-      ");",
-      'await writeFile(path.join(workspace, "artifacts", "runner-environment.json"), JSON.stringify(visible));',
-      "const networkDenied = await new Promise((resolve) => {",
-      '  const socket = net.connect({ host: "127.0.0.1", port: 9 });',
-      '  socket.once("connect", () => { socket.destroy(); resolve("CONNECTED"); });',
-      '  socket.once("error", (error) => resolve(error?.code ?? "UNKNOWN"));',
-      "});",
-      'const nested = spawnSync("/bin/echo", ["qualification-boundary-canary"]);',
-      "await writeFile(",
-      '  path.join(workspace, "artifacts", "isolation-probe.json"),',
-      "  JSON.stringify({",
-      "    networkDenied,",
-      '    nestedProcessDenied: nested.error?.code ?? (nested.status === 0 ? "ALLOWED" : "UNKNOWN")',
-      "  })",
-      ");",
-      'process.stdout.write("qualification runner complete\\n");'
-    ].join("\n");
+  const runnerSource = buildQualificationBoundaryProbeSource();
   const observerPublicKeyPath = path.join(
     options.workspace,
     "observer-public.pem"
@@ -919,12 +930,9 @@ async function runKnownGoodRepeats(options: {
       networkDenied: string;
       nestedProcessDenied: string;
     }>(path.join(runRoot, "artifacts", "isolation-probe.json"));
-    const networkDenied = [
-      "EPERM",
-      "ENETUNREACH",
-      "EHOSTUNREACH",
-      "ENETDOWN"
-    ].includes(isolationProbe.networkDenied);
+    const networkDenied = isQualificationNetworkDenied(
+      isolationProbe.networkDenied
+    );
     const nestedProcessDenied = ["EPERM", "EACCES", "ENOSYS"].includes(
       isolationProbe.nestedProcessDenied
     );

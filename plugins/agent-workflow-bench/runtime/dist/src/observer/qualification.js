@@ -372,8 +372,8 @@ function expectedQualificationKind(id) {
     };
     return kinds[id];
 }
-async function runKnownGoodRepeats(options) {
-    const runnerSource = [
+export function buildQualificationBoundaryProbeSource() {
+    return [
         'import { mkdir, writeFile } from "node:fs/promises";',
         'import { spawnSync } from "node:child_process";',
         'import net from "node:net";',
@@ -388,8 +388,9 @@ async function runKnownGoodRepeats(options) {
         ");",
         'await writeFile(path.join(workspace, "artifacts", "runner-environment.json"), JSON.stringify(visible));',
         "const networkDenied = await new Promise((resolve) => {",
-        '  const socket = net.connect({ host: "127.0.0.1", port: 9 });',
+        '  const socket = net.connect({ host: "1.1.1.1", port: 80, timeout: 1000 });',
         '  socket.once("connect", () => { socket.destroy(); resolve("CONNECTED"); });',
+        '  socket.once("timeout", () => { socket.destroy(); resolve("TIMEOUT"); });',
         '  socket.once("error", (error) => resolve(error?.code ?? "UNKNOWN"));',
         "});",
         'const nested = spawnSync("/bin/echo", ["qualification-boundary-canary"]);',
@@ -402,6 +403,12 @@ async function runKnownGoodRepeats(options) {
         ");",
         'process.stdout.write("qualification runner complete\\n");'
     ].join("\n");
+}
+export function isQualificationNetworkDenied(outcome) {
+    return ["EPERM", "ENETUNREACH", "EHOSTUNREACH", "ENETDOWN"].includes(outcome);
+}
+async function runKnownGoodRepeats(options) {
+    const runnerSource = buildQualificationBoundaryProbeSource();
     const observerPublicKeyPath = path.join(options.workspace, "observer-public.pem");
     await writeFile(observerPublicKeyPath, options.observerPublicKey.export({ type: "spki", format: "pem" }));
     const traceRoot = path.join(options.workspace, "observer-traces");
@@ -466,12 +473,7 @@ async function runKnownGoodRepeats(options) {
             }
         });
         const isolationProbe = await readJson(path.join(runRoot, "artifacts", "isolation-probe.json"));
-        const networkDenied = [
-            "EPERM",
-            "ENETUNREACH",
-            "EHOSTUNREACH",
-            "ENETDOWN"
-        ].includes(isolationProbe.networkDenied);
+        const networkDenied = isQualificationNetworkDenied(isolationProbe.networkDenied);
         const nestedProcessDenied = ["EPERM", "EACCES", "ENOSYS"].includes(isolationProbe.nestedProcessDenied);
         if (!networkDenied || !nestedProcessDenied) {
             throw new Error("Observer qualification Runner bypass canaries were not denied by the isolation boundary.");
