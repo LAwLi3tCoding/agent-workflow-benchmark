@@ -9,16 +9,26 @@ const cwd = process.cwd();
 
 describe("runner capabilities", () => {
   test("detects codex capability and unavailable runner reasons", async () => {
-    const codex = await detectRunnerCapability("codex");
-    const claude = await detectRunnerCapability("claude");
-    const opencode = await detectRunnerCapability("opencode");
+    const previousCodexExecutable = process.env.AWB_CODEX_EXECUTABLE;
+    process.env.AWB_CODEX_EXECUTABLE = process.execPath;
+    try {
+      const codex = await detectRunnerCapability("codex");
+      const claude = await detectRunnerCapability("claude");
+      const opencode = await detectRunnerCapability("opencode");
 
-    expect(codex.name).toBe("codex");
-    expect(codex.capabilitiesHash).toMatch(/^sha256:/);
-    expect(codex.supportsEntrypointKinds).toContain("file");
-    expect(claude.supported || claude.disabledReason).toBeTruthy();
-    expect(opencode.supported || opencode.disabledReason).toBeTruthy();
-    expect(runnerCapabilityHash(codex)).toBe(codex.capabilitiesHash);
+      expect(codex.name).toBe("codex");
+      expect(codex.capabilitiesHash).toMatch(/^sha256:/);
+      expect(codex.supportsEntrypointKinds).toContain("file");
+      expect(claude.supported || claude.disabledReason).toBeTruthy();
+      expect(opencode.supported || opencode.disabledReason).toBeTruthy();
+      expect(runnerCapabilityHash(codex)).toBe(codex.capabilitiesHash);
+    } finally {
+      if (previousCodexExecutable === undefined) {
+        delete process.env.AWB_CODEX_EXECUTABLE;
+      } else {
+        process.env.AWB_CODEX_EXECUTABLE = previousCodexExecutable;
+      }
+    }
   });
 
   test("run writes runtime manifest with runner capability detail", async () => {
@@ -27,7 +37,10 @@ describe("runner capabilities", () => {
       await execa(
         "npm",
         ["run", "benchmark", "--", "run", "--target", "minimal-directory-agent", "--suite", "smoke", "--runner", "codex", "--out", out],
-        { cwd }
+        {
+          cwd,
+          env: { AWB_CODEX_EXECUTABLE: process.execPath }
+        }
       );
 
       const runtime = JSON.parse(await readFile(path.join(out, "runtime-manifest.json"), "utf8"));

@@ -35,6 +35,16 @@ const HASH_E = `sha256:${"e".repeat(64)}`;
 const HASH_F = `sha256:${"f".repeat(64)}`;
 
 describe("Stage 8 production CI boundary", () => {
+  test("runs the full repository CI suite on the supported Observer isolation backend", async () => {
+    const workflow = await readFile(
+      path.join(process.cwd(), ".github/workflows/ci.yml"),
+      "utf8"
+    );
+
+    expect(workflow).toContain("runs-on: macos-14");
+    expect(workflow).not.toContain("runs-on: ubuntu-latest");
+  });
+
   test("keeps a passing gate diagnostic-only when execution isolation is insufficient", () => {
     const result = assessProductionReadiness({
       gate: passingGate(),

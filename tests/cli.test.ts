@@ -638,7 +638,14 @@ describe("benchmark CLI", () => {
         { cwd }
       );
 
-      await execa("npm", ["run", "benchmark", "--", "run", "--cases-dir", casesOut, "--runner", "codex", "--out", runOut], { cwd });
+      await execa(
+        "npm",
+        ["run", "benchmark", "--", "run", "--cases-dir", casesOut, "--runner", "codex", "--out", runOut],
+        {
+          cwd,
+          env: { AWB_CODEX_EXECUTABLE: process.execPath }
+        }
+      );
 
       const manifest = JSON.parse(await readFile(path.join(runOut, "runtime-manifest.json"), "utf8"));
       const suite = JSON.parse(await readFile(path.join(runOut, "suite-result.json"), "utf8"));
@@ -658,7 +665,10 @@ describe("benchmark CLI", () => {
       await execa(
         "npm",
         ["run", "benchmark", "--", "run", "--target", "minimal-directory-agent", "--suite", "smoke", "--runner", "codex", "--out", out],
-        { cwd }
+        {
+          cwd,
+          env: { AWB_CODEX_EXECUTABLE: process.execPath }
+        }
       );
       const suite = JSON.parse(await readFile(path.join(out, "suite-result.json"), "utf8"));
       expect(suite.releaseDecision).toBe("DIAGNOSTIC_ONLY");
