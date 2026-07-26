@@ -1,0 +1,538 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "trajectory-review.schema.json",
+  "title": "Agent Workflow Bench trajectory review",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "artifactType",
+    "product",
+    "status",
+    "gateAuthority",
+    "reasonCodes",
+    "source",
+    "taxonomy",
+    "summary",
+    "deterministicFindings",
+    "validation",
+    "integrity"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "0.1.0"
+    },
+    "artifactType": {
+      "const": "trajectory_review"
+    },
+    "product": {
+      "const": "Agent Workflow Bench"
+    },
+    "status": {
+      "const": "DIAGNOSTIC_ONLY"
+    },
+    "gateAuthority": {
+      "const": "NONE"
+    },
+    "reasonCodes": {
+      "type": "array",
+      "items": {
+        "const": "DIAGNOSTIC_ONLY_NO_GATE_AUTHORITY"
+      },
+      "minItems": 1
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ref",
+        "sha256",
+        "traceDiffContentHash",
+        "mode",
+        "sourceTraceHashes"
+      ],
+      "properties": {
+        "ref": {
+          "$ref": "#/$defs/portableRef"
+        },
+        "sha256": {
+          "$ref": "#/$defs/hash"
+        },
+        "traceDiffContentHash": {
+          "$ref": "#/$defs/hash"
+        },
+        "mode": {
+          "enum": [
+            "baseline_candidate",
+            "baseline_mutant_restore"
+          ]
+        },
+        "sourceTraceHashes": {
+          "type": "array",
+          "minItems": 2,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/hash"
+          }
+        }
+      }
+    },
+    "taxonomy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "version",
+        "classes"
+      ],
+      "properties": {
+        "name": {
+          "const": "awb_process_defect_taxonomy"
+        },
+        "version": {
+          "const": "0.1.0"
+        },
+        "classes": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/defectClass"
+          }
+        }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "deterministicFindings",
+        "judgeFindings",
+        "validatedClasses"
+      ],
+      "properties": {
+        "deterministicFindings": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "judgeFindings": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "validatedClasses": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "deterministicFindings": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/trajectoryFinding"
+      }
+    },
+    "judgeFindings": {
+      "$ref": "#/$defs/judgeFindings"
+    },
+    "validation": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "status",
+            "reason",
+            "metricsByClass"
+          ],
+          "properties": {
+            "status": {
+              "const": "UNVALIDATED"
+            },
+            "reason": {
+              "type": "string",
+              "minLength": 1
+            },
+            "metricsByClass": {
+              "type": "array",
+              "maxItems": 0
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "status",
+            "raters",
+            "interRaterAgreement",
+            "metricsByClass"
+          ],
+          "properties": {
+            "status": {
+              "const": "VALIDATED_DIAGNOSTIC"
+            },
+            "raters": {
+              "type": "array",
+              "minItems": 2,
+              "uniqueItems": true,
+              "items": {
+                "$ref": "#/$defs/semanticId"
+              }
+            },
+            "interRaterAgreement": {
+              "$ref": "#/$defs/rate"
+            },
+            "metricsByClass": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/classMetrics"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "integrity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "contentHash"
+      ],
+      "properties": {
+        "status": {
+          "const": "VERIFIED_AT_WRITE"
+        },
+        "contentHash": {
+          "$ref": "#/$defs/hash"
+        }
+      }
+    }
+  },
+  "$defs": {
+    "hash": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    },
+    "rate": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "semanticId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+    },
+    "portableRef": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512,
+      "not": {
+        "anyOf": [
+          {
+            "pattern": "^/"
+          },
+          {
+            "pattern": "^[A-Za-z]:"
+          },
+          {
+            "pattern": "(^|/)\\.\\.(/|$)"
+          },
+          {
+            "pattern": "\\\\"
+          }
+        ]
+      }
+    },
+    "traceRef": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512,
+      "pattern": "^[a-z][a-z0-9_-]*:[A-Za-z0-9][A-Za-z0-9._/#:=+-]*$"
+    },
+    "defectClass": {
+      "enum": [
+        "route_integrity",
+        "join_integrity",
+        "artifact_integrity",
+        "side_effect_safety",
+        "state_integrity",
+        "terminal_integrity",
+        "process_failure"
+      ]
+    },
+    "trajectoryFinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "findingId",
+        "caseId",
+        "lane",
+        "defectClass",
+        "failureCode",
+        "severity",
+        "direction",
+        "onset",
+        "propagationRefs",
+        "detection",
+        "recovery",
+        "finalOutcome"
+      ],
+      "properties": {
+        "findingId": {
+          "$ref": "#/$defs/semanticId"
+        },
+        "caseId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "templateId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "lane": {
+          "enum": [
+            "baseline",
+            "candidate",
+            "mutant",
+            "restore"
+          ]
+        },
+        "defectClass": {
+          "$ref": "#/$defs/defectClass"
+        },
+        "failureCode": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "severity": {
+          "enum": [
+            "P0",
+            "P1"
+          ]
+        },
+        "direction": {
+          "enum": [
+            "added",
+            "removed",
+            "changed"
+          ]
+        },
+        "onset": {
+          "$ref": "#/$defs/eventPoint"
+        },
+        "propagationRefs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/traceRef"
+          }
+        },
+        "detection": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "step",
+            "ref",
+            "latencySteps"
+          ],
+          "properties": {
+            "step": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "ref": {
+              "$ref": "#/$defs/traceRef"
+            },
+            "latencySteps": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        "recovery": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "attempts",
+            "outcome"
+          ],
+          "properties": {
+            "attempts": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "outcome": {
+              "enum": [
+                "not_attempted",
+                "restored",
+                "failed",
+                "not_applicable"
+              ]
+            },
+            "recoveryRef": {
+              "$ref": "#/$defs/traceRef"
+            },
+            "recoveryStep": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "recoveryLatencyMs": {
+              "type": "number",
+              "minimum": 0
+            }
+          }
+        },
+        "finalOutcome": {
+          "enum": [
+            "regressed",
+            "restored",
+            "improved",
+            "unchanged"
+          ]
+        }
+      },
+      "finalOutcome": {
+        "enum": [
+          "regressed",
+          "restored",
+          "improved",
+          "unchanged"
+        ]
+      }
+    },
+    "eventPoint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "step",
+        "ref"
+      ],
+      "properties": {
+        "step": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "ref": {
+          "$ref": "#/$defs/traceRef"
+        }
+      }
+    },
+    "judgeFindings": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "model",
+        "promptHash",
+        "rubricHash",
+        "calibrationSetIdentity",
+        "findings"
+      ],
+      "properties": {
+        "model": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "promptHash": {
+          "$ref": "#/$defs/hash"
+        },
+        "rubricHash": {
+          "$ref": "#/$defs/hash"
+        },
+        "calibrationSetIdentity": {
+          "$ref": "#/$defs/semanticId"
+        },
+        "findings": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "findingId",
+              "defectClass",
+              "severity",
+              "verdict",
+              "evidenceRefs",
+              "rationale"
+            ],
+            "properties": {
+              "findingId": {
+                "$ref": "#/$defs/semanticId"
+              },
+              "defectClass": {
+                "$ref": "#/$defs/defectClass"
+              },
+              "severity": {
+                "enum": [
+                  "info",
+                  "low",
+                  "medium",
+                  "high",
+                  "critical"
+                ]
+              },
+              "verdict": {
+                "enum": [
+                  "defect",
+                  "not_a_defect",
+                  "uncertain"
+                ]
+              },
+              "evidenceRefs": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "$ref": "#/$defs/traceRef"
+                }
+              },
+              "rationale": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 1000
+              }
+            }
+          }
+        }
+      }
+    },
+    "classMetrics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "defectClass",
+        "truePositive",
+        "falsePositive",
+        "falseNegative",
+        "precision",
+        "recall"
+      ],
+      "properties": {
+        "defectClass": {
+          "$ref": "#/$defs/defectClass"
+        },
+        "truePositive": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "falsePositive": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "falseNegative": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "precision": {
+          "$ref": "#/$defs/rate"
+        },
+        "recall": {
+          "$ref": "#/$defs/rate"
+        }
+      }
+    }
+  }
+}

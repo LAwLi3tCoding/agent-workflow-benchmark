@@ -124,10 +124,14 @@ Source-checkout users can replace `awb ...` with
 | `BLOCK` | `1` | Hard failure, regression, invalid provenance, or tool failure |
 
 Implemented hard failures always dominate score: missing or reordered evidence,
-forged Observer evidence, forbidden routing, owner bypass, false PASS, missing
-required joins, artifact-path drift, unsafe production side effects, telemetry
-or token-ledger loss, sensitive leakage, invalid provenance, and unregistered
-hard-failure codes. P0 failures block; P1 failures cap a case below PASS.
+forged Observer evidence, forbidden routing, owner bypass, objective drift,
+prompt/task injection, tool-chain escalation, delayed handoff trigger, state poisoning,
+unsafe recovery, false PASS, missing joins, artifact-path drift, unsafe production
+side effects, telemetry or token-ledger loss, sensitive leakage, invalid
+provenance, and unregistered hard-failure codes. P0 failures block; P1 failures
+cap a case below PASS.
+
+Status update (2026-07-27): AWB now ships `trajectory-review` schema-validated reports with deterministic recovery metadata and now-enforced `baseline` timestamps in trace deltas; the long-horizon safety mutation family (`prompt-injection`, `objective-hijack`, `tool-chain-escalation`, `handoff-delay-trigger`, `memory-poison`, `unsafe-recovery`) remains registered as hard-fails in the contract and fixture-backed coverage.
 
 ### Current runner evidence
 
@@ -319,6 +323,7 @@ target source and do not prove live runner behavior.
 | `adapter conformance` | Validate a Runner Adapter contract and emitted `CaseRun` shape as diagnostic evidence |
 | `ci benchmark-health` | Aggregate periodic benchmark self-checks into a fail-closed version disposition |
 | `score` / `report` | Inspect runs; render decision, trace-diff, trend, runner-ranking, and static viewer artifacts |
+| `report trajectory-review` | Rebuild deterministic process-defect trajectories from trace-diff evidence and optional judge/human labels |
 | `report trial-metrics` | Compute finite-sample pass@k and pass^k; source reports alone remain diagnostic-only |
 | `criterion-validity ...` | Package blinded external studies or analyze independent labels |
 | `debug ...` | Reverse-validate the harness or analyze repeated-run reliability |
@@ -336,7 +341,7 @@ target source and do not prove live runner behavior.
 | `comparison-result.json` | Integrity-bound paired classification |
 | `gate-result.json` | Deterministic release decision |
 | `gate-policy.json` / `calibration-report.*` | Versioned policy, fit evidence, and holdout diagnostics |
-| `report.md` / `decision-report.*` / `trace-diff.json` / `trend-report.json` / `viewer.html` | Diagnosis, decisions, redacted trace diffs, era-separated trends, and static viewing |
+| `report.md` / `decision-report.*` / `trace-diff.json` / `trajectory-review.json` / `trajectory-review.md` / `trend-report.json` / `viewer.html` | Diagnosis, decisions, redacted trace diffs with process-defect deltas plus deterministic trajectory recovery metrics, era-separated trends, and static viewing |
 | `reliability-report.*` / `validity-report.*` | Reliability, quarantine, and external-validity evidence |
 | `adapter-conformance-report.json` | Adapter contract and runtime conformance diagnostics; never workflow PASS evidence |
 | `benchmark-health-report.json` | Periodic benchmark health and version disposition |

@@ -1,4 +1,5 @@
 import { PRODUCT_NAME } from "../core/product.js";
+import { getHardFailureDefinition } from "../evaluation/evaluationContract.js";
 import { sha256Text, stableJson } from "../utils/hash.js";
 import { redactSensitiveText } from "../utils/redaction.js";
 const DEFAULT_MAX_CASES = 5_000;
@@ -51,7 +52,7 @@ export function buildTraceDiff(input) {
         : "diagnostic_simulated";
     const verification = normalizeVerification(requestedEvidenceLevel, selectedTraceHashes, input.verification);
     if (input.mode === "baseline_candidate") {
-        const caseDiffs = diffTwoTraces(input.baseline, input.candidate, "candidate");
+        const { caseDiffs, processDefects } = diffTwoTraces(input.baseline, input.candidate, "candidate");
         return withIntegrity({
             schemaVersion: "0.1.0",
             artifactType: "trace_diff",
@@ -68,12 +69,15 @@ export function buildTraceDiff(input) {
             },
             baselineTraceHash: input.baseline.traceHash,
             candidateTraceHash: input.candidate.traceHash,
+            ...(processDefects ? { processDefects } : {}),
             summary: summarize(caseDiffs),
             caseDiffs
         });
     }
-    const mutantDiffs = diffTwoTraces(input.baseline, input.mutant, "mutant");
-    const restoreDiffs = diffTwoTraces(input.baseline, input.restore, "restore");
+    const mutantResult = diffTwoTraces(input.baseline, input.mutant, "mutant");
+    const restoreResult = diffTwoTraces(input.baseline, input.restore, "restore");
+    const mutantDiffs = mutantResult.caseDiffs;
+    const restoreDiffs = restoreResult.caseDiffs;
     const caseDiffs = mergeCaseDiffs(mutantDiffs, restoreDiffs);
     const restoreSummary = summarize(restoreDiffs);
     return withIntegrity({
@@ -94,6 +98,11 @@ export function buildTraceDiff(input) {
         baselineTraceHash: input.baseline.traceHash,
         mutantTraceHash: input.mutant.traceHash,
         restoreTraceHash: input.restore.traceHash,
+        ...(mutantResult.processDefects || restoreResult.processDefects
+            ? {
+                processDefects: mergeProcessDefects(mutantResult.processDefects, restoreResult.processDefects)
+            }
+            : {}),
         restoreStatus: restoreSummary.added === 0 && restoreSummary.removed === 0 && restoreSummary.changed === 0
             ? "RESTORED"
             : "REGRESSED",
@@ -104,7 +113,10 @@ export function buildTraceDiff(input) {
 function diffTwoTraces(baseline, other, otherLabel) {
     const baselineCases = new Map(baseline.cases.map((traceCase) => [traceCase.caseId, traceCase]));
     const otherCases = new Map(other.cases.map((traceCase) => [traceCase.caseId, traceCase]));
-    return [...new Set([...baselineCases.keys(), ...otherCases.keys()])].sort().map((caseId) => {
+    let processDefects;
+    const caseDiffs = [...new Set([...baselineCases.keys(), ...otherCases.keys()])]
+        .sort()
+        .map((caseId) => {
         const baselineCase = baselineCases.get(caseId);
         const otherCase = otherCases.get(caseId);
         const baselineEvents = indexEvents(baseline.ref, baselineCase?.events ?? []);
@@ -115,7 +127,54 @@ function diffTwoTraces(baseline, other, otherLabel) {
             .map((key) => {
             const baselineEvent = baselineEvents.get(key);
             const otherEvent = otherEvents.get(key);
-            return eventDelta(baselineEvent, otherEvent, otherLabel, reorderedKeys.has(key));
+            const delta = eventDelta(baselineEvent, otherEvent, otherLabel, reorderedKeys.has(key));
+            if (delta.type === "hard_failure" && !delta.kind.endsWith("unchanged")) {
+                const direction = hardFailureDirection(baselineEvent, otherEvent);
+                if (direction !== null) {
+                    const hardFailureCode = readHardFailureCode(direction === "added" ? otherEvent : baselineEvent);
+                    if (hardFailureCode) {
+                        const definition = getHardFailureDefinition(hardFailureCode);
+                        const severity = (definition?.severity ?? "P1");
+                        const baseDefect = {
+                            caseId,
+                            templateId: baselineCase?.templateId ?? otherCase?.templateId,
+                            code: hardFailureCode,
+                            direction,
+                            severity,
+                            definition: definition?.why
+                                ? `${definition.code}:${definition.severity}:${definition.dimension}`
+                                : "contract:unknown",
+                            why: definition?.why ?? "Unknown hard-failure definition.",
+                            evidenceRefs: [
+                                ...(baselineEvent ? [baselineEvent.ref] : []),
+                                ...(otherEvent ? [otherEvent.ref] : [])
+                            ]
+                        };
+                        if (otherLabel === "candidate") {
+                            processDefects = addProcessDefect(processDefects, {
+                                ...baseDefect,
+                                baselineEventRef: baselineEvent?.ref,
+                                candidateEventRef: otherEvent?.ref
+                            });
+                        }
+                        else if (otherLabel === "mutant") {
+                            processDefects = addProcessDefect(processDefects, {
+                                ...baseDefect,
+                                baselineEventRef: baselineEvent?.ref,
+                                mutantEventRef: otherEvent?.ref
+                            });
+                        }
+                        else {
+                            processDefects = addProcessDefect(processDefects, {
+                                ...baseDefect,
+                                baselineEventRef: baselineEvent?.ref,
+                                restoreEventRef: otherEvent?.ref
+                            });
+                        }
+                    }
+                }
+            }
+            return delta;
         });
         return {
             caseId,
@@ -123,6 +182,70 @@ function diffTwoTraces(baseline, other, otherLabel) {
             eventDeltas
         };
     });
+    return { caseDiffs, processDefects };
+}
+function hardFailureDirection(baselineEvent, otherEvent) {
+    if (!baselineEvent && !otherEvent) {
+        return null;
+    }
+    if (!baselineEvent) {
+        return "added";
+    }
+    if (!otherEvent) {
+        return "removed";
+    }
+    return "changed";
+}
+function readHardFailureCode(event) {
+    if (!event) {
+        return undefined;
+    }
+    const maybeCode = event.event.payload.code;
+    return typeof maybeCode === "string" && maybeCode.trim().length > 0 ? maybeCode : undefined;
+}
+function addProcessDefect(existing, defect) {
+    const accumulator = existing
+        ? {
+            summary: { ...existing.summary },
+            defects: [...existing.defects]
+        }
+        : {
+            summary: { added: 0, removed: 0, changed: 0, p0: 0, p1: 0 },
+            defects: []
+        };
+    const duplicate = accumulator.defects.some((item) => item.caseId === defect.caseId &&
+        item.code === defect.code &&
+        item.direction === defect.direction &&
+        item.evidenceRefs.length === defect.evidenceRefs.length &&
+        item.evidenceRefs.every((ref) => defect.evidenceRefs.includes(ref)));
+    if (duplicate) {
+        return accumulator;
+    }
+    accumulator.defects.push(defect);
+    accumulator.summary[defect.direction] += 1;
+    if (defect.severity === "P0") {
+        accumulator.summary.p0 += 1;
+    }
+    else {
+        accumulator.summary.p1 += 1;
+    }
+    return accumulator;
+}
+function mergeProcessDefects(left, right) {
+    if (!left && !right) {
+        return undefined;
+    }
+    const merged = {
+        summary: { added: 0, removed: 0, changed: 0, p0: 0, p1: 0 },
+        defects: []
+    };
+    for (const defect of [...(left?.defects ?? []), ...(right?.defects ?? [])]) {
+        // no-op merge logic relies on addProcessDefect dedup contract.
+        const next = addProcessDefect(merged, defect);
+        merged.summary = next.summary;
+        merged.defects = next.defects;
+    }
+    return merged;
 }
 function eventDelta(baseline, other, otherLabel, orderChanged) {
     if (!baseline && !other) {

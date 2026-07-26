@@ -57,6 +57,21 @@ describe("Stage 9 trace diff", () => {
         ])
       })
     );
+    expect(diff.processDefects).toMatchObject({
+      summary: {
+        added: 1,
+        removed: 0,
+        changed: 0
+      },
+      defects: [
+        expect.objectContaining({
+          caseId: "case-route",
+          code: "TARGET_ROUTE_FORBIDDEN",
+          direction: "added",
+          severity: "P0"
+        })
+      ]
+    });
   });
 
   test("keeps cross-type event reordering visible", () => {
@@ -131,6 +146,12 @@ describe("Stage 9 trace diff", () => {
         })
       ])
     );
+    expect(diff.processDefects).toBeDefined();
+    expect(diff.processDefects?.summary).toMatchObject({
+      added: 2,
+      removed: 0,
+      changed: 0
+    });
   });
 
   test("keeps a no-op mutant visible while marking an identical restore as restored", () => {

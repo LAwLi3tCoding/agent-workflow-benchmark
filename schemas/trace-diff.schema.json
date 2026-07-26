@@ -69,6 +69,29 @@
         "unchanged": { "type": "integer", "minimum": 0 }
       }
     },
+    "processDefects": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["summary", "defects"],
+      "properties": {
+        "summary": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["added", "removed", "changed", "p0", "p1"],
+          "properties": {
+            "added": { "type": "integer", "minimum": 0 },
+            "removed": { "type": "integer", "minimum": 0 },
+            "changed": { "type": "integer", "minimum": 0 },
+            "p0": { "type": "integer", "minimum": 0 },
+            "p1": { "type": "integer", "minimum": 0 }
+          }
+        },
+        "defects": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/processDefect" }
+        }
+      }
+    },
     "caseDiffs": {
       "type": "array",
       "items": { "$ref": "#/$defs/caseDiff" }
@@ -270,6 +293,28 @@
             "restoreActorHash": { "$ref": "#/$defs/hash" }
           }
         }
+      }
+    },
+    "processDefect": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["caseId", "code", "direction", "severity", "definition", "why", "evidenceRefs"],
+      "properties": {
+        "caseId": { "$ref": "#/$defs/text" },
+        "templateId": { "$ref": "#/$defs/text" },
+        "code": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "direction": { "enum": ["added", "removed", "changed"] },
+        "severity": { "enum": ["P0", "P1"] },
+        "definition": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "why": { "type": "string", "minLength": 1, "maxLength": 1000 },
+        "evidenceRefs": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/traceRef" }
+        },
+        "baselineEventRef": { "$ref": "#/$defs/traceRef" },
+        "candidateEventRef": { "$ref": "#/$defs/traceRef" },
+        "mutantEventRef": { "$ref": "#/$defs/traceRef" },
+        "restoreEventRef": { "$ref": "#/$defs/traceRef" }
       }
     }
   }

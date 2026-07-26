@@ -98,6 +98,8 @@ qualification artifact, the diff remains diagnostic. Trace diffs store event
 references, zero-based source positions, and payload and actor hashes; they do
 not write raw payloads or raw actor identifiers. Relative ordering changes are
 therefore visible even when the event payloads themselves are unchanged.
+When hard-failure trajectories change, the optional `processDefects` section also
+captures process-level deltas and severity to support explicit trajectory review.
 
 ## Trend Report
 
