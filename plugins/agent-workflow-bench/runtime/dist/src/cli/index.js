@@ -1833,8 +1833,11 @@ async function readRequiredAiPlan(filePath) {
     return readJson(filePath);
 }
 function parsePositiveInt(value, label) {
-    const parsed = Number.parseInt(value, 10);
-    if (!Number.isFinite(parsed) || parsed <= 0) {
+    if (!/^[1-9]\d*$/u.test(value)) {
+        throw new Error(`${label} must be a positive integer`);
+    }
+    const parsed = Number(value);
+    if (!Number.isSafeInteger(parsed)) {
         throw new Error(`${label} must be a positive integer`);
     }
     return parsed;

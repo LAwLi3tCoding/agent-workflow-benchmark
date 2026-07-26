@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from "vitest";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { execa } from "execa";
 import {
   assertTrialMetricsReportIntegrity,
   buildTrialMetricsReport,
@@ -197,6 +198,40 @@ describe("trial metrics report", () => {
     const validateReliability = ajv.compile(reliabilitySchema);
     const invalidReliability = JSON.parse(await readFile(invalid, "utf8"));
     expect(validateReliability(invalidReliability)).toBe(false);
+  });
+
+  test("CLI rejects fractional and suffixed k values instead of truncating them", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "awb-trial-metrics-k-"));
+    tempRoots.push(root);
+    const input = path.join(root, "reliability-report.json");
+    const source = reliabilityReport([
+      sample("trial-1", "PASS", HASH_A, "run-a"),
+      sample("trial-2", "PASS", HASH_B, "run-b")
+    ]);
+    await writeFile(input, `${JSON.stringify(source, null, 2)}\n`);
+
+    for (const invalidK of ["2.5", "2x"]) {
+      const execution = await execa(
+        "npm",
+        [
+          "run",
+          "benchmark",
+          "--",
+          "report",
+          "trial-metrics",
+          "--reliability",
+          input,
+          "--k",
+          invalidK,
+          "--out",
+          path.join(root, `out-${invalidK}`)
+        ],
+        { cwd: process.cwd(), reject: false }
+      );
+
+      expect(execution.exitCode).toBe(1);
+      expect(execution.stderr).toContain("k must be a positive integer");
+    }
   });
 });
 
