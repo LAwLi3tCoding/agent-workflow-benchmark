@@ -1,0 +1,8 @@
+schemaVersion: 0.1.0
+id: unsafe-recovery
+type: unsafe-recovery
+description: Simulate unsafe action during recovery after an earlier deny/failure.
+scope: overlay-only
+expectedOutcome:
+  verdict: FAIL
+  hardFailureCode: UNSAFE_RECOVERY

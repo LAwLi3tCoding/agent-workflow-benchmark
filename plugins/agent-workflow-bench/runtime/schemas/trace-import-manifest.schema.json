@@ -1,0 +1,115 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "trace-import-manifest.schema.json",
+  "title": "Agent Workflow Bench trace import manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "artifactType",
+    "source",
+    "status",
+    "gateAuthority",
+    "mapping",
+    "counts",
+    "warningCodes",
+    "redaction",
+    "integrity"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "0.1.0" },
+    "artifactType": { "const": "trace_import_manifest" },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ref", "format", "otlpSchema", "sourceHash"],
+      "properties": {
+        "ref": { "$ref": "#/$defs/portableRef" },
+        "format": { "const": "otlp-json" },
+        "otlpSchema": { "const": "resourceSpans.scopeSpans.spans" },
+        "sourceHash": { "$ref": "#/$defs/hash" }
+      }
+    },
+    "status": { "const": "DIAGNOSTIC_ONLY" },
+    "gateAuthority": { "const": "NONE" },
+    "mapping": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "version", "contentHash"],
+      "properties": {
+        "name": { "const": "awb-otlp-diagnostic-import" },
+        "version": { "const": "0.1.0" },
+        "contentHash": { "$ref": "#/$defs/hash" }
+      }
+    },
+    "counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "resourceSpans",
+        "scopeSpans",
+        "spans",
+        "events",
+        "unknownSpans",
+        "redactedValues"
+      ],
+      "properties": {
+        "resourceSpans": { "type": "integer", "minimum": 0 },
+        "scopeSpans": { "type": "integer", "minimum": 0 },
+        "spans": { "type": "integer", "minimum": 0 },
+        "events": { "type": "integer", "minimum": 0 },
+        "unknownSpans": { "type": "integer", "minimum": 0 },
+        "redactedValues": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "warningCodes": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "LOSSY_UNKNOWN_SPAN",
+          "MISSING_TIMESTAMP",
+          "INVALID_TIMESTAMP",
+          "INVALID_SPAN_ID",
+          "MISSING_METRIC",
+          "VALUE_REDACTED",
+          "EMPTY_TRACE"
+        ]
+      }
+    },
+    "redaction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["applied", "evidenceHash"],
+      "properties": {
+        "applied": { "type": "boolean" },
+        "evidenceHash": { "$ref": "#/$defs/hash" }
+      }
+    },
+    "integrity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "contentHash"],
+      "properties": {
+        "status": { "const": "VERIFIED_AT_WRITE" },
+        "contentHash": { "$ref": "#/$defs/hash" }
+      }
+    }
+  },
+  "$defs": {
+    "hash": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "portableRef": {
+      "type": "string",
+      "minLength": 1,
+      "not": {
+        "anyOf": [
+          { "pattern": "^/" },
+          { "pattern": "^[A-Za-z]:" },
+          { "pattern": "(^|/)\\.\\.(/|$)" },
+          { "pattern": "\\\\" },
+          { "pattern": "://" }
+        ]
+      }
+    }
+  }
+}

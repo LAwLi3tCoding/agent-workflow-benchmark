@@ -40,6 +40,8 @@ import {
   REFERENCE_OBSERVER_EVIDENCE_CAPABILITIES,
   observeWithReferenceObserver,
   referenceObserverImplementationHash,
+  type ReferenceObserverIsolationConfig,
+  type ReferenceObserverIsolationManifest,
   type ReferenceObserverEvidenceCapability
 } from "./referenceObserver.js";
 import {
@@ -107,6 +109,7 @@ export interface ObserverQualificationArtifact {
     evaluationContractHash: string;
     workflowTraceSchemaHash: string;
     qualificationSuiteHash: string;
+    isolationManifest?: ReferenceObserverIsolationManifest;
   };
   results: {
     decision: "valid" | "invalid";
@@ -139,6 +142,7 @@ export interface ObserverQualificationExpectedBinding {
   observer: ObserverQualificationArtifact["observer"];
   contractHash: string;
   caseSetHash: string;
+  isolationManifest?: ReferenceObserverIsolationManifest;
 }
 
 export interface ObserverQualificationReport {
@@ -165,6 +169,7 @@ export async function runReferenceObserverQualification(options: {
   observerPrivateKeyPath: string;
   qualificationAuthorityPrivateKeyPath: string;
   outputDir: string;
+  isolation?: ReferenceObserverIsolationConfig;
 }): Promise<{
   artifact: ObserverQualificationArtifact;
   report: ObserverQualificationReport;
@@ -218,7 +223,8 @@ export async function runReferenceObserverQualification(options: {
       observerId: options.observerId,
       observerVersion: options.observerVersion,
       contract: options.contract,
-      caseSetHash
+      caseSetHash,
+      isolation: options.isolation
     });
     const knownGood = knownGoodRuns[0]!;
     const mutationOutcomes = await runObserverMutationChecks({
@@ -381,13 +387,16 @@ export async function runReferenceObserverQualification(options: {
       implementationHash: referenceObserverImplementationHash(),
       evidenceCapabilities: [...REFERENCE_OBSERVER_EVIDENCE_CAPABILITIES]
     };
-    const subject = {
+    const subject: ObserverQualificationArtifact["subject"] = {
       contractHash: options.contract.contractHash,
       caseSetHash,
       evaluationContractHash,
       workflowTraceSchemaHash,
       qualificationSuiteHash: observerQualificationSuiteHash()
     };
+    if (knownGood.bundle.subject.isolationManifest) {
+      subject.isolationManifest = knownGood.bundle.subject.isolationManifest;
+    }
     const results = {
       decision,
       p0DetectionRate,
@@ -539,6 +548,10 @@ export async function verifyObserverQualificationArtifact(
       "Observer qualification observer, contract, or case-set binding does not match the trace."
     );
   }
+  assertIsolationManifestCompatibility(
+    expected.isolationManifest,
+    artifact.subject.isolationManifest
+  );
   const workflowTraceSchemaHash = await hashFile(
     path.join(getBenchmarkRoot(), "schemas/workflow-trace.schema.json")
   );
@@ -636,7 +649,8 @@ export async function verifyObserverQualificationArtifact(
 
 export function assertQualifiedWorkflowTraceEvidence(
   verifiedTrace: VerifiedWorkflowTrace,
-  expected: ObserverQualificationArtifact["observer"]
+  expected: ObserverQualificationArtifact["observer"],
+  expectedIsolationManifest?: ReferenceObserverIsolationManifest
 ): void {
   const observer = verifiedTrace.bundle.observer;
   if (
@@ -651,6 +665,10 @@ export function assertQualifiedWorkflowTraceEvidence(
       "Workflow trace does not match the qualified Observer implementation and evidence capabilities."
     );
   }
+  assertIsolationManifestCompatibility(
+    expectedIsolationManifest,
+    verifiedTrace.bundle.subject.isolationManifest
+  );
   const requiredEventByCapability: Record<
     ReferenceObserverEvidenceCapability,
     string
@@ -677,13 +695,17 @@ export function assertQualifiedWorkflowTraceEvidence(
               event.payload.attempted === true &&
               event.payload.allowed === false &&
               event.payload.policyDecision === "deny" &&
-              event.payload.outcomeCode === "EPERM")) &&
+              ["EPERM", "NETWORK_UNREACHABLE"].includes(
+                String(event.payload.outcomeCode)
+              ))) &&
           (capability !== "tool" ||
             (event.payload.boundaryProbe === true &&
               event.payload.attempted === true &&
               event.payload.allowed === false &&
               event.payload.policyDecision === "deny" &&
-              event.payload.outcomeCode === "EPERM"))
+              ["EPERM", "DENIED"].includes(
+                String(event.payload.outcomeCode)
+              )))
       );
       if (!evidence) {
         throw new Error(
@@ -692,6 +714,57 @@ export function assertQualifiedWorkflowTraceEvidence(
       }
     }
   }
+}
+
+function assertIsolationManifestCompatibility(
+  qualified: ReferenceObserverIsolationManifest | undefined,
+  observed: ReferenceObserverIsolationManifest | undefined
+): void {
+  if (qualified === undefined) {
+    return;
+  }
+  const qualifiedProfile = isolationQualificationProfile(qualified);
+  const observedProfile = observed
+    ? isolationQualificationProfile(observed)
+    : undefined;
+  if (
+    observed === undefined ||
+    stableJson(qualifiedProfile) !== stableJson(observedProfile)
+  ) {
+    const differingFields = observedProfile
+      ? Object.keys(qualifiedProfile).filter(
+          (key) =>
+            stableJson(
+              qualifiedProfile[
+                key as keyof typeof qualifiedProfile
+              ]
+            ) !==
+            stableJson(
+              observedProfile[
+                key as keyof typeof observedProfile
+              ]
+            )
+        )
+      : ["missing"];
+    throw new Error(
+      `Workflow trace isolation backend binding does not match the qualified Observer artifact (${differingFields.join(",")}).`
+    );
+  }
+}
+
+function isolationQualificationProfile(
+  manifest: ReferenceObserverIsolationManifest
+): Omit<
+  ReferenceObserverIsolationManifest,
+  "policyHash" | "mountManifestHash" | "manifestHash"
+> {
+  const {
+    policyHash: _policyHash,
+    mountManifestHash: _mountManifestHash,
+    manifestHash: _manifestHash,
+    ...profile
+  } = manifest;
+  return profile;
 }
 
 export function observerQualificationSuiteHash(): string {
@@ -737,11 +810,9 @@ async function runKnownGoodRepeats(options: {
   observerVersion: string;
   contract: ContractModel;
   caseSetHash: string;
+  isolation?: ReferenceObserverIsolationConfig;
 }): Promise<VerifiedWorkflowTrace[]> {
-  const runnerPath = path.join(options.workspace, "qualification-runner.mjs");
-  await writeFile(
-    runnerPath,
-    [
+  const runnerSource = [
       'import { mkdir, writeFile } from "node:fs/promises";',
       'import { spawnSync } from "node:child_process";',
       'import net from "node:net";',
@@ -769,8 +840,7 @@ async function runKnownGoodRepeats(options: {
       "  })",
       ");",
       'process.stdout.write("qualification runner complete\\n");'
-    ].join("\n")
-  );
+    ].join("\n");
   const observerPublicKeyPath = path.join(
     options.workspace,
     "observer-public.pem"
@@ -785,12 +855,15 @@ async function runKnownGoodRepeats(options: {
   for (let index = 0; index < 3; index += 1) {
     const runRoot = path.join(options.workspace, `repeat-${index + 1}`);
     await mkdir(path.join(runRoot, "state"), { recursive: true });
+    const runnerPath = path.join(runRoot, "qualification-runner.mjs");
+    await writeFile(runnerPath, runnerSource);
     await writeFile(
       path.join(runRoot, "state", "workflow.json"),
       '{"status":"ready"}\n'
     );
     const tracePath = path.join(traceRoot, `repeat-${index + 1}.json`);
     await observeWithReferenceObserver({
+      isolation: options.isolation,
       privateKeyPath: options.observerPrivateKeyPath,
       outputPath: tracePath,
       request: {
@@ -846,10 +919,16 @@ async function runKnownGoodRepeats(options: {
       networkDenied: string;
       nestedProcessDenied: string;
     }>(path.join(runRoot, "artifacts", "isolation-probe.json"));
-    if (
-      isolationProbe.networkDenied !== "EPERM" ||
-      isolationProbe.nestedProcessDenied !== "EPERM"
-    ) {
+    const networkDenied = [
+      "EPERM",
+      "ENETUNREACH",
+      "EHOSTUNREACH",
+      "ENETDOWN"
+    ].includes(isolationProbe.networkDenied);
+    const nestedProcessDenied = ["EPERM", "EACCES", "ENOSYS"].includes(
+      isolationProbe.nestedProcessDenied
+    );
+    if (!networkDenied || !nestedProcessDenied) {
       throw new Error(
         "Observer qualification Runner bypass canaries were not denied by the isolation boundary."
       );

@@ -229,7 +229,9 @@ export function scoreSuite(runId, contract, suite, caseResults, evidenceContext,
             verdict: result.verdict,
             rawScore: result.rawScore,
             cappedScore: result.cappedScore,
-            hardFailures: result.hardFailures
+            hardFailures: result.hardFailures,
+            tokens: result.tokens,
+            efficiency: result.efficiency
         })),
         dimensionScores,
         recommendations,

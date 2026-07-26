@@ -137,10 +137,13 @@ awb gate \
 | `DIAGNOSTIC_ONLY` | `2` | simulated、未認定 Observer、不完全、または比較不能な証拠 |
 | `BLOCK` | `1` | Hard Failure、回帰、無効 provenance、Tool Failure |
 
-現在実装済みの Hard Failure は常にスコアより優先されます。禁止 routing、Owner
-bypass、false PASS、必須 Join 欠落、artifact path drift、危険な本番副作用、無効
-provenance、未登録 failure code が対象です。runner failure と telemetry 不足は別の
-決定論的 BLOCK/診断条件であり、追加の registry code ではありません。
+現在実装済みの Hard Failure は常にスコアより優先されます。証拠の欠落や順序違反、
+forged Observer evidence、禁止 routing、Owner bypass、objective drift、injection、
+tool-chain escalation、delayed handoff trigger、state poisoning、unsafe recovery、
+false PASS、必須 Join 欠落、artifact path drift、危険な本番副作用、telemetry または
+token ledger 欠落、sensitive leakage、無効 provenance、未登録 failure code が対象です。
+`trajectory-review` report は検証済み trace-diff から process defect と recovery metrics
+を再構築します。長期安全 mutation family は contract と fixture coverage に登録済みです。
 
 ### 現在の Runner 証拠
 
@@ -153,9 +156,15 @@ provenance、未登録 failure code が対象です。runner failure と telemet
 
 ### 署名付き Workflow Trace
 
-reference Observer は、環境を scrub した deny-default の macOS Seatbelt 境界で
-Runner を実行し、署名鍵の読取、network、未観測の nested executable が `EPERM`
-になることを active canary で確認します。Trace は収集・redact・署名され、release Gate 前に別 authority が認定します。
+reference Observer は、scrub 済み環境と明示的な fail-closed 境界で Runner を実行します。
+現在の reference backend は 2 つです。
+
+| Backend | 境界 |
+| --- | --- |
+| `macos-seatbelt` | macOS `/usr/bin/sandbox-exec`。workspace write と正確な Runner executable だけを許可し、signing key read、network、未観測 nested executable を拒否し、active canary の fail closed を要求 |
+| `linux-oci-docker` | immutable image identity で束縛された Linux OCI/Docker image。network なし、read-only rootfs、dropped capabilities、`no-new-privileges`、seccomp child-process denial、mount 外の signing key、key/network/nested-process/write の 4 canary |
+
+Trace は収集・redact・署名され、release Gate 前に別 authority が認定します。
 
 ```bash
 awb observer observe --request observer-request.json --observer-private-key /secure/observer-private.pem --out observer-output/workflow-trace.json
@@ -174,8 +183,10 @@ Trace 署名は Observer の identity と署名後の完全性を、authority �
 別の key pair を使い、公開 trust anchor は毎回明示します。AWB は鍵を自動登録しません。
 有効な qualification artifact がない署名 Trace は `DIAGNOSTIC_ONLY` のままで、
 run metadata の `valid` 自己申告は無視されます。秘密鍵は Runner、repository、artifact、
-log の外に置きます。bundled isolation は Darwin と `/usr/bin/sandbox-exec` 専用で、
-未対応環境では fail closed します。仕様は
+log の外に置きます。未対応 isolation は fail closed し、有効な qualification artifact
+を生成せず、`DIAGNOSTIC_ONLY` を超えません。Linux Docker qualification path は hosted
+または Linux 環境で使えますが、その commit の Linux Observer job が通るまでは
+Linux qualification evidence として扱えません。仕様は
 [Workflow-Trace Observer Contract](docs/workflow-trace-observer-contract.md) を参照してください。
 
 ## よく使うワークフロー
@@ -262,7 +273,7 @@ Gold Corpus の development/calibration データだけで versioned policy を 
 ```bash
 awb gate-policy calibrate \
   --corpus fixtures/gold-corpus/v1/manifest.yaml \
-  --policy-version 1.0.0 \
+  --policy-version 1.1.0 \
   --out reports/gate-policy/v1/fit
 ```
 
@@ -287,9 +298,6 @@ criterion validity、human labels、qualified live trace、本番 blocking autho
 は別途必要です。詳しくは
 [Gate Policy Calibration](docs/gate-policy-calibration.md) を参照してください。
 
-Committed public synthetic evidence は `fixtures/calibration/v1/fit` と
-`fixtures/calibration/v1/holdout` にあります。
-
 ## コマンドと成果物
 
 | Command | 目的 |
@@ -306,9 +314,14 @@ Committed public synthetic evidence は `fixtures/calibration/v1/fit` と
 | `gate` | 決定論的 CI release policy の適用 |
 | `gate-policy ...` | Versioned score/gate policy の校正または holdout 検証 |
 | `artifact migrate` | 登録済み Artifact を安定した status/reason code で読取・移行 |
+| `trace import-otlp` | untrusted OTLP JSON を redacted diagnostic events と schema-valid import manifest に変換 |
+| `trace curate-production` | owner/security review、reference run、holdout の前提条件を明示した redacted production-trace curation draft を生成 |
+| `governance benchmark` | split isolation、contamination、saturation、reproducibility、domain adapter evidence を評価 |
 | `adapter conformance` | Runner Adapter contract と `CaseRun` を診断証拠として検証 |
 | `ci benchmark-health` | 定期 self-check を fail-closed な version disposition に集約 |
 | `score` / `report` | Run 確認、decision、trace-diff、trend、静的 viewer の描画 |
+| `report trajectory-review` | trace-diff evidence と任意の judge/human label から deterministic process-defect trajectory を再構築 |
+| `report workflow-economics` | trace-diff、trajectory-review、paired suite から diagnostic workflow economics を計算 |
 | `report trial-metrics` | 有限標本 pass@k/pass^k を計算。source report 単独では diagnostic-only |
 | `criterion-validity ...` | 盲検化した外部研究 package の生成・独立ラベル分析 |
 | `debug ...` | Benchmark Harness の逆検証と診断 |
@@ -326,12 +339,22 @@ Committed public synthetic evidence は `fixtures/calibration/v1/fit` と
 | `comparison-result.json` | 完全性に結び付いたペア比較 |
 | `gate-result.json` | 決定論的リリース判定 |
 | `gate-policy.json` / `calibration-report.*` | Versioned policy、fit evidence、holdout diagnostics |
-| `report.md` / `decision-report.*` / `trace-diff.json` / `trend-report.json` / `viewer.html` | 診断、判定、Redacted trace diff、era 別 trend、静的 viewer |
+| `otlp-diagnostic-import.json` / `trace-import-manifest.json` / `diagnostic-events.json` | OTLP 由来の redacted diagnostic import、import manifest、normalized diagnostic events |
+| `production-trace-curation.json` / `production-trace-curation.md` | redaction review 済みだが owner/security review、reference run、holdout isolation が未完了の draft と human summary |
+| `benchmark-governance-report.json` / `benchmark-governance-report.md` | split isolation、contamination、saturation、reproducibility、domain evidence の diagnostic governance report |
+| `report.md` / `decision-report.*` / `trace-diff.json` / `trajectory-review.json` / `trajectory-review.md` / `workflow-economics-report.json` / `workflow-economics-report.md` / `trend-report.json` / `viewer.html` | 診断、判定、Redacted trace diff、process-defect recovery metrics、workflow economics、era 別 trend、静的 viewer |
 | `validity-report.*` / `reliability-report.*` | 外部妥当性、信頼性、quarantine の証拠 |
 | `adapter-conformance-report.json` / `benchmark-health-report.json` | Adapter 診断と Benchmark version health |
 | `runner-ranking-report.json` / `trial-metrics-report.*` | 比較可能性を明示した Runner ranking と trust ceiling 付き trial metrics |
 
 完全なオプションは `awb <command> --help` で確認できます。
+
+OTLP import、production-trace curation、benchmark governance、trajectory review、
+workflow economics の artifact はすべて `DIAGNOSTIC_ONLY` で、trust ceiling は
+`NONE` です。診断 command が成功した場合の終了コードは `2` です。Workflow
+economics は `0–100` の `cappedScore` を使い、canonical UTC の
+`--generated-at` を明示的に要求し、両方の token ledger が `high` confidence の
+場合にのみ Pareto dominance を許可します。
 
 `compare` と `gate` は `--gate-policy <path>` を受け取ります。履歴結果の再計算では
 同じ policy を使ってください。policy version、rules hash、policy hash が欠落または
@@ -362,21 +385,9 @@ npm run ci:local
 runtime parity、source/package schema、命名/Privacy scan、fresh-install smoke を実行します。
 `plugins/agent-workflow-bench/runtime/` は commit 対象の生成物です。
 
-```text
-.
-├── configs/                     # Runner Config と Target Pack
-├── fixtures/                    # 汎用 Target と Mutation Scenario
-├── plugins/agent-workflow-bench # Codex/Claude Plugin と Bundled Runtime
-├── schemas/                     # 機械可読 Artifact Contract
-├── src/                         # TypeScript CLI
-├── tests/                       # Unit / End-to-End Test
-└── docs/                        # Methodology と運用ガイド
-```
-
 ## ドキュメント
 
-- [Human guide](docs/agent-workflow-bench-human-guide.md)
-- [Plugin guide](docs/agent-workflow-bench-plugin-guide.md)
+- [Human guide](docs/agent-workflow-bench-human-guide.md) / [Plugin guide](docs/agent-workflow-bench-plugin-guide.md)
 - [Evaluation methodology](docs/ai-workflow-evaluation-methodology.md) / [Reporting and trends](docs/reporting-and-trends.md)
 - [2026 Agent evaluation landscape and optimization roadmap](docs/agent-evaluation-landscape-2026.md)
 - [Workflow-Trace Observer Contract](docs/workflow-trace-observer-contract.md)

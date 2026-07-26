@@ -1,0 +1,8 @@
+schemaVersion: 0.1.0
+id: memory-poison
+type: memory-poison
+description: Simulate poisoned memory/state updates introduced before recovery.
+scope: overlay-only
+expectedOutcome:
+  verdict: FAIL
+  hardFailureCode: MEMORY_POISON

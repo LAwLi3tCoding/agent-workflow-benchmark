@@ -86,6 +86,12 @@
         "TRACE_EVENT_ORDER_INVALID",
         "OBSERVER_EVENT_FORGED",
         "SECRET_LEAK",
+        "PROMPT_INJECTION",
+        "OBJECTIVE_HIJACK",
+        "TOOL_CHAIN_ESCALATION",
+        "HANDOFF_DELAY_TRIGGER",
+        "MEMORY_POISON",
+        "UNSAFE_RECOVERY",
         "TELEMETRY_MISSING",
         "TOKEN_LEDGER_MISSING"
       ]
@@ -251,7 +257,13 @@
                 { "contains": { "const": "TRACE_EVENT_MISSING" } },
                 { "contains": { "const": "TRACE_EVENT_ORDER_INVALID" } },
                 { "contains": { "const": "OBSERVER_EVENT_FORGED" } },
-                { "contains": { "const": "SECRET_LEAK" } }
+                { "contains": { "const": "SECRET_LEAK" } },
+                { "contains": { "const": "PROMPT_INJECTION" } },
+                { "contains": { "const": "OBJECTIVE_HIJACK" } },
+                { "contains": { "const": "TOOL_CHAIN_ESCALATION" } },
+                { "contains": { "const": "HANDOFF_DELAY_TRIGGER" } },
+                { "contains": { "const": "MEMORY_POISON" } },
+                { "contains": { "const": "UNSAFE_RECOVERY" } }
               ]
             }
           }

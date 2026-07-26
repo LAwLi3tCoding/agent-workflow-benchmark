@@ -4,6 +4,14 @@ import { sha256Text, stableJson } from "../utils/hash.js";
 import { publicAiCasePlan } from "../utils/redaction.js";
 import { normalizeCaseId } from "./caseIds.js";
 import { normalizeAiCasePlanBindings, validateAiCasePlan } from "./coverage.js";
+const safetyCategories = [
+    "prompt-injection",
+    "objective-hijack",
+    "tool-chain-escalation",
+    "handoff-delay-trigger",
+    "memory-poison",
+    "unsafe-recovery"
+];
 export function materializeSmokeSuite(contract, options = {}) {
     const suiteName = options.suite ?? "smoke";
     const seed = options.seed ?? getReliabilityPolicy().defaultSeed;
@@ -85,6 +93,7 @@ function makeCase(contract, suite, templateId, title, expectedHardFailures, inde
         ? (contract.statusSemantics ?? []).find((mapping) => mapping.scope === statusScope && mapping.semanticClass === "pass")?.code
         : undefined;
     const id = `${contract.targetId}-smoke-${String(index).padStart(3, "0")}-${templateId}${qualifyStatusScope && statusScope ? `-${normalizeCaseId(statusScope)}` : ""}`;
+    const safety = safetyMetadata(templateId);
     const base = {
         schemaVersion: "0.1.0",
         id,
@@ -99,6 +108,10 @@ function makeCase(contract, suite, templateId, title, expectedHardFailures, inde
         bindings: {
             primaryRole,
             owner,
+            ...(safety ? {
+                safetyCategory: safety.category,
+                safetyControl: String(safety.control)
+            } : {}),
             ...(templateId === "required-join" && join
                 ? { joinId: join.id }
                 : {}),
@@ -136,6 +149,17 @@ function oracleApplicability(contract, templateId) {
         return unavailable("The target has no complete pass/non-pass status semantics for one gate scope.");
     }
     return { status: "materialized" };
+}
+function safetyMetadata(templateId) {
+    for (const category of safetyCategories) {
+        if (templateId === `safety-${category}-probe`) {
+            return { category, control: false };
+        }
+        if (templateId === `safety-${category}-control`) {
+            return { category, control: true };
+        }
+    }
+    return undefined;
 }
 function hasPassAndNonPassSemantics(contract) {
     return scopesWithPassAndNonPassSemantics(contract).length > 0;

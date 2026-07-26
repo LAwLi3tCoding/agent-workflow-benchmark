@@ -10,14 +10,60 @@ the legacy run renderer.
 | `awb report --run <dir> --format md,json` | `<dir>/suite-result.json` | `report.md`; rewrites `suite-result.json` when `json` is selected | `0` when the run artifact is readable; tool errors fail with `1` |
 | `awb report decision` | `comparison-result.json`, `gate-result.json`, optional reliability/validity reports | `decision-report.json`, `decision-report.md` | `0` only after comparison and gate revalidation; mismatch or invalid schema fails with `1` |
 | `awb report trace-diff` | redacted `workflow-trace.json` files | `trace-diff.json` | `0` for a bounded diff; bad mode, missing trace role, untrusted qualification shape, or schema failure exits `1` |
+| `awb report trajectory-review` | `trace-diff.json`, optional judge findings, optional blinded human labels | `trajectory-review.json`, `trajectory-review.md` | `2` for valid diagnostic trajectory review; tampered trace-diff integrity, ungrounded refs, invalid labels, or schema failure exits `1` |
+| `awb report workflow-economics` | `trace-diff.json`, `trajectory-review.json`, matched baseline/candidate `suite-result.json` | `workflow-economics-report.json`, `workflow-economics-report.md` | `2` for a valid diagnostic economics report; invalid sources or schemas exit `1` |
 | `awb report trend` | JSON `{ "seriesId": "...", "points": [...] }` | `trend-report.json` | `0` for valid ordered points; empty, duplicate, out-of-order, or schema-invalid input exits `1` |
 | `awb report viewer` | already-redacted public artifacts | `viewer.html`, `html-viewer-manifest.json` | `0` when all inputs validate and the viewer hash matches; unredacted/private input exits `1` |
 | `awb report trial-metrics` | `reliability-report.json` | `trial-metrics-report.json`, `trial-metrics-report.md` | `2` for valid diagnostic estimates; invalid or blocking source evidence exits `1` |
 
-The Stage 9 command surface was verified with `npm run benchmark -- report
---help` and each subcommand help. The examples below require caller-supplied
-artifacts from prior AWB runs; the repository tests execute the same flows with
-fixture artifacts.
+The command examples touched in this update were checked against CLI help. The
+examples below require caller-supplied artifacts from prior AWB runs; the
+repository tests execute the same flows with fixture artifacts.
+
+## Related Diagnostic Pipelines
+
+These commands feed reporting and corpus work but do not create gate authority:
+
+```bash
+awb trace import-otlp \
+  --input telemetry/otlp-export.json \
+  --source-ref telemetry/otlp-export.json \
+  --out reports/imports/otlp
+```
+
+`import-otlp` writes `otlp-diagnostic-import.json`,
+`trace-import-manifest.json`, and `diagnostic-events.json`, then exits `2`.
+The artifact status is always `DIAGNOSTIC_ONLY` with `gateAuthority: NONE`.
+The importer sanitizes attribute keys and values, records lossy mappings and
+timestamp/span warnings, and does not claim Observer qualification.
+
+```bash
+awb trace curate-production \
+  --input reports/curation/production-trace-curation-input.json \
+  --out reports/curation/production-trace
+```
+
+`curate-production` writes `production-trace-curation.json` and
+`production-trace-curation.md`, then exits `2`. The input must include a
+diagnostic import, review/consent/retention metadata, redaction evidence, and
+reference/holdout prerequisites. The output is a draft replay package only; it
+does not activate cases or authorize production use.
+
+```bash
+awb governance benchmark \
+  --input reports/governance/benchmark-governance-input.json \
+  --out reports/governance/current
+```
+
+`governance benchmark` writes `benchmark-governance-report.json` and
+`benchmark-governance-report.md`. `POLICY_COMPLETE` reports exit `2` because
+they remain diagnostic. Missing required splits, split leakage, forced ranking,
+contamination/saturation/reproducibility policy gaps, or a missing required
+domain adapter produce `BLOCKED` and exit `1`. A candidate domain adapter may
+still lack its observability-boundary, target-pack, or conformance bindings; it
+then remains diagnostic with `BLOCKED_OBSERVABILITY`, while the overall report
+can remain `POLICY_COMPLETE`. Declaring an adapter `ACTIVE` without all three
+bindings is rejected before a governance report is created.
 
 ## Legacy Run Report
 
@@ -100,6 +146,72 @@ not write raw payloads or raw actor identifiers. Relative ordering changes are
 therefore visible even when the event payloads themselves are unchanged.
 When hard-failure trajectories change, the optional `processDefects` section also
 captures process-level deltas and severity to support explicit trajectory review.
+
+## Trajectory Review
+
+```bash
+awb report trajectory-review \
+  --trace-diff reports/observed/trace-diff/trace-diff.json \
+  --out reports/observed/trajectory-review
+```
+
+Optional judge findings and blinded human labels can be supplied:
+
+```bash
+awb report trajectory-review \
+  --trace-diff reports/observed/trace-diff/trace-diff.json \
+  --judge-findings reports/observed/judge-findings.json \
+  --human-labels reports/observed/human-labels.json \
+  --out reports/observed/trajectory-review
+```
+
+`trajectory-review` revalidates the trace-diff schema, content hash, source
+trace hashes, and embedded source bindings before producing any report. It
+converts deterministic hard-failure process deltas into a versioned process
+defect taxonomy with onset, propagation, detection latency, recovery attempt,
+and final-outcome fields for baseline/candidate and mutant/restore reviews.
+Every deterministic, judge, and human-label evidence reference must point to an
+event ref already present in the trace diff; unreferenced or forged refs are
+rejected.
+
+The artifact is always `DIAGNOSTIC_ONLY` and has no gate authority. Judge
+findings are recorded separately with model, prompt hash, rubric hash, and
+calibration-set identity; they cannot delete, downgrade, or override a
+deterministic finding. When blinded labels from at least two raters are
+provided, the report emits per-defect-class TP/FP/FN, precision, recall, and
+simple inter-rater agreement. Without labels, validation is explicitly
+`UNVALIDATED`. The report uses trace-diff refs, positions, and hashes only; it
+does not output raw payloads, raw actors, absolute paths, or current-time
+timestamps.
+
+## Workflow Economics
+
+```bash
+awb report workflow-economics \
+  --trace-diff reports/observed/trace-diff/trace-diff.json \
+  --trajectory-review reports/observed/trajectory-review/trajectory-review.json \
+  --baseline-suite reports/runs/baseline/suite-result.json \
+  --candidate-suite reports/runs/candidate/suite-result.json \
+  --generated-at 2026-07-26T00:00:00.000Z \
+  --out reports/observed/workflow-economics
+```
+
+`workflow-economics` revalidates the trace diff and matched suite-result
+schemas, recomputes source hashes, and checks that the trajectory review is
+bound to the same trace diff. It writes `workflow-economics-report.json` and
+`workflow-economics-report.md`, then exits `2` for a valid report because the
+artifact is always `DIAGNOSTIC_ONLY` with `gateAuthority: NONE`.
+
+The report compares capped quality score, total tokens, wasted tokens, wall
+clock seconds, repeated same-action evidence, and explicit irreversible
+side-effect timing. Quality uses AWB's `0–100` `cappedScore` scale. The caller
+must supply a canonical UTC `--generated-at` value so artifact hashes are
+reproducible. Pareto dominance requires `high`-confidence token evidence on
+both lanes; lower-confidence token deltas remain visible but make the case
+`INCOMPARABLE`. Gate-policy drift, suite drift, case mismatch, missing metrics,
+invalid token ledgers, or incompatible trace evidence likewise mark the case
+or suite `INCOMPARABLE`; the command never upgrades, downgrades, or overrides
+the gate result.
 
 ## Trend Report
 

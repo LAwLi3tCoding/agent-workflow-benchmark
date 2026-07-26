@@ -8,6 +8,8 @@
     "artifact-compatibility-matrix.schema.json",
     "artifact-migration-result.schema.json",
     "artifact-schema-registry.schema.json",
+    "benchmark-governance-input.schema.json",
+    "benchmark-governance-report.schema.json",
     "benchmark-health-input.schema.json",
     "benchmark-health-report.schema.json",
     "calibration-report.schema.json",
@@ -36,12 +38,15 @@
     "html-viewer-manifest.schema.json",
     "mutation.schema.json",
     "observer-qualification.schema.json",
+    "otlp-diagnostic-import.schema.json",
     "production-blocking-authorization-request.schema.json",
     "production-blocking-authorization.schema.json",
     "production-canary-policy.schema.json",
     "production-canary-report.schema.json",
     "production-ci-gate-result.schema.json",
     "production-isolation-manifest.schema.json",
+    "production-trace-curation-input.schema.json",
+    "production-trace-curation.schema.json",
     "profile-evidence.schema.json",
     "provenance.schema.json",
     "regression-scenarios.schema.json",
@@ -55,9 +60,12 @@
     "suite-result.schema.json",
     "target-pack.schema.json",
     "trace-diff.schema.json",
+    "trace-import-manifest.schema.json",
+    "trajectory-review.schema.json",
     "trend-report.schema.json",
     "trial-metrics-report.schema.json",
     "validity-report.schema.json",
+    "workflow-economics-report.schema.json",
     "workflow-trace.schema.json"
   ],
   "entries": [
@@ -251,6 +259,54 @@
       "schemaFile": "trial-metrics-report.schema.json",
       "currentVersion": "0.1.0",
       "compatibilityPolicyRef": "compatibility-matrix.json#trial_metrics_report",
+      "migrationSupported": true
+    },
+    {
+      "artifactType": "trajectory_review",
+      "fileNames": ["trajectory-review.json"],
+      "schemaFile": "trajectory-review.schema.json",
+      "currentVersion": "0.1.0",
+      "compatibilityPolicyRef": "compatibility-matrix.json#trajectory_review",
+      "migrationSupported": true
+    },
+    {
+      "artifactType": "workflow_economics_report",
+      "fileNames": ["workflow-economics-report.json"],
+      "schemaFile": "workflow-economics-report.schema.json",
+      "currentVersion": "0.1.0",
+      "compatibilityPolicyRef": "compatibility-matrix.json#workflow_economics_report",
+      "migrationSupported": true
+    },
+    {
+      "artifactType": "otlp_diagnostic_import",
+      "fileNames": ["otlp-diagnostic-import.json"],
+      "schemaFile": "otlp-diagnostic-import.schema.json",
+      "currentVersion": "0.1.0",
+      "compatibilityPolicyRef": "compatibility-matrix.json#otlp_diagnostic_import",
+      "migrationSupported": true
+    },
+    {
+      "artifactType": "trace_import_manifest",
+      "fileNames": ["trace-import-manifest.json"],
+      "schemaFile": "trace-import-manifest.schema.json",
+      "currentVersion": "0.1.0",
+      "compatibilityPolicyRef": "compatibility-matrix.json#trace_import_manifest",
+      "migrationSupported": true
+    },
+    {
+      "artifactType": "production_trace_curation",
+      "fileNames": ["production-trace-curation.json"],
+      "schemaFile": "production-trace-curation.schema.json",
+      "currentVersion": "0.1.0",
+      "compatibilityPolicyRef": "compatibility-matrix.json#production_trace_curation",
+      "migrationSupported": true
+    },
+    {
+      "artifactType": "benchmark_governance_report",
+      "fileNames": ["benchmark-governance-report.json"],
+      "schemaFile": "benchmark-governance-report.schema.json",
+      "currentVersion": "0.1.0",
+      "compatibilityPolicyRef": "compatibility-matrix.json#benchmark_governance_report",
       "migrationSupported": true
     }
   ]

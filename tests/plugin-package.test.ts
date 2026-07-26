@@ -368,7 +368,7 @@ describe("agent workflow bench plugin package", () => {
           env: { ...process.env, AWB_PROJECT_ROOT: "" }
         }
       );
-      expect(corpus.stdout).toContain("36 trajectories");
+      expect(corpus.stdout).toContain("54 trajectories");
       const reliabilityHelp = await execa(
         path.join(install.pluginPath, "bin", "awb"),
         ["debug", "reliability", "--help"],

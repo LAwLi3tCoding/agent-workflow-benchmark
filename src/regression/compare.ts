@@ -573,12 +573,14 @@ async function validateProvenance(
                 evidenceCapabilities as ReferenceObserverEvidenceCapability[]
             },
             contractHash: provenance.subject.contractHash,
-            caseSetHash: provenance.conditions.caseSetHash
+            caseSetHash: provenance.conditions.caseSetHash,
+            isolationManifest: verifiedTrace.bundle.subject.isolationManifest
           }
         );
       assertQualifiedWorkflowTraceEvidence(
         verifiedTrace,
-        verifiedQualification.artifact.observer
+        verifiedQualification.artifact.observer,
+        verifiedQualification.artifact.subject.isolationManifest
       );
       if (
         provenanceObserver!.qualificationArtifactHash !==
@@ -742,6 +744,8 @@ function validateRuntimeManifest(
   if (verifiedTrace) {
     const observer = provenance.conditions.observer;
     const runtimeTrace = runtime.workflowTrace;
+    const isolationManifestHash =
+      verifiedTrace.bundle.subject.isolationManifest?.manifestHash;
     if (
       !observer ||
       !runtimeTrace ||
@@ -753,6 +757,7 @@ function validateRuntimeManifest(
       runtimeTrace.observer.id !== verifiedTrace.bundle.observer.id ||
       runtimeTrace.observer.version !== verifiedTrace.bundle.observer.version ||
       runtimeTrace.observer.keyFingerprint !== verifiedTrace.keyFingerprint ||
+      runtimeTrace.observer.isolationManifestHash !== isolationManifestHash ||
       runtimeTrace.observer.qualificationStatus !== observer.qualificationStatus ||
       runtimeTrace.observer.qualificationRef !== observer.qualificationRef ||
       runtimeTrace.observer.qualificationArtifactHash !==
@@ -762,6 +767,7 @@ function validateRuntimeManifest(
       observer.id !== verifiedTrace.bundle.observer.id ||
       observer.version !== verifiedTrace.bundle.observer.version ||
       observer.keyFingerprint !== verifiedTrace.keyFingerprint ||
+      observer.isolationManifestHash !== isolationManifestHash ||
       (verifiedQualification !== undefined &&
         (observer.qualificationArtifactHash !==
           verifiedQualification.artifactHash ||

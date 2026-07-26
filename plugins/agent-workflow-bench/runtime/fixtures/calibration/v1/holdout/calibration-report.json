@@ -6,34 +6,34 @@
   "status": "PASS",
   "policy": {
     "policyId": "awb-gate-policy",
-    "policyVersion": "1.0.0",
-    "rulesHash": "sha256:a58f969de636f05f318fa292e2957b0c014e80856419564421e1e5089a199c19",
-    "policyHash": "sha256:6928be26f1cb30cd07e8ec2ba02b228f517fd6c5c6efcc212db1846eef73bd98"
+    "policyVersion": "1.1.0",
+    "rulesHash": "sha256:ca160f7cb842fa0b15c9a259f11289e7c1ccca37f72ab991dc110c594ecf0752",
+    "policyHash": "sha256:650d570e19c64c6ddf7a760ae73d1698e5ec3c9518bd0c110e0e28ec86579da7"
   },
   "dataBoundary": {
     "goldCorpus": {
       "corpusId": "awb-gold-corpus",
       "corpusVersion": "1.0.0",
-      "corpusHash": "sha256:3834bb903d91d028d08b3e3acbc520cc0eeae57d8c4085a3a6a4717f46e8bb60",
-      "labelsHash": "sha256:9f5d6c016f7f301c332204ee82290fcaa71d42531d9c96b41842d92e47c12eac",
-      "trajectoriesHash": "sha256:1a89a7035814f845e676af0e6e120cc9b8826ab53c36045438955638e1ff1e22"
+      "corpusHash": "sha256:79d6174aa1ecac51934fc153f2679e1ba94f2f1617789993091bea7b79d89b56",
+      "labelsHash": "sha256:6e028efada195e5db1d8c161e835164805e55ed87c4ec274835a1662e4bd4902",
+      "trajectoriesHash": "sha256:2f4fabe520bd3729ff54efcff99bd2348c7831b4c30a182afd010d69871ce7dc"
     },
     "fitSplits": [
       "development",
       "calibration"
     ],
     "splitHashes": {
-      "development": "sha256:3621b7166bc3b258abc7b837c74ef8d219c331e1ac47711c7565fd506f57500d",
-      "calibration": "sha256:bb23e29975811e475e8088b2fc67986a4165c54867ceeea2bd60f6dfadefbac7",
-      "holdout": "sha256:5d39cbb66d782e0d8f128dd0dff417f123678b3ea150abc63759138407940e04"
+      "development": "sha256:ebc2bbf4492c34ce3af5184d4bdd46f366f7016e428dd72c949b03ff9044f8cf",
+      "calibration": "sha256:b29b5c9b703a0807095a7eacc689691d84dbc201e960e2871e3b5e416c217b5c",
+      "holdout": "sha256:f87dff3e6b7b216f698bfe3419211111b2daeb707ff9a471977ef533b95cd086"
     },
-    "sampleCount": 24,
-    "sampleHash": "sha256:b088ef574af3d87b8fcbdd72fa4c10e3d992ad4d50490245d3af205377591ae1",
+    "sampleCount": 36,
+    "sampleHash": "sha256:8dafd97825f78d6e1a3e945fa4e87ef63877c0efe2e788cf7be4b9c38f01de5e",
     "holdoutExcludedFromFit": true
   },
   "fit": {
     "metrics": {
-      "sampleSize": 24,
+      "sampleSize": 36,
       "p0Recall": 1,
       "falsePassCount": 0,
       "overallAgreement": 1,
@@ -43,28 +43,28 @@
       "selectedCandidateId": "canonical-baseline",
       "selectionRule": "Deterministic lexicographic selection over development/calibration only: require P0 recall 1 and false PASS 0, maximize agreement then kappa, prefer canonical baseline on ties.",
       "candidateCount": 3,
-      "candidateHash": "sha256:1a32e8e90ab0502efababe43c3c4730101670385241c0b18cd11460a7f7419e4"
+      "candidateHash": "sha256:b98572fd0ca07a5a3a913aafb3ae408b9a9087ff1b07f98d409cc294d77a3424"
     },
     "dimensionEvidence": [
       {
         "dimension": "artifact",
         "weight": 1,
-        "supportCount": 8,
+        "supportCount": 12,
         "safeMeanScore": 100,
-        "riskMeanScore": 87.5,
-        "pairedEffect": 12.5,
+        "riskMeanScore": 91.666667,
+        "pairedEffect": 8.333333,
         "interval": {
           "kind": "bootstrap",
           "confidenceLevel": 0.95,
           "lower": 0,
-          "upper": 37.5
+          "upper": 25
         },
         "status": "SUPPORTED"
       },
       {
         "dimension": "contract",
         "weight": 1,
-        "supportCount": 8,
+        "supportCount": 12,
         "safeMeanScore": 100,
         "riskMeanScore": 0,
         "pairedEffect": 100,
@@ -79,7 +79,7 @@
       {
         "dimension": "efficiency",
         "weight": 1,
-        "supportCount": 8,
+        "supportCount": 12,
         "safeMeanScore": 100,
         "riskMeanScore": 100,
         "pairedEffect": 0,
@@ -94,22 +94,22 @@
       {
         "dimension": "gate",
         "weight": 1,
-        "supportCount": 8,
+        "supportCount": 12,
         "safeMeanScore": 100,
-        "riskMeanScore": 87.5,
-        "pairedEffect": 12.5,
+        "riskMeanScore": 91.666667,
+        "pairedEffect": 8.333333,
         "interval": {
           "kind": "bootstrap",
           "confidenceLevel": 0.95,
           "lower": 0,
-          "upper": 37.5
+          "upper": 25
         },
         "status": "SUPPORTED"
       },
       {
         "dimension": "join",
         "weight": 1,
-        "supportCount": 8,
+        "supportCount": 12,
         "safeMeanScore": 100,
         "riskMeanScore": 100,
         "pairedEffect": 0,
@@ -124,7 +124,7 @@
       {
         "dimension": "ownership",
         "weight": 1,
-        "supportCount": 8,
+        "supportCount": 12,
         "safeMeanScore": 100,
         "riskMeanScore": 100,
         "pairedEffect": 0,
@@ -139,52 +139,52 @@
       {
         "dimension": "routing",
         "weight": 1,
-        "supportCount": 8,
+        "supportCount": 12,
         "safeMeanScore": 100,
-        "riskMeanScore": 87.5,
-        "pairedEffect": 12.5,
+        "riskMeanScore": 91.666667,
+        "pairedEffect": 8.333333,
         "interval": {
           "kind": "bootstrap",
           "confidenceLevel": 0.95,
           "lower": 0,
-          "upper": 37.5
+          "upper": 25
         },
         "status": "SUPPORTED"
       },
       {
         "dimension": "runner",
         "weight": 1,
-        "supportCount": 8,
+        "supportCount": 12,
         "safeMeanScore": 100,
-        "riskMeanScore": 87.5,
-        "pairedEffect": 12.5,
+        "riskMeanScore": 91.666667,
+        "pairedEffect": 8.333333,
         "interval": {
           "kind": "bootstrap",
           "confidenceLevel": 0.95,
           "lower": 0,
-          "upper": 37.5
+          "upper": 25
         },
         "status": "SUPPORTED"
       },
       {
         "dimension": "sideEffect",
         "weight": 1,
-        "supportCount": 8,
+        "supportCount": 12,
         "safeMeanScore": 100,
-        "riskMeanScore": 75,
-        "pairedEffect": 25,
+        "riskMeanScore": 83.333333,
+        "pairedEffect": 16.666667,
         "interval": {
           "kind": "bootstrap",
           "confidenceLevel": 0.95,
           "lower": 0,
-          "upper": 62.5
+          "upper": 41.666667
         },
         "status": "SUPPORTED"
       },
       {
         "dimension": "state",
         "weight": 1,
-        "supportCount": 8,
+        "supportCount": 12,
         "safeMeanScore": 100,
         "riskMeanScore": 100,
         "pairedEffect": 0,
@@ -199,15 +199,15 @@
       {
         "dimension": "telemetry",
         "weight": 1,
-        "supportCount": 8,
-        "safeMeanScore": 93.75,
-        "riskMeanScore": 71.25,
-        "pairedEffect": 23.75,
+        "supportCount": 12,
+        "safeMeanScore": 94.166667,
+        "riskMeanScore": 79.166667,
+        "pairedEffect": 15.833333,
         "interval": {
           "kind": "bootstrap",
           "confidenceLevel": 0.95,
           "lower": 0,
-          "upper": 47.5
+          "upper": 39.583333
         },
         "status": "SUPPORTED"
       }
@@ -227,14 +227,14 @@
       },
       "telemetry": {
         "minimumCompleteness": 0.75,
-        "supportCount": 24,
+        "supportCount": 36,
         "status": "SUPPORTED"
       },
       "budget": {
         "maximumTokenBudgetRatio": 1,
         "maximumWallClockBudgetRatio": 1,
         "wastedRatioWarning": 0.2,
-        "supportCount": 24,
+        "supportCount": 36,
         "status": "SUPPORTED"
       },
       "classification": {
@@ -244,32 +244,32 @@
   },
   "blockers": [],
   "holdout": {
-    "sampleSize": 12,
+    "sampleSize": 18,
     "p0Recall": {
       "pointEstimate": 1,
       "interval": {
         "kind": "wilson",
         "confidenceLevel": 0.95,
-        "lower": 0.438494,
+        "lower": 0.565509,
         "upper": 1
       }
     },
     "falsePassCount": 0,
     "overallAgreement": {
-      "pointEstimate": 0.916667,
+      "pointEstimate": 0.944444,
       "interval": {
         "kind": "wilson",
         "confidenceLevel": 0.95,
-        "lower": 0.646114,
-        "upper": 0.985135
+        "lower": 0.742422,
+        "upper": 0.990125
       }
     },
     "cohenKappa": {
-      "pointEstimate": 0.846154,
+      "pointEstimate": 0.891566,
       "interval": {
         "kind": "bootstrap",
         "confidenceLevel": 0.95,
-        "lower": 0.454545,
+        "lower": 0.625,
         "upper": 1
       }
     },
@@ -299,10 +299,10 @@
   },
   "integrity": {
     "status": "VERIFIED_AT_WRITE",
-    "contentHash": "sha256:ca77ca674300d457d5d6f3c3da90f010842e00428518b792e646e0567e659358",
-    "policyHash": "sha256:6928be26f1cb30cd07e8ec2ba02b228f517fd6c5c6efcc212db1846eef73bd98",
-    "rulesHash": "sha256:a58f969de636f05f318fa292e2957b0c014e80856419564421e1e5089a199c19",
-    "dataHash": "sha256:512cd2ccf09a4ff4ea9db715b3eed2ebfee7e631ae98326412abfc85aeafdc22",
-    "reportHash": "sha256:513c4785a469e54156a8a785dc6db484c14b5d9a3e69a1a9024e777ae20c3460"
+    "contentHash": "sha256:2877fbff2b6d859292e3f2ea1eba66770b947e411fdf4877510fd28f2977e3c3",
+    "policyHash": "sha256:650d570e19c64c6ddf7a760ae73d1698e5ec3c9518bd0c110e0e28ec86579da7",
+    "rulesHash": "sha256:ca160f7cb842fa0b15c9a259f11289e7c1ccca37f72ab991dc110c594ecf0752",
+    "dataHash": "sha256:7e4b2fb25988e2a7d1f359dde148fc1450f52cffa4ce9cfdc202f3aab66f1c4f",
+    "reportHash": "sha256:0292963c3440e868c49e6fc8ddd16263ba171563707d1bbc1bfb1843e753cf59"
   }
 }

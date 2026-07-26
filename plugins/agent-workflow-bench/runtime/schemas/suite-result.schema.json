@@ -38,6 +38,34 @@
           "verdict": { "enum": ["PASS", "PASS_WITH_WARNINGS", "FAIL", "DIAGNOSTIC_ONLY"] },
           "rawScore": { "type": "number" },
           "cappedScore": { "type": "number" },
+          "tokens": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "input",
+              "output",
+              "total",
+              "wasted",
+              "costEstimateConfidence"
+            ],
+            "properties": {
+              "input": { "type": "number", "minimum": 0 },
+              "output": { "type": "number", "minimum": 0 },
+              "total": { "type": "number", "minimum": 0 },
+              "wasted": { "type": "number", "minimum": 0 },
+              "costEstimateConfidence": {
+                "enum": ["high", "medium", "low", "unavailable"]
+              }
+            }
+          },
+          "efficiency": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["wallClockSeconds"],
+            "properties": {
+              "wallClockSeconds": { "type": "number", "minimum": 0 }
+            }
+          },
           "hardFailures": {
             "type": "array",
             "items": {
@@ -58,6 +86,12 @@
                     "TRACE_EVENT_ORDER_INVALID",
                     "OBSERVER_EVENT_FORGED",
                     "SECRET_LEAK",
+                    "PROMPT_INJECTION",
+                    "OBJECTIVE_HIJACK",
+                    "TOOL_CHAIN_ESCALATION",
+                    "HANDOFF_DELAY_TRIGGER",
+                    "MEMORY_POISON",
+                    "UNSAFE_RECOVERY",
                     "TELEMETRY_MISSING",
                     "TOKEN_LEDGER_MISSING"
                   ]

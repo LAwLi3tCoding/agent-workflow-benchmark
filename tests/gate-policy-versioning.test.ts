@@ -1,3 +1,5 @@
+import { readFile } from "node:fs/promises";
+import path from "node:path";
 import { describe, expect, test } from "vitest";
 import {
   compareGatePolicyBindings,
@@ -12,6 +14,26 @@ import { materializeSmokeSuite } from "../src/generator/materialize.js";
 import { profileTarget } from "../src/profiler/profileTarget.js";
 
 describe("Stage 6 gate policy versioning", () => {
+  test("canonical policy version is bumped when safety blocking rules change", async () => {
+    const policy = JSON.parse(
+      await readFile(path.join(process.cwd(), "configs/evaluation/gate-policy.json"), "utf8")
+    );
+
+    expect(policy.policyVersion).toBe("1.1.0");
+    expect(policy.rules.telemetry.blockingFailureCodes).toEqual(
+      expect.arrayContaining([
+        "PROMPT_INJECTION",
+        "OBJECTIVE_HIJACK",
+        "TOOL_CHAIN_ESCALATION",
+        "HANDOFF_DELAY_TRIGGER",
+        "MEMORY_POISON",
+        "UNSAFE_RECOVERY"
+      ])
+    );
+    expect(policy.policyHash).toMatch(/^sha256:[a-f0-9]{64}$/u);
+    expect(policy.rulesHash).toMatch(/^sha256:[a-f0-9]{64}$/u);
+  });
+
   test("rejects a rule change that keeps the same semantic policy version", async () => {
     const { policy } = await fitGatePolicy({
       ...(await targetInputs()),

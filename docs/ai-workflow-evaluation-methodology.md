@@ -80,7 +80,7 @@ Use the Stage 6 calibration workflow to produce a versioned policy and holdout r
 ```bash
 awb gate-policy calibrate \
   --corpus fixtures/gold-corpus/v1/manifest.yaml \
-  --policy-version 1.0.0 \
+  --policy-version 1.1.0 \
   --out reports/gate-policy/v1/fit
 
 awb gate-policy validate-holdout \

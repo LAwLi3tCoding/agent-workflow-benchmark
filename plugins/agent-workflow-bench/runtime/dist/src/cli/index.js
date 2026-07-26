@@ -48,6 +48,11 @@ import { buildHtmlViewerArtifacts } from "../report/htmlViewer.js";
 import { assertBenchmarkHealthReportIntegrity, benchmarkHealthExitCode, buildBenchmarkHealthReport } from "../ci/benchmarkHealth.js";
 import { assertRunnerRankingReportIntegrity, buildRunnerRankingReport } from "../report/runnerRanking.js";
 import { assertTrialMetricsReportIntegrity, buildTrialMetricsReport, renderTrialMetricsMarkdown } from "../report/trialMetrics.js";
+import { assertTrajectoryReviewIntegrity, buildTrajectoryReview, renderTrajectoryReviewMarkdown } from "../report/trajectoryReview.js";
+import { assertWorkflowEconomicsReportIntegrity, buildWorkflowEconomicsReport, renderWorkflowEconomicsMarkdown } from "../report/workflowEconomics.js";
+import { assertOtlpDiagnosticImportIntegrity, assertTraceImportManifestIntegrity, importOtlpDiagnosticTrace } from "../importers/otlp.js";
+import { assertProductionTraceCurationIntegrity, buildProductionTraceCurationDraft, renderProductionTraceCurationMarkdown } from "../curation/productionTrace.js";
+import { assertBenchmarkGovernanceReportIntegrity, buildBenchmarkGovernanceReport, renderBenchmarkGovernanceMarkdown } from "../governance/publicBenchmark.js";
 import { hashFile, sha256Text, stableJson } from "../utils/hash.js";
 const program = new Command();
 program.name(CLI_NAME).description(`${PRODUCT_NAME} — ${PRODUCT_TAGLINE}`).version(AWB_VERSION);
@@ -86,6 +91,64 @@ artifactCommands
     await writeArtifactMigration(options.out, migration);
     console.log(`artifact migration ${migration.result.status}: ${options.out}`);
     process.exitCode = artifactMigrationExitCode(migration.result);
+});
+const traceCommands = program
+    .command("trace")
+    .description("Import untrusted telemetry and prepare diagnostic-only production-trace curation drafts");
+traceCommands
+    .command("import-otlp")
+    .description("Import OTLP JSON into sanitized diagnostic events without Observer qualification or gate authority")
+    .requiredOption("--input <path>", "OTLP JSON export")
+    .option("--source-ref <ref>", "portable source reference recorded in the manifest; defaults to the input basename")
+    .requiredOption("--out <dir>")
+    .action(async (options) => {
+    const inputPath = await resolveExistingPath(options.input);
+    const imported = importOtlpDiagnosticTrace({
+        sourceRef: options.sourceRef ?? path.basename(inputPath),
+        otlp: await readJson(inputPath)
+    });
+    assertOtlpDiagnosticImportIntegrity(imported);
+    assertTraceImportManifestIntegrity(imported.manifest);
+    await assertJsonSchema(imported, "otlp-diagnostic-import.schema.json", "OTLP diagnostic import");
+    await assertJsonSchema(imported.manifest, "trace-import-manifest.schema.json", "Trace import manifest");
+    await writeJson(path.join(options.out, "otlp-diagnostic-import.json"), imported);
+    await writeJson(path.join(options.out, "trace-import-manifest.json"), imported.manifest);
+    await writeJson(path.join(options.out, "diagnostic-events.json"), imported.events);
+    console.log(`OTLP diagnostic import written: ${options.out}`);
+    process.exitCode = 2;
+});
+traceCommands
+    .command("curate-production")
+    .description("Build a redacted diagnostic-only production trace curation draft; never activates cases")
+    .requiredOption("--input <path>", "production trace curation input JSON with embedded diagnostic import and review metadata")
+    .requiredOption("--out <dir>")
+    .action(async (options) => {
+    const input = await readJsonWithSchema(await resolveExistingPath(options.input), "production-trace-curation-input.schema.json", "Production trace curation input");
+    const report = buildProductionTraceCurationDraft(input);
+    assertProductionTraceCurationIntegrity(report);
+    await assertJsonSchema(report, "production-trace-curation.schema.json", "Production trace curation");
+    await writeJson(path.join(options.out, "production-trace-curation.json"), report);
+    await writeReportFile(path.join(options.out, "production-trace-curation.md"), renderProductionTraceCurationMarkdown(report));
+    console.log(`production trace curation ${report.packageState}: ${options.out}`);
+    process.exitCode = 2;
+});
+const governanceCommands = program
+    .command("governance")
+    .description("Build diagnostic benchmark policy and domain-observability evidence");
+governanceCommands
+    .command("benchmark")
+    .description("Assess split isolation, contamination, saturation, reproducibility, and domain adapter evidence")
+    .requiredOption("--input <path>", "benchmark governance input JSON")
+    .requiredOption("--out <dir>")
+    .action(async (options) => {
+    const input = await readJsonWithSchema(await resolveExistingPath(options.input), "benchmark-governance-input.schema.json", "Benchmark governance input");
+    const report = buildBenchmarkGovernanceReport(input);
+    assertBenchmarkGovernanceReportIntegrity(report);
+    await assertJsonSchema(report, "benchmark-governance-report.schema.json", "Benchmark governance report");
+    await writeJson(path.join(options.out, "benchmark-governance-report.json"), report);
+    await writeReportFile(path.join(options.out, "benchmark-governance-report.md"), renderBenchmarkGovernanceMarkdown(report));
+    console.log(`benchmark governance ${report.governanceStatus}: ${options.out}`);
+    process.exitCode = report.governanceStatus === "BLOCKED" ? 1 : 2;
 });
 const adapterCommands = program
     .command("adapter")
@@ -143,9 +206,14 @@ observer
     .requiredOption("--request <path>", "reference Observer request JSON")
     .requiredOption("--observer-private-key <path>", "Ed25519 signing key kept outside the Runner environment")
     .requiredOption("--out <path>", "workflow-trace.json output path")
+    .option("--isolation-backend <backend>", "macos-seatbelt or linux-oci-docker", "macos-seatbelt")
+    .option("--docker <path>", "Docker CLI executable for linux-oci-docker", "docker")
+    .option("--observer-image <image>", "immutable Docker image digest or image id for linux-oci-docker")
+    .option("--observer-image-id <id>", "expected immutable Docker image id for linux-oci-docker")
     .action(async (options) => {
     const request = await readJson(await resolveExistingPath(options.request));
     await observeWithReferenceObserver({
+        isolation: normalizeObserverIsolationConfig(options),
         request,
         privateKeyPath: await resolveExistingPath(options.observerPrivateKey),
         outputPath: path.resolve(options.out)
@@ -163,6 +231,10 @@ observer
     .requiredOption("--observer-private-key <path>")
     .requiredOption("--qualification-authority-private-key <path>")
     .requiredOption("--out <dir>")
+    .option("--isolation-backend <backend>", "macos-seatbelt or linux-oci-docker", "macos-seatbelt")
+    .option("--docker <path>", "Docker CLI executable for linux-oci-docker", "docker")
+    .option("--observer-image <image>", "immutable Docker image digest or image id for linux-oci-docker")
+    .option("--observer-image-id <id>", "expected immutable Docker image id for linux-oci-docker")
     .action(async (options) => {
     const { contract, cases } = await resolveRunInputs(options);
     const result = await runReferenceObserverQualification({
@@ -172,7 +244,8 @@ observer
         observerVersion: options.observerVersion,
         observerPrivateKeyPath: await resolveExistingPath(options.observerPrivateKey),
         qualificationAuthorityPrivateKeyPath: await resolveExistingPath(options.qualificationAuthorityPrivateKey),
-        outputDir: path.resolve(options.out)
+        outputDir: path.resolve(options.out),
+        isolation: normalizeObserverIsolationConfig(options)
     });
     console.log(`Observer qualification ${result.report.decision}: ${options.out}`);
     if (result.report.decision !== "valid") {
@@ -442,33 +515,43 @@ program
 });
 program
     .command("ingest-trace")
-    .description("Verify and score a signed workflow trace (diagnostic until Observer qualification)")
+    .description("Verify and score a signed workflow_trace evidence bundle")
     .option("--target <id>")
     .option("--target-root <path>", "override the registered target root for this isolated checkout")
     .option("--suite <name>", "suite name", "smoke")
     .option("--case <path>")
     .option("--cases-dir <dir>")
     .requiredOption("--trace <path>", "signed workflow-trace JSON bundle")
-    .requiredOption("--trusted-observer-key <path>", "trusted Ed25519 observer public key")
+    .option("--trusted-observer-key <path>", "trusted Ed25519 observer public key")
     .option("--observer-qualification <path>", "authority-signed Observer qualification artifact")
     .option("--trusted-qualification-key <path>", "trusted Ed25519 qualification authority public key")
     .requiredOption("--out <dir>")
     .action(async (options) => {
     const { target, profile, contract, cases } = await resolveRunInputs(options);
     const tracePath = await resolveExistingPath(options.trace);
+    const caseSetHash = semanticCaseSetHash(cases);
+    const knownCaseIds = cases.map((testCase) => testCase.id);
+    let attemptId;
+    let runnerCapability;
+    let runByCaseId;
+    let verifiedTrace;
+    let verifiedQualification;
+    if (!options.trustedObserverKey) {
+        throw new Error("--trusted-observer-key is required for workflow_trace ingest mode.");
+    }
     const trustedObserverKeyPath = await resolveExistingPath(options.trustedObserverKey);
-    const verifiedTrace = await verifyWorkflowTraceBundle(tracePath, trustedObserverKeyPath, {
+    verifiedTrace = await verifyWorkflowTraceBundle(tracePath, trustedObserverKeyPath, {
         targetId: contract.targetId,
         contractHash: contract.contractHash,
         suite: options.suite,
-        caseSetHash: semanticCaseSetHash(cases),
-        caseIds: cases.map((testCase) => testCase.id),
+        caseSetHash,
+        caseIds: knownCaseIds,
         cases: cases.map((testCase) => ({ id: testCase.id, templateId: testCase.templateId }))
     });
-    const attemptId = workflowTraceAttemptId(verifiedTrace.traceHash);
-    const verifiedQualification = await resolveObserverQualification(options, verifiedTrace, contract.contractHash, semanticCaseSetHash(cases));
-    const runnerCapability = workflowTraceRunnerCapability(verifiedTrace.bundle.subject.runner);
-    const runByCaseId = new Map(verifiedTrace.runs.map((run) => [run.caseId, run]));
+    attemptId = workflowTraceAttemptId(verifiedTrace.traceHash);
+    verifiedQualification = await resolveObserverQualification(options, verifiedTrace, contract.contractHash, caseSetHash);
+    runnerCapability = workflowTraceRunnerCapability(verifiedTrace.bundle.subject.runner);
+    runByCaseId = new Map(verifiedTrace.runs.map((run) => [run.caseId, run]));
     const caseResults = [];
     await ensureDir(options.out);
     for (const testCase of cases) {
@@ -524,6 +607,11 @@ program
                 id: verifiedTrace.bundle.observer.id,
                 version: verifiedTrace.bundle.observer.version,
                 keyFingerprint: verifiedTrace.keyFingerprint,
+                ...(verifiedTrace.bundle.subject.isolationManifest
+                    ? {
+                        isolationManifestHash: verifiedTrace.bundle.subject.isolationManifest.manifestHash
+                    }
+                    : {}),
                 qualificationStatus: verifiedQualification ? "valid" : "missing",
                 ...(verifiedQualification
                     ? {
@@ -542,8 +630,8 @@ program
         suite: options.suite,
         runner: runnerCapability,
         executionMode: "live",
-        verifiedTrace,
-        verifiedQualification,
+        ...(verifiedTrace ? { verifiedTrace } : {}),
+        ...(verifiedQualification ? { verifiedQualification } : {}),
         artifacts: [
             { ref: "suite-result.json", path: path.join(options.out, "suite-result.json") },
             { ref: "runtime-manifest.json", path: runtimeManifestPath },
@@ -991,6 +1079,76 @@ reportCommands
     await writeJson(path.join(options.out, "trial-metrics-report.json"), report);
     await writeReportFile(path.join(options.out, "trial-metrics-report.md"), renderTrialMetricsMarkdown(report));
     console.log(`trial metrics ${report.status}: ${options.out}`);
+    process.exitCode = reportStatusExitCode(report.status);
+});
+reportCommands
+    .command("trajectory-review")
+    .description("Review trace-diff trajectories with deterministic process defects, optional judge findings, and blinded human-label calibration; always diagnostic-only")
+    .requiredOption("--trace-diff <path>", "trace-diff.json")
+    .option("--judge-findings <path>", "optional JSON judge findings; judge evidence is recorded separately and cannot override deterministic findings")
+    .option("--human-labels <path>", "optional blinded human labels from at least two raters")
+    .requiredOption("--out <dir>")
+    .action(async (options) => {
+    const traceDiffPath = await resolveExistingPath(options.traceDiff);
+    const traceDiff = await readJsonWithSchema(traceDiffPath, "trace-diff.schema.json", "Trace diff");
+    const judgeFindings = options.judgeFindings
+        ? await readJson(await resolveExistingPath(options.judgeFindings))
+        : undefined;
+    const humanLabels = options.humanLabels
+        ? await readJson(await resolveExistingPath(options.humanLabels))
+        : undefined;
+    const report = buildTrajectoryReview({
+        traceDiff,
+        traceDiffRef: path.basename(traceDiffPath),
+        traceDiffHash: sha256Text(stableJson(traceDiff)),
+        judgeFindings,
+        humanLabels
+    });
+    assertTrajectoryReviewIntegrity(report);
+    await assertJsonSchema(report, "trajectory-review.schema.json", "Trajectory review");
+    await writeJson(path.join(options.out, "trajectory-review.json"), report);
+    await writeReportFile(path.join(options.out, "trajectory-review.md"), renderTrajectoryReviewMarkdown(report));
+    console.log(`trajectory review ${report.status}: ${options.out}`);
+    process.exitCode = reportStatusExitCode(report.status);
+});
+reportCommands
+    .command("workflow-economics")
+    .description("Compute diagnostic-only workflow efficiency and economics from trace-diff, trajectory-review, and matched suite-result artifacts")
+    .requiredOption("--trace-diff <path>", "trace-diff.json")
+    .requiredOption("--trajectory-review <path>", "trajectory-review.json")
+    .requiredOption("--baseline-suite <path>", "baseline suite-result.json")
+    .requiredOption("--candidate-suite <path>", "candidate suite-result.json")
+    .requiredOption("--generated-at <timestamp>", "canonical UTC timestamp recorded in the reproducible report")
+    .requiredOption("--out <dir>")
+    .action(async (options) => {
+    const traceDiffPath = await resolveExistingPath(options.traceDiff);
+    const trajectoryReviewPath = await resolveExistingPath(options.trajectoryReview);
+    const baselineSuitePath = await resolveExistingPath(options.baselineSuite);
+    const candidateSuitePath = await resolveExistingPath(options.candidateSuite);
+    const traceDiff = await readJsonWithSchema(traceDiffPath, "trace-diff.schema.json", "Trace diff");
+    const trajectoryReview = await readJsonWithSchema(trajectoryReviewPath, "trajectory-review.schema.json", "Trajectory review");
+    const baselineSuite = await readJsonWithSchema(baselineSuitePath, "suite-result.schema.json", "Baseline suite result");
+    const candidateSuite = await readJsonWithSchema(candidateSuitePath, "suite-result.schema.json", "Candidate suite result");
+    const report = buildWorkflowEconomicsReport({
+        traceDiff,
+        traceDiffRef: path.basename(traceDiffPath),
+        traceDiffHash: sha256Text(stableJson(traceDiff)),
+        trajectoryReview,
+        trajectoryReviewRef: path.basename(trajectoryReviewPath),
+        trajectoryReviewHash: sha256Text(stableJson(trajectoryReview)),
+        baselineSuite,
+        baselineSuiteRef: path.basename(baselineSuitePath),
+        baselineSuiteHash: sha256Text(stableJson(baselineSuite)),
+        candidateSuite,
+        candidateSuiteRef: path.basename(candidateSuitePath),
+        candidateSuiteHash: sha256Text(stableJson(candidateSuite)),
+        generatedAt: options.generatedAt
+    });
+    assertWorkflowEconomicsReportIntegrity(report);
+    await assertJsonSchema(report, "workflow-economics-report.schema.json", "Workflow economics report");
+    await writeJson(path.join(options.out, "workflow-economics-report.json"), report);
+    await writeReportFile(path.join(options.out, "workflow-economics-report.md"), renderWorkflowEconomicsMarkdown(report));
+    console.log(`workflow economics ${report.status}: ${options.out}`);
     process.exitCode = reportStatusExitCode(report.status);
 });
 reportCommands
@@ -1814,6 +1972,23 @@ function normalizeRunMode(value) {
     }
     throw new Error(`Unsupported run mode: ${value}`);
 }
+function normalizeObserverIsolationConfig(options) {
+    if (options.isolationBackend === "macos-seatbelt") {
+        return { backend: "macos-seatbelt" };
+    }
+    if (options.isolationBackend !== "linux-oci-docker") {
+        throw new Error(`Unsupported Observer isolation backend: ${options.isolationBackend}`);
+    }
+    if (!options.observerImage) {
+        throw new Error("linux-oci-docker requires --observer-image with an immutable image digest or image id.");
+    }
+    return {
+        backend: "linux-oci-docker",
+        dockerExecutable: options.docker ?? "docker",
+        image: options.observerImage,
+        ...(options.observerImageId ? { imageId: options.observerImageId } : {})
+    };
+}
 function normalizeMaterializeStrategy(value) {
     if (value === "template" || value === "ai") {
         return value;
@@ -1867,9 +2042,10 @@ async function resolveObserverQualification(options, verifiedTrace, contractHash
             evidenceCapabilities: evidenceCapabilities
         },
         contractHash,
-        caseSetHash
+        caseSetHash,
+        isolationManifest: verifiedTrace.bundle.subject.isolationManifest
     });
-    assertQualifiedWorkflowTraceEvidence(verifiedTrace, verifiedQualification.artifact.observer);
+    assertQualifiedWorkflowTraceEvidence(verifiedTrace, verifiedQualification.artifact.observer, verifiedQualification.artifact.subject.isolationManifest);
     return verifiedQualification;
 }
 async function validateSchemasAndTargets() {
@@ -2564,7 +2740,13 @@ function selectCaseForMutation(cases, mutation) {
         "event-missing": "static-contract",
         "event-order-invalid": "static-contract",
         "observer-event-forged": "static-contract",
-        "secret-leak": "static-contract"
+        "secret-leak": "static-contract",
+        "prompt-injection": "safety-prompt-injection-probe",
+        "objective-hijack": "safety-objective-hijack-probe",
+        "tool-chain-escalation": "safety-tool-chain-escalation-probe",
+        "handoff-delay-trigger": "safety-handoff-delay-trigger-probe",
+        "memory-poison": "safety-memory-poison-probe",
+        "unsafe-recovery": "safety-unsafe-recovery-probe"
     };
     return cases.find((testCase) => testCase.templateId === templateByMutation[mutation.type]) ?? cases[0];
 }

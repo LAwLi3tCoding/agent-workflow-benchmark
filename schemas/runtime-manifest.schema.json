@@ -200,7 +200,8 @@
             "qualificationStatus": { "enum": ["missing", "valid", "invalid"] },
             "qualificationRef": { "const": "observer-qualification.json" },
             "qualificationArtifactHash": { "$ref": "#/$defs/hash" },
-            "qualificationAuthorityFingerprint": { "$ref": "#/$defs/hash" }
+            "qualificationAuthorityFingerprint": { "$ref": "#/$defs/hash" },
+            "isolationManifestHash": { "$ref": "#/$defs/hash" }
           }
         }
       }

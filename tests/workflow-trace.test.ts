@@ -15,6 +15,7 @@ import type { BenchmarkCase, RunEvent } from "../src/core/types.js";
 import { materializeSmokeSuite } from "../src/generator/materialize.js";
 import {
   REFERENCE_OBSERVER_EVIDENCE_CAPABILITIES,
+  buildReferenceObserverIsolationManifest,
   referenceObserverImplementationHash
 } from "../src/observer/referenceObserver.js";
 import { profileTarget } from "../src/profiler/profileTarget.js";
@@ -142,7 +143,7 @@ describe("attested workflow trace ingestion", () => {
     expect(runtime.workflowTrace).toMatchObject({
       verified: true,
       ref: "workflow-trace.json",
-      caseCount: 10
+      caseCount: 22
     });
 
     const comparisonOut = path.join(root, "comparison");
@@ -206,12 +207,19 @@ describe("attested workflow trace ingestion", () => {
     const baselineProvenance = JSON.parse(
       await readFile(path.join(baselineOut, "provenance.json"), "utf8")
     );
+    const baselineRuntime = JSON.parse(
+      await readFile(path.join(baselineOut, "runtime-manifest.json"), "utf8")
+    );
     expect(baselineProvenance.conditions.observer).toMatchObject({
       qualificationStatus: "valid",
       qualificationRef: "observer-qualification.json",
       qualificationArtifactHash: expect.stringMatching(/^sha256:[a-f0-9]{64}$/u),
-      qualificationAuthorityFingerprint: expect.stringMatching(/^sha256:[a-f0-9]{64}$/u)
+      qualificationAuthorityFingerprint: expect.stringMatching(/^sha256:[a-f0-9]{64}$/u),
+      isolationManifestHash: expect.stringMatching(/^sha256:[a-f0-9]{64}$/u)
     });
+    expect(
+      baselineRuntime.workflowTrace.observer.isolationManifestHash
+    ).toBe(baselineProvenance.conditions.observer.isolationManifestHash);
     expect(
       JSON.parse(await readFile(path.join(baselineOut, "suite-result.json"), "utf8"))
         .releaseDecision
@@ -944,6 +952,7 @@ function makeTracePayload(targetId: string, contractHash: string, cases: Benchma
       caseSetHash: semanticCaseSetHash(cases),
       runner,
       isolation: "read_only_sandbox",
+      isolationManifest: fixtureMacosIsolationManifest(),
       permissionMode: "read_only_no_approval",
       model: "fixture-model"
     },
@@ -953,6 +962,28 @@ function makeTracePayload(targetId: string, contractHash: string, cases: Benchma
       signature: ""
     }
   };
+}
+
+function fixtureMacosIsolationManifest() {
+  return buildReferenceObserverIsolationManifest({
+    backend: "macos-seatbelt",
+    platform: "darwin",
+    runtimeVersion: "sandbox-exec",
+    policyHash: `sha256:${"2".repeat(64)}`,
+    mountManifestHash: `sha256:${"3".repeat(64)}`,
+    networkMode: "none",
+    processPolicy: "seatbelt_process_exec_allowlist",
+    capabilities: { drop: ["ALL"], add: [] },
+    noNewPrivileges: true,
+    readOnlyRootfs: false,
+    writableMounts: ["workspace://root"],
+    canaries: {
+      signingKeyRead: "EPERM",
+      networkDenied: "EPERM",
+      nestedProcessDenied: "EPERM",
+      outOfScopeWriteDenied: "EPERM"
+    }
+  });
 }
 
 function makeObservedCase(testCase: BenchmarkCase, runLabel: string, index: number) {

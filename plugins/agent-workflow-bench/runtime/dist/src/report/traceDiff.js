@@ -110,6 +110,27 @@ export function buildTraceDiff(input) {
         caseDiffs
     });
 }
+export function assertTraceDiffIntegrity(report) {
+    const { integrity, ...content } = report;
+    const sourceTraceHashes = traceHashes(content);
+    if (integrity.status !== "VERIFIED_AT_WRITE" ||
+        integrity.contentHash !== sha256Text(stableJson(content)) ||
+        stableJson([...integrity.sourceTraceHashes].sort()) !==
+            stableJson([...sourceTraceHashes].sort())) {
+        throw new Error("Trace diff integrity verification failed.");
+    }
+    if (stableJson([...report.verification.sourceTraceHashes].sort()) !==
+        stableJson([...sourceTraceHashes].sort()) ||
+        report.sources.baseline.traceHash !== report.baselineTraceHash ||
+        (report.sources.candidate?.traceHash ?? report.candidateTraceHash) !==
+            report.candidateTraceHash ||
+        (report.sources.mutant?.traceHash ?? report.mutantTraceHash) !==
+            report.mutantTraceHash ||
+        (report.sources.restore?.traceHash ?? report.restoreTraceHash) !==
+            report.restoreTraceHash) {
+        throw new Error("Trace diff source trace hash verification failed.");
+    }
+}
 function diffTwoTraces(baseline, other, otherLabel) {
     const baselineCases = new Map(baseline.cases.map((traceCase) => [traceCase.caseId, traceCase]));
     const otherCases = new Map(other.cases.map((traceCase) => [traceCase.caseId, traceCase]));
@@ -129,48 +150,50 @@ function diffTwoTraces(baseline, other, otherLabel) {
             const otherEvent = otherEvents.get(key);
             const delta = eventDelta(baselineEvent, otherEvent, otherLabel, reorderedKeys.has(key));
             if (delta.type === "hard_failure" && !delta.kind.endsWith("unchanged")) {
-                const direction = hardFailureDirection(baselineEvent, otherEvent);
-                if (direction !== null) {
-                    const hardFailureCode = readHardFailureCode(direction === "added" ? otherEvent : baselineEvent);
-                    if (hardFailureCode) {
-                        const definition = getHardFailureDefinition(hardFailureCode);
-                        const severity = (definition?.severity ?? "P1");
-                        const baseDefect = {
-                            caseId,
-                            templateId: baselineCase?.templateId ?? otherCase?.templateId,
-                            code: hardFailureCode,
-                            direction,
-                            severity,
-                            definition: definition?.why
-                                ? `${definition.code}:${definition.severity}:${definition.dimension}`
-                                : "contract:unknown",
-                            why: definition?.why ?? "Unknown hard-failure definition.",
-                            evidenceRefs: [
-                                ...(baselineEvent ? [baselineEvent.ref] : []),
-                                ...(otherEvent ? [otherEvent.ref] : [])
-                            ]
-                        };
-                        if (otherLabel === "candidate") {
-                            processDefects = addProcessDefect(processDefects, {
-                                ...baseDefect,
-                                baselineEventRef: baselineEvent?.ref,
-                                candidateEventRef: otherEvent?.ref
-                            });
-                        }
-                        else if (otherLabel === "mutant") {
-                            processDefects = addProcessDefect(processDefects, {
-                                ...baseDefect,
-                                baselineEventRef: baselineEvent?.ref,
-                                mutantEventRef: otherEvent?.ref
-                            });
-                        }
-                        else {
-                            processDefects = addProcessDefect(processDefects, {
-                                ...baseDefect,
-                                baselineEventRef: baselineEvent?.ref,
-                                restoreEventRef: otherEvent?.ref
-                            });
-                        }
+                for (const change of hardFailureChanges(baselineEvent, otherEvent)) {
+                    const definition = getHardFailureDefinition(change.code);
+                    const baseDefect = {
+                        caseId,
+                        templateId: baselineCase?.templateId ?? otherCase?.templateId,
+                        code: change.code,
+                        direction: change.direction,
+                        severity: (definition?.severity ??
+                            "P1"),
+                        definition: definition
+                            ? `${definition.code}:${definition.severity}:${definition.dimension}`
+                            : "contract:unknown",
+                        why: definition?.why ?? "Unknown hard-failure definition.",
+                        evidenceRefs: [
+                            ...(baselineEvent ? [baselineEvent.ref] : []),
+                            ...(otherEvent ? [otherEvent.ref] : [])
+                        ],
+                        ...(change.baselineEventRef
+                            ? { baselineEventRef: change.baselineEventRef }
+                            : {})
+                    };
+                    if (otherLabel === "candidate") {
+                        processDefects = addProcessDefect(processDefects, {
+                            ...baseDefect,
+                            ...(change.otherEventRef
+                                ? { candidateEventRef: change.otherEventRef }
+                                : {})
+                        });
+                    }
+                    else if (otherLabel === "mutant") {
+                        processDefects = addProcessDefect(processDefects, {
+                            ...baseDefect,
+                            ...(change.otherEventRef
+                                ? { mutantEventRef: change.otherEventRef }
+                                : {})
+                        });
+                    }
+                    else {
+                        processDefects = addProcessDefect(processDefects, {
+                            ...baseDefect,
+                            ...(change.otherEventRef
+                                ? { restoreEventRef: change.otherEventRef }
+                                : {})
+                        });
                     }
                 }
             }
@@ -184,17 +207,52 @@ function diffTwoTraces(baseline, other, otherLabel) {
     });
     return { caseDiffs, processDefects };
 }
-function hardFailureDirection(baselineEvent, otherEvent) {
-    if (!baselineEvent && !otherEvent) {
-        return null;
+function hardFailureChanges(baselineEvent, otherEvent) {
+    const baselineCode = readHardFailureCode(baselineEvent);
+    const otherCode = readHardFailureCode(otherEvent);
+    if (baselineCode && otherCode && baselineCode !== otherCode) {
+        return [
+            {
+                code: baselineCode,
+                direction: "removed",
+                baselineEventRef: baselineEvent.ref
+            },
+            {
+                code: otherCode,
+                direction: "added",
+                otherEventRef: otherEvent.ref
+            }
+        ];
     }
-    if (!baselineEvent) {
-        return "added";
+    if (baselineCode && otherCode) {
+        return [
+            {
+                code: baselineCode,
+                direction: "changed",
+                baselineEventRef: baselineEvent.ref,
+                otherEventRef: otherEvent.ref
+            }
+        ];
     }
-    if (!otherEvent) {
-        return "removed";
+    if (baselineCode) {
+        return [
+            {
+                code: baselineCode,
+                direction: "removed",
+                baselineEventRef: baselineEvent.ref
+            }
+        ];
     }
-    return "changed";
+    if (otherCode) {
+        return [
+            {
+                code: otherCode,
+                direction: "added",
+                otherEventRef: otherEvent.ref
+            }
+        ];
+    }
+    return [];
 }
 function readHardFailureCode(event) {
     if (!event) {
@@ -268,14 +326,22 @@ function eventDelta(baseline, other, otherLabel, orderChanged) {
             ? {
                 baselineRef: baseline.ref,
                 baselinePosition: baseline.position,
-                baselinePayloadHash: baseline.payloadHash
+                baselineTimestamp: baseline.timestamp,
+                baselinePayloadHash: baseline.payloadHash,
+                ...(isExplicitIrreversibleSideEffect(baseline.event)
+                    ? { baselineIrreversibleSideEffect: true }
+                    : {})
             }
             : {}),
         ...(other
             ? {
                 [`${otherLabel}Ref`]: other.ref,
                 [`${otherLabel}Position`]: other.position,
-                [`${otherLabel}PayloadHash`]: other.payloadHash
+                [`${otherLabel}Timestamp`]: other.timestamp,
+                [`${otherLabel}PayloadHash`]: other.payloadHash,
+                ...(isExplicitIrreversibleSideEffect(other.event)
+                    ? { [`${otherLabel}IrreversibleSideEffect`]: true }
+                    : {})
             }
             : {}),
         provenance: {
@@ -287,6 +353,13 @@ function eventDelta(baseline, other, otherLabel, orderChanged) {
                 : {})
         }
     };
+}
+function isExplicitIrreversibleSideEffect(event) {
+    return (event.type === "side_effect_attempt" &&
+        event.payload.attempted === true &&
+        event.payload.allowed === true &&
+        (event.payload.irreversible === true ||
+            event.payload.classifiedAs === "irreversible"));
 }
 function indexEvents(traceRef, events) {
     const counts = new Map();
@@ -301,7 +374,8 @@ function indexEvents(traceRef, events) {
             event,
             position,
             ref: `${traceRef}#event=${event.eventId}`,
-            payloadHash: sha256Text(stableJson(event.payload))
+            payloadHash: sha256Text(stableJson(event.payload)),
+            timestamp: event.timestamp
         });
     }
     return indexed;
@@ -370,6 +444,10 @@ function validateTrace(input, bounds) {
         }
         const eventIds = new Set();
         for (const event of traceCase.events) {
+            const eventTime = Date.parse(event.timestamp);
+            if (!Number.isFinite(eventTime)) {
+                throw new Error(`trace diff ${input.label}/${traceCase.caseId}/${event.eventId} has invalid event timestamp`);
+            }
             if (redactSensitiveText(event.eventId) !== event.eventId ||
                 !isPortableRef(`${input.trace.ref}#event=${event.eventId}`)) {
                 throw new Error(`trace diff ${input.label}/${traceCase.caseId} has a non-portable eventId`);

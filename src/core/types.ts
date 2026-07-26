@@ -339,6 +339,7 @@ export interface RuntimeManifest {
       qualificationRef?: "observer-qualification.json";
       qualificationArtifactHash?: string;
       qualificationAuthorityFingerprint?: string;
+      isolationManifestHash?: string;
     };
   };
 }
@@ -496,6 +497,8 @@ export interface SuiteResult {
     rawScore: number;
     cappedScore: number;
     hardFailures: HardFailure[];
+    tokens?: CaseRun["tokens"];
+    efficiency?: CaseResult["efficiency"];
   }>;
   dimensionScores: SuiteDimensionScore[];
   recommendations: AgentWorkflowRecommendation[];

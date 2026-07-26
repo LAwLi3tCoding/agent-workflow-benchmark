@@ -102,7 +102,8 @@
         "qualificationSuiteHash": {
           "type": "string",
           "pattern": "^sha256:[a-f0-9]{64}$"
-        }
+        },
+        "isolationManifest": { "$ref": "#/$defs/isolationManifest" }
       }
     },
     "results": {
@@ -194,6 +195,126 @@
         },
         "signature": { "type": "string", "minLength": 1 }
       }
+    }
+  },
+  "$defs": {
+    "hash": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "isolationManifest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "backend",
+        "platform",
+        "runtimeVersion",
+        "policyHash",
+        "mountManifestHash",
+        "networkMode",
+        "processPolicy",
+        "capabilities",
+        "noNewPrivileges",
+        "readOnlyRootfs",
+        "writableMounts",
+        "canaries",
+        "manifestHash"
+      ],
+      "properties": {
+        "backend": { "enum": ["macos-seatbelt", "linux-oci-docker"] },
+        "platform": { "type": "string", "minLength": 1 },
+        "runtimeVersion": { "type": "string", "minLength": 1 },
+        "image": { "type": "string", "minLength": 1 },
+        "imageId": { "$ref": "#/$defs/hash" },
+        "policyHash": { "$ref": "#/$defs/hash" },
+        "mountManifestHash": { "$ref": "#/$defs/hash" },
+        "networkMode": { "const": "none" },
+        "processPolicy": {
+          "enum": [
+            "seatbelt_process_exec_allowlist",
+            "seccomp_launcher_no_child_process"
+          ]
+        },
+        "capabilities": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["drop", "add"],
+          "properties": {
+            "drop": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 1,
+              "items": { "const": "ALL" }
+            },
+            "add": {
+              "type": "array",
+              "maxItems": 0,
+              "items": { "type": "string", "minLength": 1 }
+            }
+          }
+        },
+        "noNewPrivileges": { "const": true },
+        "readOnlyRootfs": { "type": "boolean" },
+        "writableMounts": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "canaries": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "signingKeyRead",
+            "networkDenied",
+            "nestedProcessDenied",
+            "outOfScopeWriteDenied"
+          ],
+          "properties": {
+            "signingKeyRead": {
+              "enum": ["EPERM", "ABSENT_FROM_MOUNT_NAMESPACE"]
+            },
+            "networkDenied": {
+              "enum": ["EPERM", "NETWORK_UNREACHABLE"]
+            },
+            "nestedProcessDenied": {
+              "enum": ["EPERM", "DENIED"]
+            },
+            "outOfScopeWriteDenied": {
+              "enum": ["EPERM", "EROFS", "EACCES"]
+            }
+          }
+        },
+        "manifestHash": { "$ref": "#/$defs/hash" }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "backend": { "const": "linux-oci-docker" } }
+          },
+          "then": {
+            "required": ["image", "imageId"],
+            "properties": {
+              "platform": { "const": "linux" },
+              "processPolicy": {
+                "const": "seccomp_launcher_no_child_process"
+              },
+              "readOnlyRootfs": { "const": true },
+              "writableMounts": { "const": ["/tmp", "/workspace"] }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": { "backend": { "const": "macos-seatbelt" } }
+          },
+          "then": {
+            "properties": {
+              "platform": { "const": "darwin" },
+              "processPolicy": {
+                "const": "seatbelt_process_exec_allowlist"
+              }
+            }
+          }
+        }
+      ]
     }
   }
 }

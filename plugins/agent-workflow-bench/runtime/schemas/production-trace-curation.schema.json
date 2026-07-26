@@ -1,0 +1,327 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "production-trace-curation.schema.json",
+  "title": "Agent Workflow Bench production trace curation draft",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "artifactType",
+    "product",
+    "packageState",
+    "status",
+    "gateAuthority",
+    "reasonCodes",
+    "generatedAt",
+    "source",
+    "taxonomy",
+    "privacy",
+    "lineage",
+    "replayCases",
+    "reviewRequirements",
+    "prerequisites",
+    "quarantine",
+    "integrity"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "0.1.0" },
+    "artifactType": { "const": "production_trace_curation" },
+    "product": { "type": "string", "minLength": 1 },
+    "packageState": { "const": "DRAFT" },
+    "status": { "const": "DIAGNOSTIC_ONLY" },
+    "gateAuthority": { "const": "NONE" },
+    "reasonCodes": {
+      "type": "array",
+      "prefixItems": [
+        { "const": "DRAFT_ONLY_NO_GATE_AUTHORITY" },
+        { "const": "PRODUCTION_TRACE_REVIEW_REQUIRED" }
+      ],
+      "items": false,
+      "minItems": 2,
+      "maxItems": 2
+    },
+    "generatedAt": { "type": "string", "minLength": 1 },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ref",
+        "sha256",
+        "importContentHash",
+        "mappingVersion",
+        "sourceRef",
+        "sourceSha256"
+      ],
+      "properties": {
+        "ref": { "$ref": "#/$defs/portableRef" },
+        "sha256": { "$ref": "#/$defs/hash" },
+        "importContentHash": { "$ref": "#/$defs/hash" },
+        "mappingVersion": { "$ref": "#/$defs/token" },
+        "sourceRef": { "$ref": "#/$defs/portableRef" },
+        "sourceSha256": { "$ref": "#/$defs/hash" }
+      }
+    },
+    "taxonomy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mappingVersion",
+        "failureTaxonomyVersion",
+        "labelsVersion"
+      ],
+      "properties": {
+        "mappingVersion": { "$ref": "#/$defs/token" },
+        "failureTaxonomyVersion": { "$ref": "#/$defs/token" },
+        "labelsVersion": { "$ref": "#/$defs/token" }
+      }
+    },
+    "privacy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["consent", "retention", "redactionReview"],
+      "properties": {
+        "consent": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "scope",
+            "grantedBy",
+            "grantedAt",
+            "expiresAt",
+            "allowedUses",
+            "evidenceRefs"
+          ],
+          "properties": {
+            "scope": { "const": "benchmark_curation_draft" },
+            "grantedBy": { "$ref": "#/$defs/token" },
+            "grantedAt": { "type": "string", "minLength": 1 },
+            "expiresAt": { "type": "string", "minLength": 1 },
+            "allowedUses": {
+              "type": "array",
+              "contains": { "const": "diagnostic_replay_draft" },
+              "items": { "$ref": "#/$defs/token" }
+            },
+            "evidenceRefs": { "$ref": "#/$defs/nonEmptyRefs" }
+          }
+        },
+        "retention": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["policyRef", "expiresAt"],
+          "properties": {
+            "policyRef": { "$ref": "#/$defs/portableRef" },
+            "expiresAt": { "type": "string", "minLength": 1 }
+          }
+        },
+        "redactionReview": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "redactedOnly",
+            "reviewedBy",
+            "reviewedAt",
+            "evidenceRefs",
+            "policyVersion"
+          ],
+          "properties": {
+            "redactedOnly": { "const": true },
+            "reviewedBy": { "$ref": "#/$defs/token" },
+            "reviewedAt": { "type": "string", "minLength": 1 },
+            "evidenceRefs": { "$ref": "#/$defs/nonEmptyRefs" },
+            "policyVersion": { "$ref": "#/$defs/token" }
+          }
+        }
+      }
+    },
+    "lineage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sourceImportHash",
+        "sourceImportContentHash",
+        "dedupHash",
+        "eventLineage"
+      ],
+      "properties": {
+        "sourceImportHash": { "$ref": "#/$defs/hash" },
+        "sourceImportContentHash": { "$ref": "#/$defs/hash" },
+        "dedupHash": { "$ref": "#/$defs/hash" },
+        "eventLineage": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "draftCaseId",
+              "sourceEventRefs",
+              "knownGoodEventRefs",
+              "lineageHash"
+            ],
+            "properties": {
+              "draftCaseId": { "$ref": "#/$defs/token" },
+              "sourceEventRefs": { "$ref": "#/$defs/nonEmptyRefs" },
+              "knownGoodEventRefs": { "$ref": "#/$defs/nonEmptyRefs" },
+              "lineageHash": { "$ref": "#/$defs/hash" }
+            }
+          }
+        }
+      }
+    },
+    "replayCases": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "draftCaseId",
+          "packageState",
+          "sourceFailureCode",
+          "category",
+          "severity",
+          "workflowKind",
+          "sourceEventRefs",
+          "replayPrompt",
+          "pairedKnownGoodCounterexample",
+          "expectedBehavior"
+        ],
+        "properties": {
+          "draftCaseId": { "$ref": "#/$defs/token" },
+          "packageState": { "const": "DRAFT" },
+          "sourceFailureCode": { "$ref": "#/$defs/token" },
+          "category": { "$ref": "#/$defs/token" },
+          "severity": { "enum": ["P0", "P1", "P2"] },
+          "workflowKind": { "$ref": "#/$defs/token" },
+          "sourceEventRefs": { "$ref": "#/$defs/nonEmptyRefs" },
+          "replayPrompt": { "$ref": "#/$defs/minimizedInputs" },
+          "pairedKnownGoodCounterexample": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "sourceEventRefs",
+              "variables",
+              "excludesRawProductionPayloads"
+            ],
+            "properties": {
+              "sourceEventRefs": { "$ref": "#/$defs/nonEmptyRefs" },
+              "variables": { "$ref": "#/$defs/variables" },
+              "excludesRawProductionPayloads": { "const": true }
+            }
+          },
+          "expectedBehavior": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "reviewRequirements": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ownerReviewRequired",
+        "ownerReviewers",
+        "ownerRequirement",
+        "securityReviewRequired",
+        "securityReviewers",
+        "securityRequirement"
+      ],
+      "properties": {
+        "ownerReviewRequired": { "const": true },
+        "ownerReviewers": { "$ref": "#/$defs/nonEmptyTokens" },
+        "ownerRequirement": { "type": "string", "minLength": 1 },
+        "securityReviewRequired": { "const": true },
+        "securityReviewers": { "$ref": "#/$defs/nonEmptyTokens" },
+        "securityRequirement": { "type": "string", "minLength": 1 }
+      }
+    },
+    "prerequisites": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["referenceRun", "holdout"],
+      "properties": {
+        "referenceRun": { "$ref": "#/$defs/requiredPrerequisite" },
+        "holdout": { "$ref": "#/$defs/requiredPrerequisite" }
+      }
+    },
+    "quarantine": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "reason"],
+      "properties": {
+        "status": { "const": "NOT_QUARANTINED" },
+        "reason": { "type": "string", "minLength": 1 }
+      }
+    },
+    "integrity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "contentHash"],
+      "properties": {
+        "status": { "const": "VERIFIED_AT_WRITE" },
+        "contentHash": { "$ref": "#/$defs/hash" }
+      }
+    }
+  },
+  "$defs": {
+    "hash": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    },
+    "token": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 160,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+    },
+    "portableRef": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512,
+      "not": {
+        "anyOf": [
+          { "pattern": "^/" },
+          { "pattern": "^[A-Za-z]:" },
+          { "pattern": "(^|/)\\.\\.(/|$)" },
+          { "pattern": "\\\\" },
+          { "pattern": "://" }
+        ]
+      }
+    },
+    "nonEmptyRefs": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "type": "string", "minLength": 1, "maxLength": 512 }
+    },
+    "nonEmptyTokens": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/token" }
+    },
+    "variables": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {
+        "type": ["string", "number", "boolean"]
+      }
+    },
+    "minimizedInputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "variables", "excludesRawProductionPayloads"],
+      "properties": {
+        "status": { "const": "MINIMIZED" },
+        "variables": { "$ref": "#/$defs/variables" },
+        "excludesRawProductionPayloads": { "const": true }
+      }
+    },
+    "requiredPrerequisite": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "requirement"],
+      "properties": {
+        "status": { "const": "REQUIRED" },
+        "requirement": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

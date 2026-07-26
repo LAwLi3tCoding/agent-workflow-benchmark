@@ -1,0 +1,8 @@
+schemaVersion: 0.1.0
+id: handoff-delay-trigger
+type: handoff-delay-trigger
+description: Simulate delayed trigger behavior that crosses a handoff boundary.
+scope: overlay-only
+expectedOutcome:
+  verdict: FAIL
+  hardFailureCode: HANDOFF_DELAY_TRIGGER

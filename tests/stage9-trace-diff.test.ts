@@ -44,7 +44,13 @@ describe("Stage 9 trace diff", () => {
             kind: "changed",
             type: "handoff",
             baselineRef: "baseline:workflow-trace.json#event=b-route",
-            candidateRef: "candidate:workflow-trace.json#event=c-route"
+            candidateRef: "candidate:workflow-trace.json#event=c-route",
+            baselineTimestamp: expect.stringMatching(
+              /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u
+            ),
+            candidateTimestamp: expect.stringMatching(
+              /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u
+            )
           }),
           expect.objectContaining({
             kind: "added",
@@ -103,6 +109,47 @@ describe("Stage 9 trace diff", () => {
         baselinePosition: 0,
         candidatePosition: 1
       })
+    );
+  });
+
+  test("represents a replaced hard-failure code as one resolved and one introduced defect", () => {
+    const diff = buildTraceDiff({
+      mode: "baseline_candidate",
+      targetId: "target-a",
+      suite: "smoke",
+      comparability: { status: "COMPARABLE", reasons: [] },
+      baseline: trace("baseline", [
+        event("b-failure", "hard_failure", "observer", {
+          code: "TARGET_ROUTE_FORBIDDEN"
+        })
+      ]),
+      candidate: trace("candidate", [
+        event("c-failure", "hard_failure", "observer", {
+          code: "TARGET_JOIN_MISSING"
+        })
+      ])
+    });
+
+    expect(diff.processDefects?.summary).toMatchObject({
+      added: 1,
+      removed: 1,
+      changed: 0
+    });
+    expect(diff.processDefects?.defects).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "TARGET_ROUTE_FORBIDDEN",
+          direction: "removed",
+          baselineEventRef:
+            "baseline:workflow-trace.json#event=b-failure"
+        }),
+        expect.objectContaining({
+          code: "TARGET_JOIN_MISSING",
+          direction: "added",
+          candidateEventRef:
+            "candidate:workflow-trace.json#event=c-failure"
+        })
+      ])
     );
   });
 

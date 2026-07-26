@@ -25,7 +25,7 @@ import { runCase } from "../src/runner/simulatedRunner.js";
 import { listFiles } from "../src/utils/hash.js";
 
 describe("versioned Gold Corpus", () => {
-  test("binds 12 required failure families to good, bad, and boundary trajectories", async () => {
+  test("binds every required failure family to good, bad, and boundary trajectories", async () => {
     const target = await loadTargetPack("minimal-directory-agent");
     const profile = await profileTarget(target);
     const suite = materializeSmokeSuite(profile.contract);
@@ -37,8 +37,10 @@ describe("versioned Gold Corpus", () => {
     expect(corpus.manifest.contractHash).toBe(profile.contract.contractHash);
     expect(corpus.manifest.caseSetHash).toBe(semanticCaseSetHash(suite.cases));
     expect(corpus.manifestHash).toMatch(/^sha256:[a-f0-9]{64}$/u);
-    expect(corpus.cases).toHaveLength(36);
-    expect(new Set(corpus.cases.map((item) => item.trajectory.id)).size).toBe(36);
+    const expectedSplitSize = REQUIRED_GOLD_FAILURE_CODES.length;
+    const expectedCorpusSize = expectedSplitSize * 3;
+    expect(corpus.cases).toHaveLength(expectedCorpusSize);
+    expect(new Set(corpus.cases.map((item) => item.trajectory.id)).size).toBe(expectedCorpusSize);
 
     const coveredCodes = [...new Set(corpus.cases.map((item) => item.label.failureCode))].sort();
     expect(coveredCodes).toEqual([...REQUIRED_GOLD_FAILURE_CODES].sort());
@@ -50,9 +52,9 @@ describe("versioned Gold Corpus", () => {
           .sort()
       ).toEqual(["boundary", "known_bad", "known_good"]);
     }
-    expect(corpus.cases.filter((item) => item.split === "development")).toHaveLength(12);
-    expect(corpus.cases.filter((item) => item.split === "calibration")).toHaveLength(12);
-    expect(corpus.cases.filter((item) => item.split === "holdout")).toHaveLength(12);
+    expect(corpus.cases.filter((item) => item.split === "development")).toHaveLength(expectedSplitSize);
+    expect(corpus.cases.filter((item) => item.split === "calibration")).toHaveLength(expectedSplitSize);
+    expect(corpus.cases.filter((item) => item.split === "holdout")).toHaveLength(expectedSplitSize);
     expect(corpus.cases.every((item) => item.label.labelSource.length > 0)).toBe(true);
   });
 
@@ -67,7 +69,7 @@ describe("versioned Gold Corpus", () => {
     const serialized = JSON.stringify(plannerView);
 
     expect(plannerView.split).toBe("development");
-    expect(plannerView.trajectories).toHaveLength(12);
+    expect(plannerView.trajectories).toHaveLength(REQUIRED_GOLD_FAILURE_CODES.length);
     expect(plannerView.baseTrajectory.events.length).toBeGreaterThan(0);
     expect(serialized).not.toMatch(/expectedVerdict|expectedFailure|failureCode|labelSource|known_bad|known_good|boundary/u);
     for (const holdout of corpus.cases.filter((item) => item.split === "holdout")) {

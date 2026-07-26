@@ -1,0 +1,101 @@
+name: Observer Linux Docker
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/docker/linux-observer/**"
+      - ".github/workflows/observer-linux-docker.yml"
+      - "src/observer/**"
+      - "schemas/workflow-trace.schema.json"
+      - "schemas/observer-qualification.schema.json"
+      - "tests/reference-observer-linux.test.ts"
+      - "tests/observer-qualification.test.ts"
+  pull_request:
+    paths:
+      - ".github/docker/linux-observer/**"
+      - ".github/workflows/observer-linux-docker.yml"
+      - "src/observer/**"
+      - "schemas/workflow-trace.schema.json"
+      - "schemas/observer-qualification.schema.json"
+      - "tests/reference-observer-linux.test.ts"
+  workflow_dispatch:
+
+jobs:
+  linux-oci-docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci
+      - name: Build dedicated observer image
+        run: docker build -t awb-linux-observer:test .github/docker/linux-observer
+      - name: Verify launcher denial canaries
+        run: |
+          set -euo pipefail
+          docker run --rm --pull=never --network none --read-only \
+            --cap-drop ALL --security-opt no-new-privileges --pids-limit 64 \
+            --user 65532:65532 \
+            --tmpfs /tmp:rw,noexec,nosuid,nodev,size=67108864 \
+            --mount type=bind,src="$PWD",dst=/workspace,bind-propagation=rprivate \
+            --workdir /workspace \
+            awb-linux-observer:test \
+            /usr/local/bin/awb-seccomp-launcher node -e '
+              const { spawnSync } = require("node:child_process");
+              const { writeFileSync, readFileSync } = require("node:fs");
+              const net = require("node:net");
+              let key = "READABLE";
+              try { readFileSync("/observer-private.pem"); } catch (error) { key = error.code === "ENOENT" ? "ABSENT_FROM_MOUNT_NAMESPACE" : error.code; }
+              let rootfs = "WRITABLE";
+              try { writeFileSync("/awb-out-of-scope-canary", "blocked"); } catch (error) { rootfs = error.code; }
+              const nested = spawnSync("/bin/echo", ["observer-linux-nested-canary"]);
+              const child = nested.error && ["EPERM", "EACCES", "ENOSYS"].includes(nested.error.code) ? "DENIED" : "ALLOWED";
+              const socket = net.connect({ host: "1.1.1.1", port: 80, timeout: 1000 });
+              socket.once("connect", () => { socket.destroy(); process.exit(10); });
+              socket.once("timeout", () => { socket.destroy(); process.exit(11); });
+              socket.once("error", (error) => {
+                const netStatus = ["ENETUNREACH", "EHOSTUNREACH", "ENETDOWN", "EPERM"].includes(error.code) ? "NETWORK_UNREACHABLE" : error.code;
+                if (key !== "ABSENT_FROM_MOUNT_NAMESPACE" || rootfs !== "EROFS" || child !== "DENIED" || netStatus !== "NETWORK_UNREACHABLE") {
+                  console.error(JSON.stringify({ key, rootfs, child, netStatus }));
+                  process.exit(1);
+                }
+              });
+            '
+      - run: npx vitest run tests/reference-observer-linux.test.ts
+      - name: Run end-to-end Linux Observer qualification
+        shell: bash
+        run: |
+          set -euo pipefail
+          key_dir="$(mktemp -d)"
+          output_dir="${RUNNER_TEMP}/awb-linux-observer-qualification"
+          trap 'rm -rf -- "$key_dir"' EXIT
+          openssl genpkey -algorithm ED25519 -out "$key_dir/observer-private.pem"
+          openssl genpkey -algorithm ED25519 -out "$key_dir/qualification-authority-private.pem"
+          image_id="$(docker image inspect awb-linux-observer:test --format '{{.Id}}')"
+          node --import tsx src/cli/index.ts observer qualify \
+            --target minimal-directory-agent \
+            --suite smoke \
+            --observer-id awb-linux-reference-observer \
+            --observer-version 1.0.0 \
+            --observer-private-key "$key_dir/observer-private.pem" \
+            --qualification-authority-private-key "$key_dir/qualification-authority-private.pem" \
+            --isolation-backend linux-oci-docker \
+            --observer-image "$image_id" \
+            --observer-image-id "$image_id" \
+            --out "$output_dir"
+          node -e '
+            const fs = require("node:fs");
+            const path = require("node:path");
+            const outputDir = process.argv[1];
+            const artifact = JSON.parse(fs.readFileSync(path.join(outputDir, "observer-qualification.json"), "utf8"));
+            if (
+              artifact.results.decision !== "valid" ||
+              artifact.subject.isolationManifest?.backend !== "linux-oci-docker" ||
+              artifact.subject.isolationManifest?.imageId !== process.argv[2]
+            ) {
+              throw new Error("Linux Observer qualification did not bind a valid immutable isolation manifest.");
+            }
+          ' "$output_dir" "$image_id"

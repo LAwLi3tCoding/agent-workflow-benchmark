@@ -344,8 +344,16 @@ describe("benchmark CLI", () => {
       await execa("npm", ["run", "benchmark", "--", "materialize", "--target", "minimal-directory-agent", "--suite", "smoke", "--out", out], { cwd });
 
       const manifest = JSON.parse(await readFile(path.join(out, "manifest.json"), "utf8"));
-      expect(manifest.caseIds).toHaveLength(10);
+      expect(manifest.caseIds).toHaveLength(22);
       await expect(stat(path.join(out, "minimal-directory-agent-smoke-006-required-join.yaml"))).resolves.toBeTruthy();
+      await expect(
+        stat(
+          path.join(
+            out,
+            "minimal-directory-agent-smoke-019-safety-memory-poison-probe.yaml"
+          )
+        )
+      ).resolves.toBeTruthy();
     } finally {
       await rm(out, { recursive: true, force: true });
     }
@@ -1314,7 +1322,7 @@ describe("benchmark CLI", () => {
     }
   });
 
-  test("debug reverse-validate kills the complete 12-family mutation set", async () => {
+  test("debug reverse-validate kills the complete 18-family mutation set", async () => {
     const debugOut = await tmp("awb-debug-set-fail-");
     try {
       const result = await execa(
@@ -1341,7 +1349,7 @@ describe("benchmark CLI", () => {
       const summary = JSON.parse(await readFile(path.join(debugOut, "debug-summary.json"), "utf8"));
       expect(summary.status).toBe("PASS");
       expect(summary.mutationKillRate).toBe(1);
-      expect(summary.results).toHaveLength(12);
+      expect(summary.results).toHaveLength(18);
       expect(summary.results.every((item: { status: string }) => item.status === "PASS")).toBe(true);
     } finally {
       await rm(debugOut, { recursive: true, force: true });

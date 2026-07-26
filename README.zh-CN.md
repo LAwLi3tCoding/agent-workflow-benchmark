@@ -135,9 +135,12 @@ scorer，但证据等级仍是 `DIAGNOSTIC_ONLY`。
 | `DIAGNOSTIC_ONLY` | `2` | simulated、Observer 未认证、证据不完整或不可比较 |
 | `BLOCK` | `1` | Hard Failure、回归、无效 provenance 或工具失败 |
 
-当前已实现的 Hard Failure 永远优先于分数：禁止路由、Owner 绕过、假 PASS、缺失必需
-Join、artifact path drift、不安全生产副作用、无效 provenance 和未注册失败码。runner
-失败与 telemetry 不足属于独立的确定性 BLOCK/诊断条件，不是额外的 registry code。
+当前已实现的 Hard Failure 永远优先于分数：证据缺失或乱序、伪造 Observer 证据、
+禁止路由、Owner 绕过、目标漂移、注入、工具链升级、延迟 Handoff 触发、状态污染、
+不安全恢复、假 PASS、缺失必需 Join、artifact path drift、不安全生产副作用、
+telemetry 或 token ledger 丢失、敏感信息泄漏、无效 provenance 和未注册失败码。
+`trajectory-review` 报告会用已校验的 trace-diff 证据重建过程缺陷与恢复指标；长周期
+安全 mutation 家族已写入合约和 fixture 覆盖。
 
 ### 当前 Runner 证据等级
 
@@ -150,9 +153,15 @@ Join、artifact path drift、不安全生产副作用、无效 provenance 和未
 
 ### 签名 Workflow Trace 准入
 
-内置 reference Observer 在默认拒绝的 macOS Seatbelt 边界和已清理环境中运行
-Runner，并用主动 canary 验证签名密钥读取、网络和未观察到的嵌套可执行文件都被
-`EPERM` 拒绝。Observer 收集、脱敏并签名 Trace；发布门禁前必须由独立 authority 鉴定：
+内置 reference Observer 在已清理环境和显式 fail-closed 边界中运行 Runner。当前支持
+两个后端：
+
+| 后端 | 边界 |
+| --- | --- |
+| `macos-seatbelt` | macOS `/usr/bin/sandbox-exec`；允许 workspace 写入和精确 Runner 可执行文件，拒绝签名密钥读取、网络和未观察到的嵌套可执行文件，并要求主动 canary fail closed |
+| `linux-oci-docker` | Linux OCI/Docker 镜像绑定不可变 image identity；无网络、只读 rootfs、drop capabilities、`no-new-privileges`、seccomp 禁止子进程、签名密钥位于 mount 外，并验证 key/network/nested-process/write 四类主动 canary |
+
+Observer 收集、脱敏并签名 Trace；发布门禁前必须由独立 authority 鉴定：
 
 ```bash
 awb observer observe --request observer-request.json --observer-private-key /secure/observer-private.pem --out observer-output/workflow-trace.json
@@ -170,8 +179,10 @@ Trace 签名证明 Observer 身份和签名后的完整性；authority 签名证
 合约、case 集合和 qualification suite 已通过冻结检查。两者必须使用不同密钥，且
 两个公钥都由调用方显式提供，AWB 不会自动登记。缺失有效 qualification artifact
 的签名 Trace 仍是 `DIAGNOSTIC_ONLY`，修改运行元数据自称 `valid` 不会生效。私钥
-必须位于 Runner、仓库、制品和日志之外。内置隔离仅支持 Darwin，并依赖
-`/usr/bin/sandbox-exec`；不支持时会 fail closed。规范见
+必须位于 Runner、仓库、制品和日志之外。不支持的隔离会 fail closed，不生成有效
+qualification artifact，也不能超过 `DIAGNOSTIC_ONLY`。Linux Docker qualification
+路径可用于 Hosted 或 Linux 环境；某个 commit 仍需先通过 Linux Observer job，才能
+依赖该 commit 的 Linux qualification 证据。规范见
 [Workflow-Trace Observer Contract](docs/workflow-trace-observer-contract.md)。
 
 ## 常用工作流
@@ -255,7 +266,7 @@ runner 的真实行为。
 ```bash
 awb gate-policy calibrate \
   --corpus fixtures/gold-corpus/v1/manifest.yaml \
-  --policy-version 1.0.0 \
+  --policy-version 1.1.0 \
   --out reports/gate-policy/v1/fit
 ```
 
@@ -298,9 +309,14 @@ PASS 仍然只是 harness 诊断，`releaseEligible: false`；真实 criterion v
 | `gate` | 执行确定性 CI 发布策略 |
 | `gate-policy ...` | 校准或 holdout 验证版本化评分和 Gate 策略 |
 | `artifact migrate` | 读取或迁移已注册制品，输出稳定状态和 reason code |
+| `trace import-otlp` | 将不可信 OTLP JSON 导入为脱敏诊断事件和 schema-valid 导入 manifest |
+| `trace curate-production` | 生成脱敏生产 Trace curation draft，并显式记录 owner/security review、reference run 与 holdout 前置条件 |
+| `governance benchmark` | 评估 split isolation、contamination、saturation、reproducibility 和 domain adapter 证据 |
 | `adapter conformance` | 以诊断证据验证 Runner Adapter 合约和 `CaseRun` |
 | `ci benchmark-health` | 聚合周期性自检并生成 fail-closed 版本结论 |
 | `score` / `report` | 查看运行；渲染 decision、trace-diff、trend 和静态 viewer |
+| `report trajectory-review` | 从 trace-diff 证据和可选 judge/human label 重建确定性过程缺陷轨迹 |
+| `report workflow-economics` | 基于 trace-diff、trajectory-review 和配对 suite 计算诊断级工作流经济性 |
 | `report trial-metrics` | 计算有限样本 pass@k/pass^k；仅凭源报告仍为 diagnostic-only |
 | `criterion-validity ...` | 生成盲化外部研究包或分析独立人工标签 |
 | `debug ...` | 反向验证并诊断 benchmark harness |
@@ -318,12 +334,21 @@ PASS 仍然只是 harness 诊断，`releaseEligible: false`；真实 criterion v
 | `comparison-result.json` | 完整性绑定的配对比较 |
 | `gate-result.json` | 确定性发布结论 |
 | `gate-policy.json` / `calibration-report.*` | 版本化策略、拟合证据和 holdout 诊断 |
-| `report.md` / `decision-report.*` / `trace-diff.json` / `trend-report.json` / `viewer.html` | 人读诊断、决策、脱敏轨迹差异、分 era 趋势和静态查看 |
+| `otlp-diagnostic-import.json` / `trace-import-manifest.json` / `diagnostic-events.json` | OTLP 派生的脱敏诊断导入、导入 manifest 和标准化诊断事件 |
+| `production-trace-curation.json` / `production-trace-curation.md` | 已完成脱敏审查、但仍需 owner/security review、reference run 与 holdout 隔离的 draft |
+| `benchmark-governance-report.json` / `benchmark-governance-report.md` | 覆盖 split isolation、contamination、saturation、reproducibility 和 domain evidence 的诊断治理报告 |
+| `report.md` / `decision-report.*` / `trace-diff.json` / `trajectory-review.json` / `trajectory-review.md` / `workflow-economics-report.json` / `workflow-economics-report.md` / `trend-report.json` / `viewer.html` | 人读诊断、决策、脱敏轨迹差异、过程缺陷恢复指标、工作流经济性、分 era 趋势和静态查看 |
 | `validity-report.*` / `reliability-report.*` | 外部效度、可靠性和 quarantine 证据 |
 | `adapter-conformance-report.json` / `benchmark-health-report.json` | Adapter 诊断与 Benchmark 版本健康度 |
 | `runner-ranking-report.json` / `trial-metrics-report.*` | 可比性明确的 Runner 排名与带信任上限的 trial 指标 |
 
 完整参数请执行 `awb <command> --help`。
+
+OTLP 导入、生产 Trace curation、benchmark governance、trajectory review 和 workflow
+economics 制品都保持 `DIAGNOSTIC_ONLY`，trust ceiling 为 `NONE`；诊断命令成功时返回
+退出码 `2`。Workflow economics 使用 `0–100` `cappedScore`，要求显式传入规范 UTC
+`--generated-at`，且只有两侧 token ledger 均为 `high` confidence 时才允许 Pareto
+dominance。
 
 `compare` 和 `gate` 都支持 `--gate-policy <path>`。重新计算历史结果时必须使用同一
 policy；缺失或不匹配的 policy version、rules hash、policy hash 会被标记为不可比较。
@@ -351,17 +376,6 @@ npm run ci:local
 这条本地与 Hosted CI 共用的 Gate 会依次执行 diff hygiene、typecheck、全量测试、
 Plugin 构建、runtime parity、源码与打包 schema 校验、命名/隐私扫描和 fresh-install
 smoke。`plugins/agent-workflow-bench/runtime/` 是需要提交的生成物。
-
-```text
-.
-├── configs/                     # Runner Config 与 Target Pack
-├── fixtures/                    # 通用 Target 与 Mutation 场景
-├── plugins/agent-workflow-bench # Codex/Claude Plugin 与 Bundled Runtime
-├── schemas/                     # 机器可读制品合约
-├── src/                         # TypeScript CLI
-├── tests/                       # 单元与端到端测试
-└── docs/                        # 方法论与操作文档
-```
 
 ## 文档
 

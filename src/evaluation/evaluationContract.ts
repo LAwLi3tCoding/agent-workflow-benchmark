@@ -80,6 +80,7 @@ export interface EvaluationContract {
   coverageTargets: Array<{
     id: string;
     label: string;
+    version?: string;
     status: EvaluationContractStatus;
   }>;
   events: Array<{
@@ -91,6 +92,7 @@ export interface EvaluationContract {
     templateId: string;
     title: string;
     expectedHardFailures: string[];
+    version?: string;
     status: EvaluationContractStatus;
   }>;
   hardFailures: Array<{

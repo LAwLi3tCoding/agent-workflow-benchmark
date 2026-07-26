@@ -4,7 +4,7 @@ corpusVersion: 1.0.0
 fixtureVersion: 1.0.0
 targetId: minimal-directory-agent
 contractHash: sha256:62e35803ad788b1c779f043334657c727f9992ba61bc84b297f7f1c104979bde
-caseSetHash: sha256:e1d0927d56e2d748dd1c61f91c32ac271c87c6e76986d487fe5b3673e22e4045
+caseSetHash: sha256:48dbc1e4d17c0cd587e2a0d771cb53e9d6332107d7191a2a4d53f4b471360076
 requiredFailureCodes:
   - { code: TRACE_EVENT_MISSING, severity: P0 }
   - { code: TRACE_EVENT_ORDER_INVALID, severity: P0 }
@@ -18,23 +18,29 @@ requiredFailureCodes:
   - { code: TELEMETRY_MISSING, severity: P1 }
   - { code: TOKEN_LEDGER_MISSING, severity: P1 }
   - { code: SECRET_LEAK, severity: P0 }
+  - { code: PROMPT_INJECTION, severity: P0 }
+  - { code: OBJECTIVE_HIJACK, severity: P0 }
+  - { code: TOOL_CHAIN_ESCALATION, severity: P0 }
+  - { code: HANDOFF_DELAY_TRIGGER, severity: P0 }
+  - { code: MEMORY_POISON, severity: P0 }
+  - { code: UNSAFE_RECOVERY, severity: P0 }
 baseTrajectory:
   path: base-trajectory.yaml
   contentHash: sha256:f2832874acc8fc8a144e5fe675481365c9a81eb3df5284fbb75aedf81072c776
 splits:
   - id: development
     trajectoriesPath: trajectories/development.yaml
-    trajectoriesHash: sha256:b2876d331b3b866b65f8ba0393d6e017159f64648d9efb2e5382acbaab9d7e30
+    trajectoriesHash: sha256:f961e1bfe1bd18c2e4569cce2969a04c24eaa3ae89917053bb6d2a47831d7927
     labelsPath: labels/development.yaml
-    labelsHash: sha256:9ded1f9b5a7b7a4d2f2e3275303242fb351e4226319f4d2ac31382603246c4e5
+    labelsHash: sha256:43286627ed71ded927c428ff3a8d71b1c0c70bfc1812587fd4cd8a27b2730d74
   - id: calibration
     trajectoriesPath: trajectories/calibration.yaml
-    trajectoriesHash: sha256:b1f3ffc01f9eb6c1e7a959a264a631d33a8b4d03ef9a91cb227cb1447d26423f
+    trajectoriesHash: sha256:763468ab0568e8bf7427a675fb9ac5ff8e465af63063ce93b8d70543fb52baee
     labelsPath: labels/calibration.yaml
-    labelsHash: sha256:273eaa87e3698846ffac2c49a35fd23d5312d5a7f1028d2ed274fe3432155252
+    labelsHash: sha256:4ed3f30731e3508d51d3277092b248cb3423f6c40818a022a5d51e988c1c5393
   - id: holdout
     trajectoriesPath: trajectories/holdout.yaml
-    trajectoriesHash: sha256:cb0562b7ddaf5da7e6974dd095a16f73c1bba94615277171bca53d70df5d6d13
+    trajectoriesHash: sha256:c068ceba2102d1d21a7d15f033f4ab5d1dabfd986e38daf874b9abd82dd7edb0
     labelsPath: labels/holdout.yaml
-    labelsHash: sha256:1f469ed92f5cd389895c5ef49b58f6560bc3728378784ec7200c138e012897b0
+    labelsHash: sha256:4d48c845292a44d9d55e434de36b8a32316172c100a27a5b2ee2937dec44901b
 coverageExemptions: []

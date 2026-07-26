@@ -24,6 +24,7 @@ import type { BenchmarkCase, RunEvent } from "../src/core/types.js";
 import { materializeSmokeSuite } from "../src/generator/materialize.js";
 import {
   REFERENCE_OBSERVER_EVIDENCE_CAPABILITIES,
+  buildReferenceObserverIsolationManifest,
   referenceObserverImplementationHash
 } from "../src/observer/referenceObserver.js";
 import {
@@ -1010,6 +1011,7 @@ function makeReliabilityTracePayload(
       caseSetHash: semanticCaseSetHash(cases),
       runner,
       isolation: "read_only_sandbox" as const,
+      isolationManifest: fixtureMacosIsolationManifest(),
       permissionMode: "read_only_no_approval" as const,
       model: "fixture-model"
     },
@@ -1021,6 +1023,28 @@ function makeReliabilityTracePayload(
       signature: ""
     }
   };
+}
+
+function fixtureMacosIsolationManifest() {
+  return buildReferenceObserverIsolationManifest({
+    backend: "macos-seatbelt",
+    platform: "darwin",
+    runtimeVersion: "sandbox-exec",
+    policyHash: `sha256:${"2".repeat(64)}`,
+    mountManifestHash: `sha256:${"3".repeat(64)}`,
+    networkMode: "none",
+    processPolicy: "seatbelt_process_exec_allowlist",
+    capabilities: { drop: ["ALL"], add: [] },
+    noNewPrivileges: true,
+    readOnlyRootfs: false,
+    writableMounts: ["workspace://root"],
+    canaries: {
+      signingKeyRead: "EPERM",
+      networkDenied: "EPERM",
+      nestedProcessDenied: "EPERM",
+      outOfScopeWriteDenied: "EPERM"
+    }
+  });
 }
 
 function makeReliabilityObservedCase(

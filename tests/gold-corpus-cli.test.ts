@@ -22,7 +22,7 @@ describe("Gold Corpus CLI", () => {
         ],
         { cwd: process.cwd() }
       );
-      expect(validation.stdout).toContain("36 trajectories");
+      expect(validation.stdout).toContain("54 trajectories");
       expect(validation.stdout).toContain("corpusVersion=1.0.0");
 
       await execa(

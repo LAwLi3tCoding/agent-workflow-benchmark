@@ -45,11 +45,9 @@ plugins/agent-workflow-bench/
 
 外部 Observer 用 Ed25519 对标准化 workflow trace 签名后，通过 `awb ingest-trace --trace <trace.json> --trusted-observer-key <public.pem> --observer-qualification <artifact.json> --trusted-qualification-key <authority-public.pem>` 导入。`compare` 和 `gate` 必须再次传入 Observer 与资格授权方两个公钥信任锚。私钥不得提供给 Runner，CLI 也会拒绝把私钥当作 trust anchor。
 
-内置 reference Observer 当前只支持 Darwin，并要求
-`/usr/bin/sandbox-exec`。它使用 deny-default Seatbelt 边界，实际尝试读取
-Observer 私钥、直连网络和启动未声明子进程，三项都必须得到 `EPERM`；
-静态“未尝试”标记不能通过资格认证。非 Darwin、隔离后端缺失、canary
-成功或 Observer/资格授权方复用同一密钥时都会 fail closed。
+内置 reference Observer 支持两个显式隔离后端：`macos-seatbelt` 和
+`linux-oci-docker`。macOS 后端要求 `/usr/bin/sandbox-exec`，使用 deny-default
+Seatbelt 边界并实际尝试读取 Observer 私钥、直连网络和启动未声明子进程，三项都必须被系统拒绝。Linux 后端要求 Docker CLI 和不可变的 Observer image ID 或 digest；运行时以只读 rootfs、禁网、无 capabilities、`no-new-privileges`、seccomp 子进程拒绝、最小挂载和非 root 用户执行，并把 Observer 私钥保留在 runner mount 外。两个后端都会写出主动 canary 证据；隔离后端缺失、image ID/digest 不匹配、canary 成功、私钥进入挂载、Observer/资格授权方复用同一密钥，或选择未支持的后端时都会 fail closed。
 
 `compare` 会把 baseline/candidate 的 suite、provenance、runtime manifest 和 workflow trace 快照写入 comparison 目录并记录完整性哈希。`gate` 会重新验证 observer 签名、快照、runtime 执行事实和 provenance，并重新计算 comparison；手工修改 comparison JSON、证据文件或仅重算可编辑哈希都会得到 `BLOCK`，不能伪造 live PASS。
 
@@ -57,7 +55,7 @@ Stage 6 开始，score 和 gate 还绑定版本化 `gate-policy.json`。策略�
 Gold Corpus 的 development/calibration split，holdout 由单独命令验证：
 
 ```bash
-awb gate-policy calibrate --corpus fixtures/gold-corpus/v1/manifest.yaml --policy-version 1.0.0 --out reports/gate-policy/<target-id>/fit
+awb gate-policy calibrate --corpus fixtures/gold-corpus/v1/manifest.yaml --policy-version 1.1.0 --out reports/gate-policy/<target-id>/fit
 awb gate-policy validate-holdout --corpus fixtures/gold-corpus/v1/manifest.yaml --policy reports/gate-policy/<target-id>/fit/gate-policy.json --calibration-report reports/gate-policy/<target-id>/fit/calibration-report.json --out reports/gate-policy/<target-id>/holdout
 ```
 
@@ -153,6 +151,61 @@ awb report runner-ranking \
 `workflow_trace` Telemetry、native token source，以及 workflowScore、efficiency、
 tokenCost 三轴都可比时才输出排名。否则输出 `INCOMPARABLE` 和 reason codes。
 
+P1/P2 诊断命令现在也随插件 runtime 发布。它们都写入注册 schema 的制品，但默认不授予 gate authority：
+
+```bash
+awb trace import-otlp \
+  --input telemetry/otlp-export.json \
+  --source-ref telemetry/otlp-export.json \
+  --out reports/imports/otlp
+```
+
+输出 `otlp-diagnostic-import.json`、`trace-import-manifest.json` 和
+`diagnostic-events.json`，退出码为 `2`。该命令只做 OTLP span 到脱敏诊断事件的有损映射，
+状态固定为 `DIAGNOSTIC_ONLY`、`gateAuthority: NONE`；它不是 Observer qualification，
+也不会让外部 telemetry 变成可准入的 live trace。
+
+```bash
+awb trace curate-production \
+  --input reports/curation/production-trace-curation-input.json \
+  --out reports/curation/production-trace
+```
+
+输出 `production-trace-curation.json` 和 `production-trace-curation.md`，退出码为 `2`。
+输入必须嵌入已脱敏的 diagnostic import、同意与 retention 证据、owner/security review
+要求和 reference/holdout 前置条件。输出始终是 draft package，固定
+`DIAGNOSTIC_ONLY` / `NONE`，不会激活 case、发布 corpus 或授权生产 gate。
+
+```bash
+awb governance benchmark \
+  --input reports/governance/benchmark-governance-input.json \
+  --out reports/governance/current
+```
+
+输出 `benchmark-governance-report.json` 和 `benchmark-governance-report.md`。当 split
+isolation、contamination、saturation、reproducibility 和四个必需 domain
+adapter 证据完整时，报告为 `POLICY_COMPLETE` 但仍返回 `2`；缺 split、holdout/private
+challenge 暴露、强制排名或 domain 证据缺失时，报告为 `BLOCKED` 并返回 `1`。
+两种结果都固定 `DIAGNOSTIC_ONLY` / `NONE`。
+
+```bash
+awb report workflow-economics \
+  --trace-diff reports/observed/trace-diff/trace-diff.json \
+  --trajectory-review reports/observed/trajectory-review/trajectory-review.json \
+  --baseline-suite reports/runs/baseline/suite-result.json \
+  --candidate-suite reports/runs/candidate/suite-result.json \
+  --generated-at 2026-07-26T00:00:00.000Z \
+  --out reports/observed/workflow-economics
+```
+
+输出 `workflow-economics-report.json` 和 `workflow-economics-report.md`，退出码为 `2`。
+它重新校验 trace diff、trajectory review 和两侧 suite，按 AWB `0–100`
+`cappedScore` 比较质量、token、wall-clock、重试和不可逆副作用指标。调用方必须显式
+传入规范 UTC `--generated-at`；只有两侧 token 证据均为 `high` confidence 才允许
+Pareto dominance，较低置信度的差值仍会展示，但该 case 标记为 `INCOMPARABLE`。
+gate policy、suite、case 或 metric 绑定不一致时同样不可比较。报告只用于成本/效率
+诊断，不会改变 gate 结论。
+
 ```bash
 awb ingest-trace \
   --cases-dir cases/generated/<target-id>/ai-smoke \
@@ -224,10 +277,10 @@ live Observer、caller 提供的强隔离 manifest、外部 trust anchors 和显
 policy；替换任一制品都会 BLOCK。
 
 生产 blocking gate 需要 workflow owner 显式授权、已认证的独立 live
-`workflow_trace` Observer、调用方提供的 `linux_container` 或 `strong_sandbox`
-隔离证据、临时 HOME/TMPDIR、默认禁网或 allowlist、只读 target、受控工具代理、两个
-外部公钥 trust anchors，以及只保存脱敏制品的 retention 策略。任一条件缺失时保持
-`DIAGNOSTIC_ONLY`。AWB 只校验调用方提供的隔离证据，不声称自己提供 Linux 隔离后端。
+`workflow_trace` Observer、调用方提供的 Runner 强隔离证据、临时 HOME/TMPDIR、默认禁网或
+allowlist、只读 target、受控工具代理、两个外部公钥 trust anchors，以及只保存脱敏制品的
+retention 策略。任一条件缺失时保持 `DIAGNOSTIC_ONLY`。AWB 可以用
+`linux-oci-docker` 资格认证 reference Observer，但生产 runner 的隔离 manifest 仍由调用方提供并绑定到授权签名。
 
 ## 在 Codex 中使用
 

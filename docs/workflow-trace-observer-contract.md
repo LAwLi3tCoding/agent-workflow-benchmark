@@ -32,10 +32,25 @@ canonical output directory is frozen before the trace is installed by atomic
 rename. A Runner-controlled parent link therefore cannot retarget the Observer
 write into a key or file overwrite primitive.
 
-This reference backend is currently Darwin-only and requires
-`/usr/bin/sandbox-exec`. Unsupported platforms, an unavailable backend, a
-failed profile application, or any successful boundary canary fail closed and
-cannot produce a valid qualification artifact.
+The default reference backend is Darwin Seatbelt and requires
+`/usr/bin/sandbox-exec`. A Linux backend is available only as
+`linux-oci-docker` with an immutable locally available Docker image digest or
+image id, `--pull=never`, `--network none`, read-only rootfs, `cap-drop ALL`,
+`no-new-privileges`, no Docker socket, no host namespaces, no privileged/root
+mode, no additional mounts, one explicit RW workspace bind, and a bounded
+tmpfs. The image must provide `/usr/local/bin/awb-seccomp-launcher`; AWB runs
+both the active boundary canary and the Runner through that launcher. The
+launcher must install a seccomp policy that makes child-process creation fail
+with `EPERM` while preserving the Runner process itself.
+
+Unsupported platforms, unavailable Docker, unresolved or mutable images,
+missing launchers, incomplete manifests, prohibited Docker config, failed
+profile application, or any successful boundary canary fail closed and cannot
+produce a valid qualification artifact. Linux qualification requires active
+canaries for: signing-key read absent from the mount namespace, outbound
+network denied by `--network none`, nested process denied by seccomp, and
+out-of-scope rootfs write denied by read-only rootfs. Namespace-only assertions
+are not qualification evidence.
 
 The signature establishes observer identity and post-signing integrity. It does not prove that
 the observer implementation captured every relevant action. CI owners decide which observer
@@ -67,6 +82,21 @@ The public-key fingerprint is:
 ```text
 sha256:<lowercase SHA-256 hex of the DER-encoded SubjectPublicKeyInfo public key>
 ```
+
+`subject.isolationManifest`, when present, is part of the signed payload and
+binds backend, platform, Docker/runtime version, immutable image identity,
+policy/profile hash, mount-manifest hash, network mode, process policy
+(`seatbelt_process_exec_allowlist` or `seccomp_launcher_no_child_process`),
+capabilities, `no-new-privileges`, read-only rootfs, writable mounts, and
+active canary outcomes. Qualification verification compares the invariant
+backend profile signed by the authority; run-specific policy and mount hashes
+remain signed in each trace and may differ across isolated workspaces. The
+reference Observer derives `subject.isolation` from the active manifest instead
+of trusting the request, and ingestion binds the per-run
+`isolationManifestHash` into runtime and provenance evidence. In this contract,
+`read_only_sandbox` means deny-by-default outside the manifest's declared
+writable workspace/scratch mounts; it does not mean that the evaluated
+workspace itself is immutable.
 
 `subject.caseSetHash` must use the same semantic case projection as AWB provenance. The safest
 integration is to obtain the materialized cases and their manifest from AWB, then make the
@@ -203,6 +233,31 @@ awb observer qualify \
   --observer-version <version> \
   --observer-private-key </secure/observer-private.pem> \
   --qualification-authority-private-key </secure/qualification-authority-private.pem> \
+  --out <qualification-dir>
+```
+
+On Ubuntu with the dedicated local Docker image already built and resolved to
+an immutable id or digest:
+
+```bash
+awb observer observe \
+  --request <observer-request.json> \
+  --observer-private-key </secure/observer-private.pem> \
+  --isolation-backend linux-oci-docker \
+  --observer-image <image@sha256:...> \
+  --observer-image-id <sha256:...> \
+  --out <workflow-trace.json>
+
+awb observer qualify \
+  --target <target-id> \
+  --suite <suite> \
+  --observer-id <observer-id> \
+  --observer-version <version> \
+  --observer-private-key </secure/observer-private.pem> \
+  --qualification-authority-private-key </secure/qualification-authority-private.pem> \
+  --isolation-backend linux-oci-docker \
+  --observer-image <image@sha256:...> \
+  --observer-image-id <sha256:...> \
   --out <qualification-dir>
 ```
 

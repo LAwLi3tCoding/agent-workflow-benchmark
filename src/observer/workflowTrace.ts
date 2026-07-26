@@ -29,6 +29,33 @@ export interface WorkflowTraceBundle {
     };
     isolation: "read_only_sandbox" | "working_directory_only";
     permissionMode: "read_only_no_approval" | "runner_default";
+    isolationManifest?: {
+      backend: "macos-seatbelt" | "linux-oci-docker";
+      platform: string;
+      runtimeVersion: string;
+      image?: string;
+      imageId?: string;
+      policyHash: string;
+      mountManifestHash: string;
+      networkMode: "none";
+      processPolicy:
+        | "seatbelt_process_exec_allowlist"
+        | "seccomp_launcher_no_child_process";
+      capabilities: {
+        drop: string[];
+        add: string[];
+      };
+      noNewPrivileges: boolean;
+      readOnlyRootfs: boolean;
+      writableMounts: string[];
+      canaries: {
+        signingKeyRead: "EPERM" | "ABSENT_FROM_MOUNT_NAMESPACE";
+        networkDenied: "EPERM" | "NETWORK_UNREACHABLE";
+        nestedProcessDenied: "EPERM" | "DENIED";
+        outOfScopeWriteDenied: "EPERM" | "EROFS" | "EACCES";
+      };
+      manifestHash: string;
+    };
     model?: string;
   };
   cases: Array<{
@@ -299,12 +326,101 @@ function assertBundleShape(bundle: WorkflowTraceBundle): void {
     typeof bundle.subject.runner.capabilitiesHash !== "string" ||
     !["read_only_sandbox", "working_directory_only"].includes(bundle.subject.isolation) ||
     !["read_only_no_approval", "runner_default"].includes(bundle.subject.permissionMode) ||
+    (bundle.subject.isolationManifest !== undefined &&
+      !isValidIsolationManifest(bundle.subject.isolationManifest)) ||
     !Array.isArray(bundle.cases) ||
     !bundle.attestation ||
     bundle.attestation.algorithm !== "ed25519" ||
     typeof bundle.attestation.signature !== "string"
   ) {
     throw new Error("Workflow trace bundle is missing required fields.");
+  }
+  if (bundle.subject.isolationManifest !== undefined) {
+    assertWorkflowTraceIsolationBinding(
+      bundle.subject.isolation,
+      bundle.subject.isolationManifest
+    );
+  }
+}
+
+function isValidIsolationManifest(
+  value: WorkflowTraceBundle["subject"]["isolationManifest"]
+): boolean {
+  if (!value) {
+    return false;
+  }
+  const { manifestHash, ...content } = value;
+  const expectedManifestHash = `sha256:${createHash("sha256")
+    .update(stableJson(content))
+    .digest("hex")}`;
+  const backendBindingValid =
+    value.backend === "linux-oci-docker"
+      ? value.platform === "linux" &&
+        value.processPolicy === "seccomp_launcher_no_child_process" &&
+        typeof value.image === "string" &&
+        value.image.length > 0 &&
+        /^sha256:[a-f0-9]{64}$/u.test(value.imageId ?? "") &&
+        value.readOnlyRootfs === true &&
+        stableJson([...value.writableMounts].sort()) ===
+          stableJson(["/tmp", "/workspace"])
+      : value.platform === "darwin" &&
+        value.processPolicy === "seatbelt_process_exec_allowlist";
+  return Boolean(
+    ["macos-seatbelt", "linux-oci-docker"].includes(value.backend) &&
+      typeof value.platform === "string" &&
+      value.platform.length > 0 &&
+      typeof value.runtimeVersion === "string" &&
+      value.runtimeVersion.length > 0 &&
+      /^sha256:[a-f0-9]{64}$/u.test(value.policyHash) &&
+      /^sha256:[a-f0-9]{64}$/u.test(value.mountManifestHash) &&
+      value.networkMode === "none" &&
+      ["seatbelt_process_exec_allowlist", "seccomp_launcher_no_child_process"].includes(
+        value.processPolicy
+      ) &&
+      Array.isArray(value.capabilities.drop) &&
+      value.capabilities.drop.length === 1 &&
+      value.capabilities.drop[0] === "ALL" &&
+      Array.isArray(value.capabilities.add) &&
+      value.capabilities.add.length === 0 &&
+      value.noNewPrivileges === true &&
+      typeof value.readOnlyRootfs === "boolean" &&
+      Array.isArray(value.writableMounts) &&
+      value.writableMounts.length > 0 &&
+      value.canaries &&
+      ["EPERM", "ABSENT_FROM_MOUNT_NAMESPACE"].includes(
+        value.canaries.signingKeyRead
+      ) &&
+      ["EPERM", "NETWORK_UNREACHABLE"].includes(
+        value.canaries.networkDenied
+      ) &&
+      ["EPERM", "DENIED"].includes(value.canaries.nestedProcessDenied) &&
+      ["EPERM", "EROFS", "EACCES"].includes(
+        value.canaries.outOfScopeWriteDenied
+      ) &&
+      manifestHash === expectedManifestHash &&
+      backendBindingValid
+  );
+}
+
+export function assertWorkflowTraceIsolationManifest(
+  value: WorkflowTraceBundle["subject"]["isolationManifest"]
+): void {
+  if (!isValidIsolationManifest(value)) {
+    throw new Error(
+      "Workflow trace isolation manifest is stale, unsafe, or backend-inconsistent."
+    );
+  }
+}
+
+export function assertWorkflowTraceIsolationBinding(
+  isolation: WorkflowTraceBundle["subject"]["isolation"],
+  value: WorkflowTraceBundle["subject"]["isolationManifest"]
+): void {
+  assertWorkflowTraceIsolationManifest(value);
+  if (isolation !== "read_only_sandbox") {
+    throw new Error(
+      "Workflow trace isolation claim does not match the qualified reference Observer manifest."
+    );
   }
 }
 

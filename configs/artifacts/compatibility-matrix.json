@@ -250,6 +250,66 @@
       "missingTrustDisposition": "DIAGNOSTIC_ONLY",
       "unsupportedCode": "ARTIFACT_SCHEMA_VERSION_UNSUPPORTED",
       "action": "Rebuild trial metrics from a provenance-validated reliability report; missing source binding or integrity cannot be reconstructed."
+    },
+    {
+      "artifactType": "trajectory_review",
+      "currentVersion": "0.1.0",
+      "readableVersions": ["0.1.x"],
+      "migrationMode": "diagnostic_on_missing_trust",
+      "requiredTrustFields": ["source.sha256", "source.traceDiffContentHash", "taxonomy.version", "deterministicFindings", "validation.status", "gateAuthority", "integrity.contentHash"],
+      "missingTrustDisposition": "DIAGNOSTIC_ONLY",
+      "unsupportedCode": "ARTIFACT_SCHEMA_VERSION_UNSUPPORTED",
+      "action": "Rebuild trajectory review from a verified trace-diff artifact; missing source binding or deterministic finding integrity cannot be reconstructed."
+    },
+    {
+      "artifactType": "workflow_economics_report",
+      "currentVersion": "0.1.0",
+      "readableVersions": ["0.1.x"],
+      "migrationMode": "diagnostic_on_missing_trust",
+      "requiredTrustFields": ["sources.traceDiff.contentHash", "sources.trajectoryReview.contentHash", "sources.baselineSuite.sha256", "sources.candidateSuite.sha256", "metricAvailability", "cases", "gateAuthority", "integrity.contentHash"],
+      "missingTrustDisposition": "DIAGNOSTIC_ONLY",
+      "unsupportedCode": "ARTIFACT_SCHEMA_VERSION_UNSUPPORTED",
+      "action": "Rebuild workflow economics from verified trace-diff, bound trajectory-review, and matched suite-result artifacts; missing efficiency metrics remain unavailable."
+    },
+    {
+      "artifactType": "otlp_diagnostic_import",
+      "currentVersion": "0.1.0",
+      "readableVersions": ["0.1.x"],
+      "migrationMode": "diagnostic_on_missing_trust",
+      "requiredTrustFields": ["source.sha256", "manifest.integrity.contentHash", "events", "status", "gateAuthority", "integrity.contentHash"],
+      "missingTrustDisposition": "DIAGNOSTIC_ONLY",
+      "unsupportedCode": "ARTIFACT_SCHEMA_VERSION_UNSUPPORTED",
+      "action": "Re-import the OTLP JSON with the current diagnostic mapper; OTLP imports are lossy diagnostic evidence and never gain Observer qualification or gate authority."
+    },
+    {
+      "artifactType": "trace_import_manifest",
+      "currentVersion": "0.1.0",
+      "readableVersions": ["0.1.x"],
+      "migrationMode": "diagnostic_on_missing_trust",
+      "requiredTrustFields": ["source.sourceHash", "mapping.contentHash", "redaction.evidenceHash", "status", "gateAuthority", "integrity.contentHash"],
+      "missingTrustDisposition": "DIAGNOSTIC_ONLY",
+      "unsupportedCode": "ARTIFACT_SCHEMA_VERSION_UNSUPPORTED",
+      "action": "Re-import the OTLP JSON with the current diagnostic mapper; an imported trace never gains Observer qualification or gate authority."
+    },
+    {
+      "artifactType": "production_trace_curation",
+      "currentVersion": "0.1.0",
+      "readableVersions": ["0.1.x"],
+      "migrationMode": "diagnostic_on_missing_trust",
+      "requiredTrustFields": ["source.importContentHash", "privacy", "lineage.dedupHash", "reviewRequirements", "prerequisites", "packageState", "gateAuthority", "integrity.contentHash"],
+      "missingTrustDisposition": "DIAGNOSTIC_ONLY",
+      "unsupportedCode": "ARTIFACT_SCHEMA_VERSION_UNSUPPORTED",
+      "action": "Rebuild the draft from an integrity-valid redacted diagnostic import and repeat owner, security, consent, retention, reference-run, and holdout review before any promotion."
+    },
+    {
+      "artifactType": "benchmark_governance_report",
+      "currentVersion": "0.1.0",
+      "readableVersions": ["0.1.x"],
+      "migrationMode": "diagnostic_on_missing_trust",
+      "requiredTrustFields": ["source.inputHash", "identities", "splitSummary", "policyChecks", "domainReadiness", "status", "gateAuthority", "integrity.contentHash"],
+      "missingTrustDisposition": "DIAGNOSTIC_ONLY",
+      "unsupportedCode": "ARTIFACT_SCHEMA_VERSION_UNSUPPORTED",
+      "action": "Rebuild the governance report from explicit split-isolation, contamination, saturation, reproducibility, and domain-observability evidence; policy review never creates gate authority."
     }
   ]
 }

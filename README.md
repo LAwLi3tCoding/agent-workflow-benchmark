@@ -131,7 +131,12 @@ side effects, telemetry or token-ledger loss, sensitive leakage, invalid
 provenance, and unregistered hard-failure codes. P0 failures block; P1 failures
 cap a case below PASS.
 
-Status update (2026-07-27): AWB now ships `trajectory-review` schema-validated reports with deterministic recovery metadata and now-enforced `baseline` timestamps in trace deltas; the long-horizon safety mutation family (`prompt-injection`, `objective-hijack`, `tool-chain-escalation`, `handoff-delay-trigger`, `memory-poison`, `unsafe-recovery`) remains registered as hard-fails in the contract and fixture-backed coverage.
+AWB ships schema-validated `trajectory-review` reports with deterministic
+recovery metadata and enforced `baseline` timestamps in trace deltas. The
+long-horizon safety mutation family (`prompt-injection`, `objective-hijack`,
+`tool-chain-escalation`, `handoff-delay-trigger`, `memory-poison`,
+`unsafe-recovery`) is registered as hard-fails in the contract and covered by
+fixtures.
 
 ### Current runner evidence
 
@@ -144,8 +149,20 @@ Status update (2026-07-27): AWB now ships `trajectory-review` schema-validated r
 
 ### Signed workflow-trace admission
 
-The reference Observer runs the evaluated Runner behind a deny-default macOS Seatbelt boundary with a scrubbed environment. It allows workspace writes and the exact Runner executable, denies signing-key reads, network, and unobserved nested executables, and requires active canaries for all three to fail with `EPERM`. HOME/TMPDIR writes remain observable, and the signed trace output must be outside every Runner workspace.
-It then collects, redacts, and Ed25519-signs filesystem, tool, process, network-policy, artifact, state, side-effect, and token evidence. Qualification also makes the controlled Runner attempt direct network and nested-tool bypasses. Qualify it with a separate authority before release gating:
+The reference Observer runs the evaluated Runner behind an explicit fail-closed
+boundary with a scrubbed environment. AWB currently includes two reference
+backends:
+
+| Backend | Boundary |
+| --- | --- |
+| `macos-seatbelt` | macOS `/usr/bin/sandbox-exec`; allows workspace writes and the exact Runner executable, denies signing-key reads, network, and unobserved nested executables, and requires active canaries to fail closed |
+| `linux-oci-docker` | Linux OCI/Docker image bound by immutable image identity, no network, read-only rootfs, dropped capabilities, `no-new-privileges`, seccomp child-process denial, signing key outside the mount, and active key/network/nested-process/write canaries |
+
+The Observer then collects, redacts, and Ed25519-signs filesystem, tool,
+process, network-policy, artifact, state, side-effect, and token evidence.
+Qualification also makes the controlled Runner attempt direct network and
+nested-tool bypasses. Qualify it with a separate authority before release
+gating:
 
 ```bash
 awb observer observe --request observer-request.json --observer-private-key /secure/observer-private.pem --out observer-output/workflow-trace.json
@@ -190,7 +207,10 @@ metadata to self-assert `valid` is ignored. The private keys must stay outside
 the Runner, repository, generated artifacts, and logs. See the
 [workflow-trace Observer contract](docs/workflow-trace-observer-contract.md).
 
-The bundled reference boundary is Darwin-only and requires `/usr/bin/sandbox-exec`. Unsupported isolation fails closed, produces no valid qualification artifact, and cannot exceed `DIAGNOSTIC_ONLY`.
+Unsupported isolation fails closed, produces no valid qualification artifact,
+and cannot exceed `DIAGNOSTIC_ONLY`. The Linux Docker qualification path is
+available for hosted or Linux environments, but a commit must still pass its
+Linux Observer job before that commit can rely on Linux qualification evidence.
 
 ## Common Workflows
 
@@ -210,7 +230,7 @@ the [Gold Corpus contract](docs/gold-corpus.md).
 Use only development/calibration Gold Corpus data to fit a versioned policy:
 
 ```bash
-awb gate-policy calibrate --corpus fixtures/gold-corpus/v1/manifest.yaml --policy-version 1.0.0 --out reports/gate-policy/v1/fit
+awb gate-policy calibrate --corpus fixtures/gold-corpus/v1/manifest.yaml --policy-version 1.1.0 --out reports/gate-policy/v1/fit
 ```
 
 The command writes `gate-policy.json`, `calibration-report.json`, and
@@ -223,23 +243,6 @@ awb gate-policy validate-holdout --corpus fixtures/gold-corpus/v1/manifest.yaml 
 ```
 
 Holdout validation exits `0` for `PASS` and `1` for `FAIL`. Its stability metric is deterministic full-harness replay, not live-run reliability. Public Gold Corpus PASS remains harness-diagnostic with `releaseEligible: false`; real criterion validity, human labels, qualified live traces, and production-blocking authorization remain separate. See [gate policy calibration](docs/gate-policy-calibration.md); committed synthetic evidence is under `fixtures/calibration/v1/{fit,holdout}`.
-
-### Schema compatibility and migration
-
-AWB validates machine artifacts through `schemas/*.schema.json` and
-`configs/artifacts/schema-registry.json`. The current compatibility matrix reads
-registered `0.1.x` artifacts, treats `0.y.z` minor changes as breaking, and
-requires explicit migration or diagnostic downgrade for additive trust fields.
-Use `awb artifact migrate --input <artifact.json> --out reports/artifact-migration`
-before reusing historical artifacts.
-
-Pass `--artifact-type <type>` when the filename is non-canonical. The command
-writes `migration-result.json` and, when safe, `migrated-artifact.json`; exits
-are `0` for `CURRENT` or `MIGRATED`, `2` for `DIAGNOSTIC_ONLY`, and `1` for
-`INCOMPATIBLE`. Migration never invents trust: missing Observer attestation,
-policy hashes, integrity hashes, provenance bindings, runtime identity, or
-conditions identity keep the artifact diagnostic-only. See
-[artifact schema compatibility](docs/artifact-schema-compatibility.md).
 
 ### Matched baseline/candidate regression
 
@@ -268,27 +271,6 @@ awb evaluate --target my-workflow --target-root <candidate-checkout> --planner-r
 
 Use `smoke` for fast feedback, `full` for broad contract coverage, and
 `adaptive` to generate follow-up cases for missing coverage.
-
-### Onboard a workflow
-
-```bash
-awb init-target \
-  --agent-root path/to/workflow \
-  --target-id my-workflow \
-  --name "My Workflow" \
-  --out configs/targets/my-workflow.draft.yaml
-```
-
-Review the generated gap report, confirm owners, joins, routes, artifacts,
-states, budgets, and command policy, then produce a `contract-validity`
-artifact bound to the final `contractHash`. Only a target pack whose
-`contractReview.status` is `reviewed` and whose artifact hash and contract hash
-validate can be registered. Generated drafts remain schema-valid but
-non-gateable.
-
-The current machine contract and validity boundaries are documented in
-[evaluation contract traceability](docs/evaluation-contract-traceability.md)
-and the [evaluation validity protocol](docs/evaluation-validity-protocol.md).
 
 ### Self-debug and mutation validation
 
@@ -320,10 +302,14 @@ target source and do not prove live runner behavior.
 | `gate` | Apply deterministic CI release policy |
 | `gate-policy ...` | Calibrate or holdout-validate a versioned scoring and gate policy |
 | `artifact migrate` | Read or migrate registered artifacts with stable status and reason codes |
+| `trace import-otlp` | Import untrusted OTLP JSON into sanitized diagnostic events and a schema-valid trace import manifest |
+| `trace curate-production` | Build a redacted production-trace curation draft with explicit owner, security, reference-run, and holdout prerequisites |
+| `governance benchmark` | Assess split isolation, contamination, saturation, reproducibility, and domain adapter evidence |
 | `adapter conformance` | Validate a Runner Adapter contract and emitted `CaseRun` shape as diagnostic evidence |
 | `ci benchmark-health` | Aggregate periodic benchmark self-checks into a fail-closed version disposition |
 | `score` / `report` | Inspect runs; render decision, trace-diff, trend, runner-ranking, and static viewer artifacts |
 | `report trajectory-review` | Rebuild deterministic process-defect trajectories from trace-diff evidence and optional judge/human labels |
+| `report workflow-economics` | Compute diagnostic workflow efficiency and economics from trace-diff, trajectory-review, and matched suite results |
 | `report trial-metrics` | Compute finite-sample pass@k and pass^k; source reports alone remain diagnostic-only |
 | `criterion-validity ...` | Package blinded external studies or analyze independent labels |
 | `debug ...` | Reverse-validate the harness or analyze repeated-run reliability |
@@ -341,7 +327,10 @@ target source and do not prove live runner behavior.
 | `comparison-result.json` | Integrity-bound paired classification |
 | `gate-result.json` | Deterministic release decision |
 | `gate-policy.json` / `calibration-report.*` | Versioned policy, fit evidence, and holdout diagnostics |
-| `report.md` / `decision-report.*` / `trace-diff.json` / `trajectory-review.json` / `trajectory-review.md` / `trend-report.json` / `viewer.html` | Diagnosis, decisions, redacted trace diffs with process-defect deltas plus deterministic trajectory recovery metrics, era-separated trends, and static viewing |
+| `otlp-diagnostic-import.json` / `trace-import-manifest.json` / `diagnostic-events.json` | Sanitized OTLP-derived diagnostic import, import manifest, and normalized diagnostic events |
+| `production-trace-curation.json` / `production-trace-curation.md` | Redaction-reviewed draft that still requires owner/security review, a reference run, and holdout isolation |
+| `benchmark-governance-report.json` / `benchmark-governance-report.md` | Diagnostic benchmark governance review for split isolation, contamination, saturation, reproducibility, and domain evidence |
+| `report.md` / `decision-report.*` / `trace-diff.json` / `trajectory-review.json` / `trajectory-review.md` / `workflow-economics-report.json` / `workflow-economics-report.md` / `trend-report.json` / `viewer.html` | Diagnosis, decisions, redacted trace diffs with process-defect deltas, deterministic trajectory recovery metrics, workflow economics, era-separated trends, and static viewing |
 | `reliability-report.*` / `validity-report.*` | Reliability, quarantine, and external-validity evidence |
 | `adapter-conformance-report.json` | Adapter contract and runtime conformance diagnostics; never workflow PASS evidence |
 | `benchmark-health-report.json` | Periodic benchmark health and version disposition |
@@ -349,6 +338,12 @@ target source and do not prove live runner behavior.
 | `trial-metrics-report.*` | Source-bound pass@k/pass^k estimates with an explicit independent-verification ceiling |
 
 Unsigned simulated repeats can report `DIAGNOSTIC_REPRODUCIBLE`, but only stable qualified live `workflow_trace` studies can report a strong `RELIABLE` conclusion.
+Imported OTLP telemetry, production-trace curation, benchmark governance,
+trajectory review, and workflow economics artifacts remain
+`DIAGNOSTIC_ONLY` with trust ceiling `NONE`; successful diagnostic commands
+return exit code `2`. Workflow economics uses the `0–100` `cappedScore` scale,
+requires an explicit canonical UTC `--generated-at`, and permits Pareto
+dominance only when both token ledgers have `high` confidence.
 Run `awb <command> --help` for the complete option set.
 
 ## Security and Privacy

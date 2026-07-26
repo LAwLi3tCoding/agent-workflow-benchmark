@@ -28,7 +28,7 @@ Fit candidates with only development and calibration data:
 ```bash
 awb gate-policy calibrate \
   --corpus fixtures/gold-corpus/v1/manifest.yaml \
-  --policy-version 1.0.0 \
+  --policy-version 1.1.0 \
   --out reports/gate-policy/v1/fit
 ```
 

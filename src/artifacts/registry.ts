@@ -27,7 +27,13 @@ export const ARTIFACT_TYPES = [
   "adapter_conformance_report",
   "benchmark_health_report",
   "runner_ranking_report",
-  "trial_metrics_report"
+  "trial_metrics_report",
+  "trajectory_review",
+  "workflow_economics_report",
+  "otlp_diagnostic_import",
+  "trace_import_manifest",
+  "production_trace_curation",
+  "benchmark_governance_report"
 ] as const;
 
 export type RegisteredArtifactType = (typeof ARTIFACT_TYPES)[number];

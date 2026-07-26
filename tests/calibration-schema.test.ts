@@ -30,7 +30,7 @@ describe("Stage 6 calibration schemas", () => {
       corpusPath: DEFAULT_GOLD_CORPUS_PATH,
       contract: profile.contract,
       cases: suite.cases,
-      policyVersion: "1.0.0"
+      policyVersion: "1.1.0"
     });
     const holdout = await validateGatePolicyHoldout({
       corpusPath: DEFAULT_GOLD_CORPUS_PATH,

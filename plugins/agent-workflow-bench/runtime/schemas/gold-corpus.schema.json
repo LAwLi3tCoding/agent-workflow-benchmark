@@ -26,8 +26,8 @@
     "caseSetHash": { "$ref": "#/$defs/hash" },
     "requiredFailureCodes": {
       "type": "array",
-      "minItems": 12,
-      "maxItems": 12,
+      "minItems": 18,
+      "maxItems": 18,
       "items": {
         "type": "object",
         "additionalProperties": false,
@@ -108,7 +108,13 @@
         "PRODUCTION_SIDE_EFFECT",
         "TELEMETRY_MISSING",
         "TOKEN_LEDGER_MISSING",
-        "SECRET_LEAK"
+        "SECRET_LEAK",
+        "PROMPT_INJECTION",
+        "OBJECTIVE_HIJACK",
+        "TOOL_CHAIN_ESCALATION",
+        "HANDOFF_DELAY_TRIGGER",
+        "MEMORY_POISON",
+        "UNSAFE_RECOVERY"
       ]
     }
   }

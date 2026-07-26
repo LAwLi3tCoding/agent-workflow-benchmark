@@ -226,6 +226,25 @@ observation level 变化时会切分 era，不跨不可比边界连线。`viewer
 输出静态只读 HTML 和 manifest，不加载远程资源、不执行命令、不改 gate、不读未脱敏 trace。
 详细示例见 `docs/reporting-and-trends.md`。
 
+生产轨迹和治理数据先走诊断-only 管道，不能直接变成准入证据：
+
+```bash
+awb trace import-otlp --input <otlp-export.json> --source-ref <portable-ref> --out <import-dir>
+awb trace curate-production --input <production-trace-curation-input.json> --out <curation-dir>
+awb governance benchmark --input <benchmark-governance-input.json> --out <governance-dir>
+awb report workflow-economics --trace-diff <trace-diff.json> --trajectory-review <trajectory-review.json> --baseline-suite <baseline-suite-result.json> --candidate-suite <candidate-suite-result.json> --generated-at <canonical-utc-timestamp> --out <economics-dir>
+```
+
+`import-otlp` 写出 `otlp-diagnostic-import.json`、`trace-import-manifest.json` 和
+`diagnostic-events.json`，返回 `2`。`curate-production` 写出 draft curation JSON/Markdown，
+返回 `2`。`governance benchmark` 写出 governance report；policy complete 时仍返回 `2`，
+证据缺失或 policy blocked 时返回 `1`。`workflow-economics` 写出成本/效率报告，返回
+`2`；它使用 `0–100` `cappedScore`，要求显式规范 UTC `--generated-at`，且只有
+baseline/candidate 两侧 token 证据均为 `high` confidence 时才允许 Pareto dominance。
+较低置信度的 token 差值只展示并使 case 保持 `INCOMPARABLE`。这些制品全部固定
+`DIAGNOSTIC_ONLY` 和 `gateAuthority: NONE`，只帮助扩充 corpus、检查治理准备度和
+分析成本效率，不授权 gate PASS。
+
 ## 8. 分数、比较和 Gate 动作
 
 推荐准入流程：
@@ -247,10 +266,11 @@ Gate exit code 固定为：
 
 只有经过独立资格认证的 live Observer 输出真实 `workflow_trace` evidence 时，gate 才能 PASS。Observer 与资格授权方分别用 Ed25519 签名轨迹和资格制品；`ingest-trace`、`compare` 和 `gate` 必须显式接收两个公钥。私钥不能提供给 Runner、仓库、制品或日志，也不能作为 CLI trust anchor。没有有效资格制品时 `qualificationStatus` 保持 `missing`；可编辑元数据里自报的 `valid` 会被忽略。simulated run 和内置 live `contract-summary` adapter 同样不能给 CI 准入 PASS。
 
-内置 reference Observer 当前依赖 Darwin 的
-`/usr/bin/sandbox-exec`。它在 deny-default Seatbelt 中实际执行私钥读取、
-直连网络和嵌套子进程 canary，并要求全部返回 `EPERM`；静态策略声明不算
-观测证据。隔离后端不可用或两类签名复用同一密钥时，资格认证直接失败。
+内置 reference Observer 支持 `macos-seatbelt` 和 `linux-oci-docker` 两个显式后端。
+macOS 后端要求 `/usr/bin/sandbox-exec`，并在 deny-default Seatbelt 中实际执行私钥读取、
+直连网络和嵌套子进程 canary。Linux 后端要求 Docker CLI 和不可变的 Observer image ID
+或 digest；运行时使用只读 rootfs、禁网、无 capabilities、`no-new-privileges`、seccomp
+子进程拒绝、最小挂载和非 root 用户，并把 Observer 私钥放在 runner mount 外。静态策略声明不算观测证据；后端不可用、image 绑定不匹配、canary 成功、私钥暴露到挂载、未支持后端或两类签名复用同一密钥时，资格认证直接失败。
 
 签名证明 observer 身份和轨迹在签名后未被修改，不证明 observer 本身没有漏观测。将某个 observer 公钥加入 CI 之前，仍需用已知好/坏轨迹、mutation 和隔离检查验证 observer 实现。
 
@@ -276,7 +296,7 @@ Gate exit code 固定为：
 
 ## 9. Schema 和历史制品迁移
 
-AWB 的机器制品由 `schemas/*.schema.json`、`configs/artifacts/schema-registry.json` 和 `configs/artifacts/compatibility-matrix.json` 共同约束。当前正式 schema 覆盖 `ContractModel`、profile evidence、generation manifest、runtime manifest、Observer qualification、reliability report、validity report、suite、comparison、gate 和 provenance。
+AWB 的机器制品由 `schemas/*.schema.json`、`configs/artifacts/schema-registry.json` 和 `configs/artifacts/compatibility-matrix.json` 共同约束。当前正式 schema 覆盖 `ContractModel`、profile evidence、generation manifest、runtime manifest、Observer qualification、reliability report、validity report、suite、comparison、gate、provenance、trace import manifest、production trace curation、benchmark governance、trajectory review 和 workflow economics。
 
 历史制品复用前先运行：
 
@@ -335,7 +355,7 @@ awb gate --comparison <comparison-dir>/comparison-result.json --gate-policy <gat
 策略校准分两步。第一步只读取 Gold Corpus 的 development/calibration split：
 
 ```bash
-awb gate-policy calibrate --corpus fixtures/gold-corpus/v1/manifest.yaml --policy-version 1.0.0 --out reports/gate-policy/v1/fit
+awb gate-policy calibrate --corpus fixtures/gold-corpus/v1/manifest.yaml --policy-version 1.1.0 --out reports/gate-policy/v1/fit
 ```
 
 该命令返回 `2`，因为报告状态是 `PENDING_HOLDOUT`。如果所有 candidate 都无法
@@ -365,13 +385,13 @@ Runner 或 Observer 的稳定性；后者必须由 reliability study 证明。
 1. simulated fixture 不调用外部 Agent 或真实外部工具。
 2. `debug prepare-env` 只创建 target copy、fake wrapper 文件、mock service 描述和复现元数据；它不会自动启动 runner，也不会自动修改 `PATH`。
 3. `networkPolicyHash` 和 `production-network-deny` preflight 只描述期望策略，状态为 `DIAGNOSTIC_ONLY`，不代表已经强制阻断网络。
-4. Codex live runner 请求 read-only sandbox 和 no-approval；Claude live runner 使用 Claude CLI 默认权限。两者当前都只产生 contract-summary 诊断证据。
-5. 没有可验证强隔离时，Gate 不能 PASS；不可信 Target 不得配置生产凭证或生产服务。
+4. reference Observer 的 `linux-oci-docker` 后端会在 Docker 中执行禁网、只读 rootfs、无 capabilities、`no-new-privileges`、seccomp 子进程拒绝和 active canary；Docker 不可用、image 不可变绑定不满足或 canary 不符合预期时 fail closed。
+5. Codex live runner 请求 read-only sandbox 和 no-approval；Claude live runner 使用 Claude CLI 默认权限。两者当前都只产生 contract-summary 诊断证据。
+6. 没有可验证强隔离时，Gate 不能 PASS；不可信 Target 不得配置生产凭证或生产服务。
 
-当前 core 不会自动隔离 HOME、清洗调用方进程的全部凭证环境变量、强制 fake-only
-`PATH`、执行 OS 级 network deny 或捕获 side-effect ledger。需要这些能力时，应由 CI
-容器/沙箱或可信 runner adapter 明确实施并提供可验证证据，不能把 debug scaffold
-当成安全沙箱。
+`debug prepare-env` 不会自动隔离 HOME、清洗调用方进程的全部凭证环境变量、强制 fake-only
+`PATH`、执行 OS 级 network deny 或捕获 side-effect ledger。需要这些能力时，应由 reference
+Observer 后端、CI 容器/沙箱或可信 runner adapter 明确实施并提供可验证证据，不能把 debug scaffold 当成安全沙箱。
 
 ## 10. 自调试、反向验证与修复优化
 

@@ -5,13 +5,22 @@ import { getReliabilityPolicy } from "../evaluation/evaluationContract.js";
 import { hashFile, sha256Text, stableJson } from "../utils/hash.js";
 export async function buildRunProvenance(options) {
     const effectiveRunner = effectiveRunnerIdentity(options.runner, options.executionMode);
-    const boundary = options.verifiedTrace
+    const observedBoundary = options.verifiedTrace
         ? { evidenceKind: "live", observationLevel: "workflow_trace" }
         : options.dryRun
             ? { evidenceKind: "unknown", observationLevel: "capability_only" }
             : options.executionMode === "simulated"
                 ? { evidenceKind: "simulated", observationLevel: "synthetic_events" }
                 : evidenceBoundary(options.runner);
+    const effectiveBoundary = {
+        ...observedBoundary,
+        ...(options.evidenceOverride?.evidenceKind !== undefined
+            ? { evidenceKind: options.evidenceOverride.evidenceKind }
+            : {}),
+        ...(options.evidenceOverride?.observationLevel !== undefined
+            ? { observationLevel: options.evidenceOverride.observationLevel }
+            : {})
+    };
     const environment = {
         runtime: "node",
         runtimeVersion: process.version,
@@ -34,6 +43,12 @@ export async function buildRunProvenance(options) {
                     id: options.verifiedTrace.bundle.observer.id,
                     version: options.verifiedTrace.bundle.observer.version,
                     keyFingerprint: options.verifiedTrace.keyFingerprint,
+                    ...(options.verifiedTrace.bundle.subject.isolationManifest
+                        ? {
+                            isolationManifestHash: options.verifiedTrace.bundle.subject.isolationManifest
+                                .manifestHash
+                        }
+                        : {}),
                     qualificationStatus: options.verifiedQualification
                         ? "valid"
                         : "missing",
@@ -48,18 +63,22 @@ export async function buildRunProvenance(options) {
             }
             : {}),
         executionMode: options.executionMode,
-        evidenceKind: boundary.evidenceKind,
-        observationLevel: boundary.observationLevel,
+        evidenceKind: effectiveBoundary.evidenceKind,
+        observationLevel: effectiveBoundary.observationLevel,
         isolation: options.verifiedTrace
             ? options.verifiedTrace.bundle.subject.isolation
             : options.dryRun
                 ? "unknown"
-                : isolationFor(options.executionMode, options.runner.name),
+                : options.evidenceOverride?.isolation
+                    ? options.evidenceOverride.isolation
+                    : isolationFor(options.executionMode, options.runner.name),
         permissionMode: options.verifiedTrace
             ? options.verifiedTrace.bundle.subject.permissionMode
             : options.dryRun
                 ? "unknown"
-                : permissionModeFor(options.executionMode, options.runner.name),
+                : options.evidenceOverride?.permissionMode
+                    ? options.evidenceOverride.permissionMode
+                    : permissionModeFor(options.executionMode, options.runner.name),
         ...(options.verifiedTrace?.bundle.subject.model
             ? { model: options.verifiedTrace.bundle.subject.model }
             : options.model

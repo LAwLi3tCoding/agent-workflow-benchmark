@@ -354,6 +354,110 @@ describe("canonical evaluation contract", () => {
   });
 });
 
+const safetyTaxonomyClauses = [
+  {
+    id: "prompt-injection",
+    probeTemplate: "safety-prompt-injection-probe",
+    controlTemplate: "safety-prompt-injection-control",
+    oracleProbe: "oracle-safety-prompt-injection-probe",
+    oracleControl: "oracle-safety-prompt-injection-control",
+    failureCode: "PROMPT_INJECTION"
+  },
+  {
+    id: "objective-hijack",
+    probeTemplate: "safety-objective-hijack-probe",
+    controlTemplate: "safety-objective-hijack-control",
+    oracleProbe: "oracle-safety-objective-hijack-probe",
+    oracleControl: "oracle-safety-objective-hijack-control",
+    failureCode: "OBJECTIVE_HIJACK"
+  },
+  {
+    id: "tool-chain-escalation",
+    probeTemplate: "safety-tool-chain-escalation-probe",
+    controlTemplate: "safety-tool-chain-escalation-control",
+    oracleProbe: "oracle-safety-tool-chain-escalation-probe",
+    oracleControl: "oracle-safety-tool-chain-escalation-control",
+    failureCode: "TOOL_CHAIN_ESCALATION"
+  },
+  {
+    id: "handoff-delay-trigger",
+    probeTemplate: "safety-handoff-delay-trigger-probe",
+    controlTemplate: "safety-handoff-delay-trigger-control",
+    oracleProbe: "oracle-safety-handoff-delay-trigger-probe",
+    oracleControl: "oracle-safety-handoff-delay-trigger-control",
+    failureCode: "HANDOFF_DELAY_TRIGGER"
+  },
+  {
+    id: "memory-poison",
+    probeTemplate: "safety-memory-poison-probe",
+    controlTemplate: "safety-memory-poison-control",
+    oracleProbe: "oracle-safety-memory-poison-probe",
+    oracleControl: "oracle-safety-memory-poison-control",
+    failureCode: "MEMORY_POISON"
+  },
+  {
+    id: "unsafe-recovery",
+    probeTemplate: "safety-unsafe-recovery-probe",
+    controlTemplate: "safety-unsafe-recovery-control",
+    oracleProbe: "oracle-safety-unsafe-recovery-probe",
+    oracleControl: "oracle-safety-unsafe-recovery-control",
+    failureCode: "UNSAFE_RECOVERY"
+  }
+] as const;
+
+describe("long-horizon safety taxonomy contract", () => {
+  test("declares versioned probe/control coverage and P0 hard failures for every safety clause", async () => {
+    const contract = await readEvaluationContract() as EvaluationContractFixture & {
+      coverageTargets: Array<{ id: string; status: string; version?: string }>;
+      oracles: Array<{ id: string; templateId: string; expectedHardFailures: string[]; status: string; version?: string }>;
+    };
+
+    for (const clause of safetyTaxonomyClauses) {
+      expect(contract.coverageTargets).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            id: `safety:${clause.id}:probe`,
+            status: "implemented",
+            version: "1.0.0"
+          }),
+          expect.objectContaining({
+            id: `safety:${clause.id}:control`,
+            status: "implemented",
+            version: "1.0.0"
+          })
+        ])
+      );
+      expect(contract.oracles).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            id: clause.oracleProbe,
+            templateId: clause.probeTemplate,
+            expectedHardFailures: [clause.failureCode],
+            status: "implemented",
+            version: "1.0.0"
+          }),
+          expect.objectContaining({
+            id: clause.oracleControl,
+            templateId: clause.controlTemplate,
+            expectedHardFailures: [],
+            status: "implemented",
+            version: "1.0.0"
+          })
+        ])
+      );
+      expect(contract.hardFailures).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            code: clause.failureCode,
+            severity: "P0",
+            status: "implemented"
+          })
+        ])
+      );
+    }
+  });
+});
+
 async function readEvaluationContract(): Promise<EvaluationContractFixture> {
   return YAML.parse(
     await readFile(path.join(cwd, "configs/evaluation/evaluation-contract.yaml"), "utf8")

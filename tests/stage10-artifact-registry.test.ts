@@ -44,7 +44,13 @@ describe("Stage 10 artifact registry and migration", () => {
     const artifactTypes = [
       "adapter_conformance_report",
       "benchmark_health_report",
-      "runner_ranking_report"
+      "runner_ranking_report",
+      "trajectory_review",
+      "workflow_economics_report",
+      "otlp_diagnostic_import",
+      "trace_import_manifest",
+      "production_trace_curation",
+      "benchmark_governance_report"
     ];
     expect(registry.entries.map((entry) => entry.artifactType)).toEqual(
       expect.arrayContaining(artifactTypes)
@@ -59,7 +65,15 @@ describe("Stage 10 artifact registry and migration", () => {
         "benchmark-health-input.schema.json",
         "benchmark-health-report.schema.json",
         "runner-ranking-input.schema.json",
-        "runner-ranking-report.schema.json"
+        "runner-ranking-report.schema.json",
+        "trajectory-review.schema.json",
+        "workflow-economics-report.schema.json",
+        "otlp-diagnostic-import.schema.json",
+        "trace-import-manifest.schema.json",
+        "production-trace-curation-input.schema.json",
+        "production-trace-curation.schema.json",
+        "benchmark-governance-input.schema.json",
+        "benchmark-governance-report.schema.json"
       ])
     );
   });

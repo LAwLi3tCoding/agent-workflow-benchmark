@@ -34,11 +34,11 @@ describe("Stage 6 calibrated gate policy", () => {
     const inputs = await targetInputs();
     const first = await fitGatePolicy({
       ...inputs,
-      policyVersion: "1.0.0"
+      policyVersion: "1.1.0"
     });
     const second = await fitGatePolicy({
       ...inputs,
-      policyVersion: "1.0.0"
+      policyVersion: "1.1.0"
     });
     const corpus = await loadGoldCorpus(DEFAULT_GOLD_CORPUS_PATH);
     const holdoutIds = corpus.cases
@@ -49,7 +49,7 @@ describe("Stage 6 calibrated gate policy", () => {
       report: first.report
     });
 
-    expect(first.policy.policyVersion).toBe("1.0.0");
+    expect(first.policy.policyVersion).toBe("1.1.0");
     expect(first.policy.policyHash).toMatch(/^sha256:[a-f0-9]{64}$/u);
     expect(first.policy.rulesHash).toMatch(/^sha256:[a-f0-9]{64}$/u);
     expect(first.policy).toEqual(second.policy);
@@ -61,7 +61,7 @@ describe("Stage 6 calibrated gate policy", () => {
       releaseEligible: false,
       status: "PENDING_HOLDOUT",
       policy: {
-        policyVersion: "1.0.0",
+        policyVersion: "1.1.0",
         policyHash: first.policy.policyHash,
         rulesHash: first.policy.rulesHash
       },

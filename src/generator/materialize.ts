@@ -11,6 +11,15 @@ import { publicAiCasePlan } from "../utils/redaction.js";
 import { normalizeCaseId } from "./caseIds.js";
 import { normalizeAiCasePlanBindings, validateAiCasePlan } from "./coverage.js";
 
+const safetyCategories = [
+  "prompt-injection",
+  "objective-hijack",
+  "tool-chain-escalation",
+  "handoff-delay-trigger",
+  "memory-poison",
+  "unsafe-recovery"
+] as const;
+
 export function materializeSmokeSuite(
   contract: ContractModel,
   options: { suite?: string; seed?: string } = {}
@@ -138,6 +147,7 @@ function makeCase(
   const id = `${contract.targetId}-smoke-${String(index).padStart(3, "0")}-${templateId}${
     qualifyStatusScope && statusScope ? `-${normalizeCaseId(statusScope)}` : ""
   }`;
+  const safety = safetyMetadata(templateId);
   const base = {
     schemaVersion: "0.1.0",
     id,
@@ -152,6 +162,10 @@ function makeCase(
     bindings: {
       primaryRole,
       owner,
+      ...(safety ? {
+        safetyCategory: safety.category,
+        safetyControl: String(safety.control)
+      } : {}),
       ...(templateId === "required-join" && join
         ? { joinId: join.id }
         : {}),
@@ -200,6 +214,18 @@ function oracleApplicability(
     );
   }
   return { status: "materialized" };
+}
+
+function safetyMetadata(templateId: string): { category: string; control: boolean } | undefined {
+  for (const category of safetyCategories) {
+    if (templateId === `safety-${category}-probe`) {
+      return { category, control: false };
+    }
+    if (templateId === `safety-${category}-control`) {
+      return { category, control: true };
+    }
+  }
+  return undefined;
 }
 
 function hasPassAndNonPassSemantics(contract: ContractModel): boolean {

@@ -53,7 +53,8 @@ export async function runReferenceObserverQualification(options) {
             observerId: options.observerId,
             observerVersion: options.observerVersion,
             contract: options.contract,
-            caseSetHash
+            caseSetHash,
+            isolation: options.isolation
         });
         const knownGood = knownGoodRuns[0];
         const mutationOutcomes = await runObserverMutationChecks({
@@ -106,6 +107,9 @@ export async function runReferenceObserverQualification(options) {
             workflowTraceSchemaHash,
             qualificationSuiteHash: observerQualificationSuiteHash()
         };
+        if (knownGood.bundle.subject.isolationManifest) {
+            subject.isolationManifest = knownGood.bundle.subject.isolationManifest;
+        }
         const results = {
             decision,
             p0DetectionRate,
@@ -211,6 +215,7 @@ export async function verifyObserverQualificationArtifact(artifactPath, trustedQ
         artifact.subject.caseSetHash !== expected.caseSetHash) {
         throw new Error("Observer qualification observer, contract, or case-set binding does not match the trace.");
     }
+    assertIsolationManifestCompatibility(expected.isolationManifest, artifact.subject.isolationManifest);
     const workflowTraceSchemaHash = await hashFile(path.join(getBenchmarkRoot(), "schemas/workflow-trace.schema.json"));
     const evaluationContractHash = await hashFile(path.join(getBenchmarkRoot(), "configs", "evaluation", "evaluation-contract.yaml"));
     if (artifact.subject.evaluationContractHash !== evaluationContractHash ||
@@ -272,7 +277,7 @@ export async function verifyObserverQualificationArtifact(artifactPath, trustedQ
         authorityFingerprint
     };
 }
-export function assertQualifiedWorkflowTraceEvidence(verifiedTrace, expected) {
+export function assertQualifiedWorkflowTraceEvidence(verifiedTrace, expected, expectedIsolationManifest) {
     const observer = verifiedTrace.bundle.observer;
     if (observer.id !== expected.id ||
         observer.version !== expected.version ||
@@ -282,6 +287,7 @@ export function assertQualifiedWorkflowTraceEvidence(verifiedTrace, expected) {
             stableJson(expected.evidenceCapabilities)) {
         throw new Error("Workflow trace does not match the qualified Observer implementation and evidence capabilities.");
     }
+    assertIsolationManifestCompatibility(expectedIsolationManifest, verifiedTrace.bundle.subject.isolationManifest);
     const requiredEventByCapability = {
         filesystem: "filesystem_access",
         tool: "tool_call",
@@ -303,18 +309,39 @@ export function assertQualifiedWorkflowTraceEvidence(verifiedTrace, expected) {
                         event.payload.attempted === true &&
                         event.payload.allowed === false &&
                         event.payload.policyDecision === "deny" &&
-                        event.payload.outcomeCode === "EPERM")) &&
+                        ["EPERM", "NETWORK_UNREACHABLE"].includes(String(event.payload.outcomeCode)))) &&
                 (capability !== "tool" ||
                     (event.payload.boundaryProbe === true &&
                         event.payload.attempted === true &&
                         event.payload.allowed === false &&
                         event.payload.policyDecision === "deny" &&
-                        event.payload.outcomeCode === "EPERM")));
+                        ["EPERM", "DENIED"].includes(String(event.payload.outcomeCode)))));
             if (!evidence) {
                 throw new Error(`Qualified workflow trace case ${observedCase.caseId} is missing Observer-owned ${eventType} evidence.`);
             }
         }
     }
+}
+function assertIsolationManifestCompatibility(qualified, observed) {
+    if (qualified === undefined) {
+        return;
+    }
+    const qualifiedProfile = isolationQualificationProfile(qualified);
+    const observedProfile = observed
+        ? isolationQualificationProfile(observed)
+        : undefined;
+    if (observed === undefined ||
+        stableJson(qualifiedProfile) !== stableJson(observedProfile)) {
+        const differingFields = observedProfile
+            ? Object.keys(qualifiedProfile).filter((key) => stableJson(qualifiedProfile[key]) !==
+                stableJson(observedProfile[key]))
+            : ["missing"];
+        throw new Error(`Workflow trace isolation backend binding does not match the qualified Observer artifact (${differingFields.join(",")}).`);
+    }
+}
+function isolationQualificationProfile(manifest) {
+    const { policyHash: _policyHash, mountManifestHash: _mountManifestHash, manifestHash: _manifestHash, ...profile } = manifest;
+    return profile;
 }
 export function observerQualificationSuiteHash() {
     return sha256Text(stableJson({
@@ -346,8 +373,7 @@ function expectedQualificationKind(id) {
     return kinds[id];
 }
 async function runKnownGoodRepeats(options) {
-    const runnerPath = path.join(options.workspace, "qualification-runner.mjs");
-    await writeFile(runnerPath, [
+    const runnerSource = [
         'import { mkdir, writeFile } from "node:fs/promises";',
         'import { spawnSync } from "node:child_process";',
         'import net from "node:net";',
@@ -375,7 +401,7 @@ async function runKnownGoodRepeats(options) {
         "  })",
         ");",
         'process.stdout.write("qualification runner complete\\n");'
-    ].join("\n"));
+    ].join("\n");
     const observerPublicKeyPath = path.join(options.workspace, "observer-public.pem");
     await writeFile(observerPublicKeyPath, options.observerPublicKey.export({ type: "spki", format: "pem" }));
     const traceRoot = path.join(options.workspace, "observer-traces");
@@ -384,9 +410,12 @@ async function runKnownGoodRepeats(options) {
     for (let index = 0; index < 3; index += 1) {
         const runRoot = path.join(options.workspace, `repeat-${index + 1}`);
         await mkdir(path.join(runRoot, "state"), { recursive: true });
+        const runnerPath = path.join(runRoot, "qualification-runner.mjs");
+        await writeFile(runnerPath, runnerSource);
         await writeFile(path.join(runRoot, "state", "workflow.json"), '{"status":"ready"}\n');
         const tracePath = path.join(traceRoot, `repeat-${index + 1}.json`);
         await observeWithReferenceObserver({
+            isolation: options.isolation,
             privateKeyPath: options.observerPrivateKeyPath,
             outputPath: tracePath,
             request: {
@@ -437,8 +466,14 @@ async function runKnownGoodRepeats(options) {
             }
         });
         const isolationProbe = await readJson(path.join(runRoot, "artifacts", "isolation-probe.json"));
-        if (isolationProbe.networkDenied !== "EPERM" ||
-            isolationProbe.nestedProcessDenied !== "EPERM") {
+        const networkDenied = [
+            "EPERM",
+            "ENETUNREACH",
+            "EHOSTUNREACH",
+            "ENETDOWN"
+        ].includes(isolationProbe.networkDenied);
+        const nestedProcessDenied = ["EPERM", "EACCES", "ENOSYS"].includes(isolationProbe.nestedProcessDenied);
+        if (!networkDenied || !nestedProcessDenied) {
             throw new Error("Observer qualification Runner bypass canaries were not denied by the isolation boundary.");
         }
         const verified = await verifyWorkflowTraceBundle(tracePath, observerPublicKeyPath, {

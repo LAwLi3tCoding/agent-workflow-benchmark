@@ -2,255 +2,97 @@
 
 Status: current as of 2026-07-26.
 
-This review compares Agent Workflow Bench (AWB) with recent primary research,
-official benchmark implementations, and production evaluation systems. The
-goal is not to copy their product surfaces. It is to identify evidence-backed
-gaps in AWB's role as a CI-grade regression and release gate for coding-agent
-workflows.
+This note separates external research inference from repository evidence.
+External papers and specifications say what is likely worth adding next.
+Repository evidence says what this tree already implements.
 
 ## Executive Assessment
 
-AWB is already differentiated in areas that most agent benchmarks leave
-implicit:
+AWB is already strong where many agent benchmarks are still weak:
 
 - workflow contracts are profiled before cases are generated;
 - coverage includes roles, routes, joins, artifacts, state, budgets, and
-  side-effect policy rather than only final-task correctness;
+  side-effect policy instead of only final-task correctness;
 - deterministic hard failures dominate aggregate scores and model judgment;
 - baseline and candidate evidence must be matched before comparison;
 - simulated or runner-reported summaries cannot become release PASS evidence;
 - qualified Observer evidence, provenance, artifact compatibility, reliability,
   policy calibration, and external-validity artifacts are explicit.
 
-The largest remaining gaps are therefore not another generic score or another
-runner wrapper. They are:
+The research signal from 2026 is consistent: the next useful work is not a
+generic leaderboard score, but stronger trajectory diagnosis, longer-horizon
+safety coverage, OTLP-compatible trace ingestion, production-to-regression
+curation, and repeat-run evidence that preserves AWB's trust ceiling.
 
-1. richer, reviewable trajectory diagnosis;
-2. broader long-horizon safety and recovery coverage;
-3. standard trace ingestion and a production-trace-to-regression loop;
-4. portable independent observation beyond the current Darwin boundary;
-5. cost, latency, and multi-trial metrics that preserve AWB's trust ceiling.
+## Fresh Primary Sources
 
-## Evidence Reviewed
+These are research inputs, not repository facts.
 
-| Source | What it adds | Implication for AWB |
+| Source | What it establishes | AWB inference |
 | --- | --- | --- |
-| [Anthropic, *Demystifying evals for AI agents*](https://www.anthropic.com/engineering/demystifying-evals-for-ai-agents) | Separates capability from regression evals, recommends reference solutions, balanced positive/negative cases, transcript review, and both pass@k and pass^k | Strengthen generated-case quality, expose both trial metrics, and make trajectory review a maintained workflow |
-| [UK AI Security Institute Inspect metrics](https://inspect.aisi.org.uk/metrics.html) and [scorer reference](https://inspect.aisi.org.uk/reference/inspect_ai.scorer.html) | Defines finite-sample, draw-without-replacement estimators for pass@k and pass^k | Use the same estimators and publish the exact formula and sample counts |
-| [AgentLens](https://arxiv.org/abs/2607.06624) and its [open-source benchmark](https://github.com/agent-lens/agent-lens-bench) | Combines formal checks, readable trajectory reviews, side-by-side comparison, and nightly regression | Add a first-class, evidence-linked trajectory-review artifact without allowing a judge to override hard failures |
-| [ProcBench](https://arxiv.org/abs/2605.20251) | Normalizes trajectories, classifies process defects, and reports calibrated risk scorecards | Extend AWB from event presence to onset, propagation, recovery, and process-defect diagnosis |
-| [Failure as a Process](https://arxiv.org/abs/2607.09510) | Finds that many coding-agent failures begin early and become unrecoverable later | Score early validation, detection latency, recovery attempts, and point-of-no-return evidence |
-| [BenchAgent](https://arxiv.org/abs/2606.05670) | Compares single- and multi-agent workflows under aligned tools, logging, answer contracts, and usage accounting | Keep substrate and conditions alignment as a hard comparability requirement and expose accuracy-cost trade-offs |
-| [SWE-bench](https://github.com/SWE-bench/SWE-bench) | Uses containerized, reproducible evaluation environments and executable gold outcomes | Add a Linux/container Observer qualification path and reference-outcome checks |
-| [ATBench](https://arxiv.org/abs/2604.02022) and [AgentLAB](https://arxiv.org/abs/2602.16901) | Cover delayed, multi-stage risks, heterogeneous tools, intent hijacking, tool chaining, task injection, objective drift, and memory poisoning | Expand safety cases beyond immediate forbidden commands and static side-effect denial |
-| [Langfuse evaluation](https://langfuse.com/docs/evaluation/overview) | Connects production traces, human review, datasets, experiments, and CI/CD regression checks | Create an explicit trace-to-case curation path instead of leaving production failures outside the regression lifecycle |
-| [OpenTelemetry GenAI conventions](https://opentelemetry.io/docs/specs/semconv/registry/attributes/gen-ai/) | Provides ecosystem-level names for agent, tool, model, usage, and evaluation telemetry | Add a diagnostic OTLP/OpenTelemetry adapter while retaining AWB's stricter evidence model |
+| [AgentLAB: Benchmarking LLM Agents against Long-Horizon Attacks](https://arxiv.org/abs/2602.16901) | Submitted 2026-02-18; benchmarks long-horizon attacks across multi-turn user-agent-environment interactions and reports that single-turn defenses do not reliably mitigate them. | AWB should keep delayed triggers, objective drift, memory poisoning, and handoff abuse as separate control families, not one broad "safety" bucket. |
+| [AgentSecBench: Measuring Prompt Injection, Privacy Leakage, and Tool-Use Integrity in LLM Agents](https://arxiv.org/abs/2605.26269) | Submitted 2026-05-25; models prompt injection, retrieval confidentiality, and capability integrity as noninterference games with benign controls. | AWB should separate policy projection from enforcement and treat "text that describes a boundary" as different from "evidence that enforces one". |
+| [From Untrusted Input to Trusted Memory: A Systematic Study of Memory Poisoning Attacks in LLM Agents](https://arxiv.org/abs/2606.04329) | Submitted 2026-06-03, revised 2026-06-18; identifies four memory write channels, nine structural vulnerabilities, and six attack classes, and says prompt-injection defenses do not cover memory poisoning. | AWB should keep memory poisoning distinct from prompt injection and score write-channel and retrieval-channel risk separately. |
+| [AgencyBench: Benchmarking the Frontiers of Autonomous Agents in 1M-Token Real-World Contexts](https://arxiv.org/abs/2601.11044) | Submitted 2026-01-16, revised 2026-04-23; evaluates 138 real-world tasks, averages about 90 tool calls and 1M tokens, and uses user simulation plus Docker sandboxing. | AWB needs repeated-run confidence, tool-cost accounting, and long-horizon telemetry before domain packs can be trusted as production-adjacent evidence. |
+| [Claw-Eval: Towards Trustworthy Evaluation of Autonomous Agents](https://arxiv.org/abs/2604.06132) | Submitted 2026-04-07; its open implementation describes 300 human-verified tasks, 9 categories, completion/safety/robustness grading, and strict Pass^3 across three trials. | AWB's trajectory review should stay evidence-linked and diagnostic, but repeated-run metrics must remain separate from hard gate decisions. |
+| [OpenTelemetry Gen AI semantic conventions docs](https://opentelemetry.io/docs/specs/semconv/registry/attributes/gen-ai/) and [open-telemetry/semantic-conventions-genai](https://github.com/open-telemetry/semantic-conventions-genai) | The official OpenTelemetry docs now route GenAI attributes into the GenAI semantic-conventions repo; the repo covers spans, metrics, and events for GenAI clients, MCP, and provider-specific conventions. | AWB can safely accept OTLP/GenAI traces as diagnostics, but must keep its own stricter evidence and trust model instead of inheriting the external schema as attestation. |
+| [agentevals-dev/agentevals](https://github.com/agentevals-dev/agentevals) | Framework-agnostic evaluation from OpenTelemetry traces; built around already-recorded traces, OTLP/Jaeger ingestion, and no-rerun scoring. | AWB's OTLP importer should stay diagnostic-only and preserve source provenance rather than trying to become a generic trace scorer. |
+| [langchain-ai/agentevals](https://github.com/langchain-ai/agentevals) | Trajectory-focused evaluators for intermediate agent steps. | AWB's trajectory review artifact is aligned with the general direction of the ecosystem, but AWB should keep explicit hard-failure and provenance rules. |
 
-## Optimization Delivered in This Update
+## Implemented Control-Plane Work
 
-### 1. Balanced, reference-backed generated cases
+This section is repository evidence, not research inference.
 
-AI case plans now carry an optional `referenceOutcome` and
-`counterexampleOutcome`. The planner prompt asks for both success controls and
-failure probes. Validation warns when either reference is missing and when a
-plan of at least three cases is one-sided.
+| Area | Repository evidence | Trust ceiling |
+| --- | --- | --- |
+| Trajectory review and process-defect analysis | `src/report/trajectoryReview.ts`, `src/report/traceDiff.ts`, `schemas/trajectory-review.schema.json`, `tests/trajectory-review.test.ts` | Diagnostic-only. A review can explain a failure, but it cannot override deterministic hard failures or provenance. |
+| Six long-horizon safety families | `fixtures/mutations/*.yaml`, `src/runner/simulatedRunner.ts`, `configs/evaluation/evaluation-contract.yaml`, `tests/evaluation-contract.test.ts` | Control-family only. These are deterministic hard-failure probes, not production safety proof. |
+| Linux Docker Observer path | `.github/docker/linux-observer/Dockerfile`, `.github/docker/linux-observer/seccomp-launcher.c`, `.github/workflows/observer-linux-docker.yml`, `tests/reference-observer-linux.test.ts` | Implemented qualification path only. This note does not claim the Docker workflow has passed until its hosted Linux job is green for this commit. |
+| OTLP diagnostic import | `src/importers/otlp.ts`, `schemas/otlp-diagnostic-import.schema.json`, `schemas/trace-import-manifest.schema.json`, `tests/otlp-import.test.ts` | Diagnostic-only. Imported traces are not attestation and do not become release evidence by format alone. |
+| Production trace curation draft | `src/curation/productionTrace.ts`, `schemas/production-trace-curation.schema.json`, `tests/production-trace-curation.test.ts` | Draft curation flow only. It turns redacted incidents into candidate regressions; it does not make raw production traces public. |
+| Workflow economics | `src/report/workflowEconomics.ts`, `schemas/workflow-economics-report.schema.json`, `tests/workflow-economics.test.ts` | Decision-support only. Cost, latency, retry, and comparability data are diagnostic and must not replace the gate. |
+| Benchmark governance | `src/governance/publicBenchmark.ts`, `schemas/benchmark-governance-report.schema.json`, `tests/public-benchmark-governance.test.ts` | Governance scaffold only. It defines policy and review boundaries, but it is not a validated domain benchmark. |
 
-This is deliberately backward compatible: older plans remain readable and
-materializable, but their quality gaps are visible. These fields document
-expected behavior; they do not replace executable oracles.
+Earlier baseline AWB foundations remain in place:
 
-Acceptance evidence:
+- balanced, reference-backed generated cases;
+- evidence-bounded trial metrics;
+- one reproducible local and hosted CI gate;
+- artifact compatibility and privacy-scanning checks.
 
-- planner prompt and fixture plans contain both outcome fields;
-- normalization and materialization preserve them;
-- schema validation accepts them;
-- missing fields and one-sided plans produce stable warnings;
-- existing plan formats do not become hard failures.
+## What the Delivered Work Means
 
-### 2. Evidence-bounded trial metrics
+The important shift is that AWB now has control-plane depth without relaxing
+its trust model.
 
-`awb report trial-metrics` computes both:
+- trajectory review explains failures;
+- long-horizon safety mutations exercise delayed, multi-stage attack classes;
+- the Linux Docker path gives a portable qualification route;
+- OTLP import and production curation let real traces feed diagnostics and
+  candidate regressions;
+- workflow economics adds cost/latency context without turning it into a gate;
+- benchmark governance creates the policy shell for future domain packs.
 
-- `pass@k = 1 - C(n-c,k) / C(n,k)`, the probability that at least one of
-  `k` draws succeeds;
-- `pass^k = C(c,k) / C(n,k)`, the probability that all `k` draws succeed.
+The trust ceilings stay strict:
 
-Only an observed trial whose gate decision is `PASS` counts as success.
-`BLOCK` and `DIAGNOSTIC_ONLY` count as failures. The report binds the source
-reliability artifact and records every contributing attempt. The current
-command deliberately remains `DIAGNOSTIC_ONLY` even when every source metadata
-field describes qualified live evidence: a reliability report is
-self-authenticating and the command does not yet reopen its original signed
-traces. Invalid source reliability evidence blocks rather than being converted
-into a favorable aggregate.
+- a review artifact cannot clear a hard failure;
+- an imported trace cannot become proof just because it is OTLP;
+- a production incident does not become public benchmark evidence by default;
+- a governance scaffold is not the same thing as a domain adapter;
+- local Linux qualification is not the same thing as a separately verified
+  remote Linux qualification path.
 
-Acceptance evidence:
+## Next Roadmap
 
-- estimator values match the Inspect finite-sample formulas;
-- invalid `k`, schema-invalid input, or broken source integrity fails closed;
-- no source reliability JSON, including a self-consistent forged one, can
-  produce a trial-metrics PASS;
-- JSON and Markdown outputs are registered and schema validated.
-
-### 3. One reproducible local and hosted CI gate
-
-`npm run ci:local` is now the canonical repository validation entrypoint and is
-also invoked by GitHub Actions. It runs the checks in a fixed order:
-
-1. diff hygiene;
-2. type checking;
-3. the full test suite;
-4. plugin runtime generation;
-5. generated-runtime parity;
-6. source and packaged schema validation;
-7. canonical naming;
-8. privacy scanning;
-9. a fresh-install plugin smoke test.
-
-This removes drift between README instructions, local release checks, and the
-hosted workflow.
-
-## Prioritized Roadmap
-
-### P0: First-class trajectory review and process-defect analysis
-
-Add a `trajectory_review` artifact that is derived from already-redacted event
-evidence and includes:
-
-- exact event references for every finding;
-- a versioned process-defect taxonomy;
-- onset step, propagation steps, detection latency, recovery attempts, and
-  final outcome;
-- deterministic findings separated from judge findings;
-- side-by-side baseline/candidate review;
-- judge model, prompt, rubric, and calibration-set identity;
-- optional blinded human labels and disagreement records.
-
-Model-written findings must remain diagnostic until calibrated against a held
-out human-labeled set. They must never override deterministic hard failures,
-Observer validity, or provenance.
-
-Exit criteria:
-
-- a registered schema and compatibility policy;
-- no unreferenced finding can validate;
-- inter-rater agreement and judge precision/recall are reported by defect
-  class;
-- a review can be regenerated from the same redacted inputs;
-- the decision report links review evidence without changing the gate.
-
-### P0: Long-horizon safety and adversarial workflow cases
-
-Extend the evaluation contract and case templates with explicit categories for:
-
-- prompt and task injection;
-- intent or objective hijacking;
-- malicious tool output and tool-chain escalation;
-- delayed triggers across handoffs;
-- memory or state poisoning;
-- unsafe recovery after a denied action;
-- benign controls for every adversarial category.
-
-Exit criteria:
-
-- each category has positive and negative controls;
-- delayed triggers require multi-stage evidence, not a single prompt label;
-- side-effect denial and goal preservation are separately scored;
-- mutation fixtures prove that each detector can both fire and remain silent;
-- no synthetic safety fixture is described as real-world release evidence.
-
-### P0: Portable independent observation
-
-Add a Linux/container qualification path with the same fail-closed contract as
-the Darwin reference Observer:
-
-- deny-default network and process policy;
-- signing keys outside the evaluated workspace and process environment;
-- active canaries for key reads, network, nested processes, and out-of-scope
-  writes;
-- content-addressed Observer implementation closure;
-- qualification signed by a distinct authority.
-
-Exit criteria:
-
-- controlled good, P0, omission, forgery, wrong-key, and blind-spot suites pass
-  on the supported platform;
-- unsupported isolation cannot emit qualified evidence;
-- Darwin and Linux traces normalize to the same workflow-trace schema;
-- platform differences are recorded in runtime provenance.
-
-### P1: Standard trace ingestion
-
-Add a diagnostic importer for OTLP JSON and OpenTelemetry GenAI spans:
-
-- map agent, handoff, tool, model, token, latency, error, and evaluation events
-  into AWB's normalized event model;
-- preserve unknown spans and lossy-mapping warnings;
-- publish an import manifest with source schema version and mapping hash;
-- default imported traces to `DIAGNOSTIC_ONLY`.
-
-Promotion beyond diagnostic evidence must require an independently qualified
-collector and the existing AWB Observer contract; merely using OpenTelemetry
-field names is not attestation.
-
-### P1: Production trace to regression case loop
-
-Add an explicit curation command that:
-
-1. ingests an already-redacted failed trace;
-2. clusters it against existing failure codes and coverage tags;
-3. drafts a minimal reproducible case and counterexample;
-4. records consent, source retention, and redaction metadata;
-5. requires owner review before the case joins a target pack;
-6. runs the new case against a reference implementation before activation.
-
-Exit criteria:
-
-- no raw production payload enters a public artifact by default;
-- trace lineage survives anonymization and case minimization;
-- duplicate and near-duplicate cases are detected;
-- accepted incidents become durable regression cases with an owner and expiry
-  policy.
-
-### P1: Planning, recovery, cost, and latency dimensions
-
-Extend scorecards with evidence-derived measures for:
-
-- plan-to-action alignment and unnecessary replanning;
-- early validation and time to first detected error;
-- recovery success, repeated failed actions, and irreversible-action timing;
-- tool, model, token, wall-clock, and retry cost by workflow stage;
-- matched quality-cost-latency Pareto comparisons.
-
-Costs must not be collapsed into the release score. Publish raw units,
-normalization policy, confidence intervals, and missingness so a cheaper but
-less trustworthy run cannot hide behind one aggregate.
-
-### P2: Domain adapters and public benchmark governance
-
-Add target packs and adapters for browser, research, multimodal, and
-customer-support workflows only after their observability boundaries are
-explicit. For any public dataset or leaderboard:
-
-- version task, environment, runner, policy, and harness identities;
-- separate development, calibration, holdout, and private challenge sets;
-- publish contamination and saturation policy;
-- require reproducible run manifests and artifact-level evidence;
-- display incomparability instead of forcing a ranking.
-
-## Recommended Delivery Order
-
-1. Trajectory review and process-defect artifact.
-2. Long-horizon safety taxonomy and mutation-backed case templates.
-3. Linux/container Observer qualification.
-4. OpenTelemetry diagnostic ingestion.
-5. Production trace curation and review workflow.
-6. Planning/recovery and quality-cost-latency reports.
-7. Domain-specific target packs and public benchmark governance.
-
-The ordering is intentional. Better dashboards or more task domains do not
-improve confidence if process findings lack evidence links or the observation
-boundary is not portable.
+1. Verified domain packs for browser, research, multimodal, and customer-support
+   workflows, with explicit observability boundaries and separate adapter
+   validation.
+2. Production adoption and effectiveness measurements against real incidents and
+   repeated-run traces, not just synthetic or lab-only cases.
+3. Repeated-run confidence intervals and plan-action telemetry, so AWB can show
+   consistency, not only peak success.
+4. Near-duplicate curation, clustering, and owner-aware incident deduplication,
+   so the regression corpus grows without becoming redundant.
 
 ## Trust Boundaries That Must Not Change
 

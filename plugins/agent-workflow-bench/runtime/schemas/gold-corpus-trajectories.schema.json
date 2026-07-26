@@ -42,6 +42,8 @@
         "runner_transcript",
         "runner_result",
         "runner_exit",
+        "tool_call",
+        "process_spawn",
         "case_end"
       ]
     },

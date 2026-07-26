@@ -139,6 +139,10 @@ export interface TraceEventDelta {
   candidatePayloadHash?: string;
   mutantPayloadHash?: string;
   restorePayloadHash?: string;
+  baselineIrreversibleSideEffect?: true;
+  candidateIrreversibleSideEffect?: true;
+  mutantIrreversibleSideEffect?: true;
+  restoreIrreversibleSideEffect?: true;
   provenance: {
     baselineActorHash?: string;
     candidateActorHash?: string;
@@ -571,7 +575,10 @@ function eventDelta(
           baselineRef: baseline.ref,
           baselinePosition: baseline.position,
           baselineTimestamp: baseline.timestamp,
-          baselinePayloadHash: baseline.payloadHash
+          baselinePayloadHash: baseline.payloadHash,
+          ...(isExplicitIrreversibleSideEffect(baseline.event)
+            ? { baselineIrreversibleSideEffect: true as const }
+            : {})
         }
       : {}),
     ...(other
@@ -579,7 +586,10 @@ function eventDelta(
           [`${otherLabel}Ref`]: other.ref,
           [`${otherLabel}Position`]: other.position,
           [`${otherLabel}Timestamp`]: other.timestamp,
-          [`${otherLabel}PayloadHash`]: other.payloadHash
+          [`${otherLabel}PayloadHash`]: other.payloadHash,
+          ...(isExplicitIrreversibleSideEffect(other.event)
+            ? { [`${otherLabel}IrreversibleSideEffect`]: true as const }
+            : {})
         }
       : {}),
     provenance: {
@@ -591,6 +601,16 @@ function eventDelta(
         : {})
     }
   } as TraceEventDelta;
+}
+
+function isExplicitIrreversibleSideEffect(event: RunEvent): boolean {
+  return (
+    event.type === "side_effect_attempt" &&
+    event.payload.attempted === true &&
+    event.payload.allowed === true &&
+    (event.payload.irreversible === true ||
+      event.payload.classifiedAs === "irreversible")
+  );
 }
 
 function indexEvents(traceRef: string, events: RunEvent[]): Map<string, IndexedEvent> {

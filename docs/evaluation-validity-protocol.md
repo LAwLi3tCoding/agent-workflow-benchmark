@@ -148,7 +148,7 @@ Use the calibration workflow:
 ```bash
 awb gate-policy calibrate \
   --corpus fixtures/gold-corpus/v1/manifest.yaml \
-  --policy-version 1.0.0 \
+  --policy-version 1.1.0 \
   --out reports/gate-policy/v1/fit
 
 awb gate-policy validate-holdout \
@@ -197,19 +197,26 @@ AWB now emits an integrity-bound Observer qualification artifact signed by a
 separate qualification authority. It binds the Observer identity, version,
 public-key fingerprint, content-addressed implementation closure, evidence capabilities, Contract, case
 set, evaluation-contract content hash, workflow-trace Schema, and qualification
-suite. The bundled reference Observer uses a deny-default macOS Seatbelt
-boundary and qualifies only after real signing-key-read, direct-network, and
-nested-process canaries are denied with `EPERM`; a static negative marker is
-not qualification evidence. Ingest, compare, and gate
-must receive both explicit public trust anchors and revalidate the artifact.
-Without it, signed traces carry `qualificationStatus: missing` and cannot
-produce a real PASS. AWB never adds a public key to a trust root automatically,
-and comparison normalizes self-asserted `valid` metadata without a verified
-artifact back to `missing`.
+suite. The bundled reference Observer has two explicit backends:
+`macos-seatbelt` and `linux-oci-docker`. The macOS backend uses a deny-default
+Seatbelt boundary and qualifies only after real signing-key-read,
+direct-network, and nested-process canaries are denied by the operating system.
+The Linux backend requires Docker plus an immutable Observer image ID or digest;
+it runs the child workflow with readonly rootfs, denied network, no
+capabilities, `no-new-privileges`, seccomp child-process denial, minimal
+workspace mounts, a non-root user, and the Observer private key outside the
+runner mount. Static negative markers are not qualification evidence.
 
-The current bundled isolation backend is Darwin-only. Missing
-`/usr/bin/sandbox-exec`, a non-Darwin host, a failed boundary probe, or reuse of
-the Observer key as the qualification-authority key fails closed.
+Ingest, compare, and gate must receive both explicit public trust anchors and
+revalidate the artifact. Without it, signed traces carry
+`qualificationStatus: missing` and cannot produce a real PASS. AWB never adds a
+public key to a trust root automatically, and comparison normalizes
+self-asserted `valid` metadata without a verified artifact back to `missing`.
+Missing `/usr/bin/sandbox-exec` for `macos-seatbelt`, missing Docker or image
+binding for `linux-oci-docker`, unsupported backend selection, a failed active
+canary, private-key exposure to the runner mount, root-host execution for the
+Linux backend, or reuse of the Observer key as the qualification-authority key
+fails closed.
 
 ## Bias and Leakage Control
 
@@ -233,7 +240,7 @@ Deterministic P0 hard failures dominate scores and AI judgments. Current evidenc
 | adapter conformance PASS | DIAGNOSTIC_ONLY |
 | OpenCode live adapter output without qualified Observer admission | DIAGNOSTIC_ONLY |
 | signed workflow trace without valid Observer qualification | DIAGNOSTIC_ONLY |
-| qualified independent signed workflow trace | eligible for PASS after all other gates |
+| qualified independent signed workflow trace from `macos-seatbelt` or `linux-oci-docker` reference Observer | eligible for PASS after all other gates |
 
 Empirical thresholds are frozen in their versioned protocol/policy artifacts before holdout
 evaluation. A sample below its required size cannot support a strong conclusion.
@@ -271,8 +278,9 @@ public trust anchors, caller-provided strong Runner isolation, redacted artifact
 retention, and workflow-owner approval. Its signature binds gate, runtime,
 provenance, isolation, canary, and gate-policy hashes. Missing isolation, missing Observer
 qualification, failed canary thresholds, or absent approval keeps the result
-diagnostic-only. AWB validates isolation evidence; it does not provide or claim
-its own Linux isolation backend.
+diagnostic-only. The bundled `linux-oci-docker` backend can qualify the
+reference Observer; production runner isolation is still a caller-provided
+manifest that AWB validates and binds, not an implicit authorization.
 
 Periodic benchmark-health checks aggregate already collected Gold Corpus, P0
 mutation, Observer qualification, A/A reliability, schema compatibility, plugin
@@ -320,14 +328,19 @@ directional-only token or workflow evidence.
 
 Proven for the harness: canonical vocabulary, contract hashing boundary, owner-review admission
 boundary, deterministic hard-failure precedence, diagnostic evidence ceilings, content-hashed
-Gold Corpus fixtures, split label isolation, 12-family good/bad/boundary coverage, P0 mutation
-kill 100%, false PASS 0, no known-good block, and a Darwin reference Observer
-whose independent authority-signed qualification covers all implemented P0
-failures, active isolation canaries, forged events, wrong keys, stale
-evaluation contracts, and repeated runs. Reliability studies now bind the
+Gold Corpus fixtures, split label isolation, 18-family good/bad/boundary coverage, P0 mutation
+kill 100%, false PASS 0, and no known-good block. AWB implements dual reference
+Observer backends. The `macos-seatbelt` backend binds active Seatbelt canaries. The
+`linux-oci-docker` path is eligible only when its hosted qualification job is
+green for the evaluated commit; it binds an immutable image ID/digest, Docker
+availability, denied network, readonly rootfs, no capabilities,
+`no-new-privileges`, seccomp child-process denial, key-outside-mount evidence,
+minimal mounts, and active canaries. Authority-signed qualification covers all
+implemented P0 failures, active isolation canaries, forged events, wrong keys,
+stale evaluation contracts, and repeated runs. Reliability studies now bind the
 case set, contract, conditions, seed, runner, environment, Observer version,
-model, permissions, and budgets; deterministic fixtures reproduce exactly,
-and undersized or unstable studies fail closed.
+model, permissions, and budgets; deterministic fixtures reproduce exactly, and
+undersized or unstable studies fail closed.
 
 Implemented mechanism: external validity study/package/observation/label/report schemas,
 blinded labeling package generation, human-label/adjudication analysis, confusion matrix,
@@ -375,9 +388,11 @@ viewer manifests, and registered schemas for those artifacts.
 Implemented mechanism through Stage 10: Adapter SDK contract validation,
 OpenCode live Runner Adapter conformance, native token evidence checks, evidence
 limits, stable adapter errors, benchmark-health aggregation, and strict
-cross-runner ranking. These mechanisms remain diagnostic unless their outputs
-are backed by qualified independent workflow-trace evidence where the gate
-requires it.
+cross-runner ranking. The stage also includes the explicit `linux-oci-docker`
+reference Observer path and diagnostic-only OTLP import, production trace
+curation, benchmark governance, trajectory review, and workflow economics
+artifacts. These mechanisms remain diagnostic unless their outputs are backed
+by qualified independent workflow-trace evidence where the gate requires it.
 
 Deferred or disabled by protocol: real production/human criterion validity,
 automatic trust enrollment, automatic target workflow modification, and automatic

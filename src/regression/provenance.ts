@@ -47,6 +47,7 @@ export interface RunProvenance {
       qualificationRef?: "observer-qualification.json";
       qualificationArtifactHash?: string;
       qualificationAuthorityFingerprint?: string;
+      isolationManifestHash?: string;
     };
     executionMode: "live" | "simulated";
     evidenceKind: EvidenceKind;
@@ -70,6 +71,13 @@ export interface RunProvenance {
   };
 }
 
+export interface RunEvidenceOverride {
+  evidenceKind?: EvidenceKind;
+  observationLevel?: ObservationLevel;
+  isolation?: RunProvenance["conditions"]["isolation"];
+  permissionMode?: RunProvenance["conditions"]["permissionMode"];
+}
+
 export type ObserverQualificationStatus = "missing" | "valid" | "invalid";
 
 export async function buildRunProvenance(options: {
@@ -87,15 +95,25 @@ export async function buildRunProvenance(options: {
   dryRun?: boolean;
   verifiedTrace?: VerifiedWorkflowTrace;
   verifiedQualification?: VerifiedObserverQualification;
+  evidenceOverride?: RunEvidenceOverride;
 }): Promise<RunProvenance> {
   const effectiveRunner = effectiveRunnerIdentity(options.runner, options.executionMode);
-  const boundary = options.verifiedTrace
+  const observedBoundary = options.verifiedTrace
     ? { evidenceKind: "live" as const, observationLevel: "workflow_trace" as const }
     : options.dryRun
       ? { evidenceKind: "unknown" as const, observationLevel: "capability_only" as const }
       : options.executionMode === "simulated"
         ? { evidenceKind: "simulated" as const, observationLevel: "synthetic_events" as const }
         : evidenceBoundary(options.runner);
+  const effectiveBoundary = {
+    ...observedBoundary,
+    ...(options.evidenceOverride?.evidenceKind !== undefined
+      ? { evidenceKind: options.evidenceOverride.evidenceKind }
+      : {}),
+    ...(options.evidenceOverride?.observationLevel !== undefined
+      ? { observationLevel: options.evidenceOverride.observationLevel }
+      : {})
+  };
   const environment = {
     runtime: "node" as const,
     runtimeVersion: process.version,
@@ -119,6 +137,13 @@ export async function buildRunProvenance(options: {
             id: options.verifiedTrace.bundle.observer.id,
             version: options.verifiedTrace.bundle.observer.version,
             keyFingerprint: options.verifiedTrace.keyFingerprint,
+            ...(options.verifiedTrace.bundle.subject.isolationManifest
+              ? {
+                  isolationManifestHash:
+                    options.verifiedTrace.bundle.subject.isolationManifest
+                      .manifestHash
+                }
+              : {}),
             qualificationStatus: options.verifiedQualification
               ? ("valid" as const)
               : ("missing" as const),
@@ -136,18 +161,22 @@ export async function buildRunProvenance(options: {
         }
       : {}),
     executionMode: options.executionMode,
-    evidenceKind: boundary.evidenceKind,
-    observationLevel: boundary.observationLevel,
+    evidenceKind: effectiveBoundary.evidenceKind,
+    observationLevel: effectiveBoundary.observationLevel,
     isolation: options.verifiedTrace
       ? options.verifiedTrace.bundle.subject.isolation
       : options.dryRun
         ? "unknown"
-        : isolationFor(options.executionMode, options.runner.name),
+        : options.evidenceOverride?.isolation
+          ? options.evidenceOverride.isolation
+          : isolationFor(options.executionMode, options.runner.name),
     permissionMode: options.verifiedTrace
       ? options.verifiedTrace.bundle.subject.permissionMode
       : options.dryRun
         ? "unknown"
-        : permissionModeFor(options.executionMode, options.runner.name),
+        : options.evidenceOverride?.permissionMode
+          ? options.evidenceOverride.permissionMode
+          : permissionModeFor(options.executionMode, options.runner.name),
     ...(options.verifiedTrace?.bundle.subject.model
       ? { model: options.verifiedTrace.bundle.subject.model }
       : options.model

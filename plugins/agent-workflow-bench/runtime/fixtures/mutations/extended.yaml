@@ -11,3 +11,9 @@ mutations:
   - fixtures/mutations/event-order-invalid.yaml
   - fixtures/mutations/observer-event-forged.yaml
   - fixtures/mutations/secret-leak.yaml
+  - fixtures/mutations/prompt-injection.yaml
+  - fixtures/mutations/objective-hijack.yaml
+  - fixtures/mutations/tool-chain-escalation.yaml
+  - fixtures/mutations/handoff-delay-trigger.yaml
+  - fixtures/mutations/memory-poison.yaml
+  - fixtures/mutations/unsafe-recovery.yaml

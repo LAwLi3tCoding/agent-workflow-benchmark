@@ -5,16 +5,66 @@ import { materializeAiSuite, materializeSmokeSuite } from "../src/generator/mate
 import { runCase } from "../src/runner/simulatedRunner.js";
 import { scoreCase } from "../src/scorer/score.js";
 
+const safetyTaxonomyClauses = [
+  ["prompt-injection", "PROMPT_INJECTION"],
+  ["objective-hijack", "OBJECTIVE_HIJACK"],
+  ["tool-chain-escalation", "TOOL_CHAIN_ESCALATION"],
+  ["handoff-delay-trigger", "HANDOFF_DELAY_TRIGGER"],
+  ["memory-poison", "MEMORY_POISON"],
+  ["unsafe-recovery", "UNSAFE_RECOVERY"]
+].map(([id, failureCode]) => ({
+  id,
+  failureCode,
+  probeTemplate: `safety-${id}-probe`,
+  controlTemplate: `safety-${id}-control`,
+  oracleProbe: `oracle-safety-${id}-probe`,
+  oracleControl: `oracle-safety-${id}-control`
+})) as Array<{
+  id: string;
+  failureCode: string;
+  probeTemplate: string;
+  controlTemplate: string;
+  oracleProbe: string;
+  oracleControl: string;
+}>;
+
 describe("case materialization", () => {
-  test("materializes ten generic smoke templates for a directory target", async () => {
+  test("materializes generic smoke templates plus the safety taxonomy for a directory target", async () => {
     const target = await loadTargetPack("minimal-directory-agent");
     const profile = await profileTarget(target);
     const suite = materializeSmokeSuite(profile.contract);
 
-    expect(suite.cases).toHaveLength(10);
+    expect(suite.cases).toHaveLength(22);
     expect(suite.applicability.every((item) => item.status === "materialized")).toBe(true);
     expect(suite.cases.map((item) => item.templateId)).toContain("required-join");
     expect(suite.manifest.contractHash).toBe(profile.contract.contractHash);
+  });
+
+  test("materializes one safety failure probe and one benign control for every long-horizon safety clause", async () => {
+    const target = await loadTargetPack("minimal-directory-agent");
+    const profile = await profileTarget(target);
+    const suite = materializeSmokeSuite(profile.contract);
+    const byTemplate = new Map(suite.cases.map((testCase) => [testCase.templateId, testCase]));
+
+    for (const clause of safetyTaxonomyClauses) {
+      const probe = byTemplate.get(clause.probeTemplate);
+      const control = byTemplate.get(clause.controlTemplate);
+
+      expect(probe, clause.probeTemplate).toBeDefined();
+      expect(control, clause.controlTemplate).toBeDefined();
+      expect(probe?.expectedHardFailures).toEqual([clause.failureCode]);
+      expect(probe?.oracleIds).toEqual([clause.oracleProbe]);
+      expect(probe?.bindings.safetyCategory).toBe(clause.id);
+      expect(probe?.bindings.safetyControl).toBe("false");
+      expect(control?.expectedHardFailures).toEqual([]);
+      expect(control?.oracleIds).toEqual([clause.oracleControl]);
+      expect(control?.bindings.safetyCategory).toBe(clause.id);
+      expect(control?.bindings.safetyControl).toBe("true");
+    }
+
+    expect(
+      suite.cases.filter((testCase) => testCase.templateId.startsWith("safety-"))
+    ).toHaveLength(12);
   });
 
   test("marks topology-specific templates not applicable instead of inventing bindings", async () => {

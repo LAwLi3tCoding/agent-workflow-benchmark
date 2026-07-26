@@ -1,0 +1,213 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "benchmark-governance-input.schema.json",
+  "title": "Agent Workflow Bench benchmark governance input",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "benchmarkId",
+    "benchmarkVersion",
+    "generatedAt",
+    "identities",
+    "splits",
+    "splitIsolation",
+    "contamination",
+    "saturation",
+    "reproducibility",
+    "leaderboard",
+    "domainAdapters"
+  ],
+  "properties": {
+    "benchmarkId": { "$ref": "#/$defs/semanticId" },
+    "benchmarkVersion": { "$ref": "#/$defs/version" },
+    "generatedAt": { "$ref": "#/$defs/timestamp" },
+    "identities": { "$ref": "#/$defs/identities" },
+    "splits": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "taskSetHash", "access"],
+        "properties": {
+          "id": { "$ref": "#/$defs/splitId" },
+          "taskSetHash": { "$ref": "#/$defs/hash" },
+          "access": { "enum": ["public", "restricted"] }
+        }
+      }
+    },
+    "splitIsolation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "policyVersion",
+        "evidenceRef",
+        "evidenceHash",
+        "overlapCount",
+        "holdoutLabelsExcludedFromFit",
+        "privateChallengeHidden"
+      ],
+      "properties": {
+        "policyVersion": { "$ref": "#/$defs/version" },
+        "evidenceRef": { "$ref": "#/$defs/portableRef" },
+        "evidenceHash": { "$ref": "#/$defs/hash" },
+        "overlapCount": { "type": "integer", "minimum": 0 },
+        "holdoutLabelsExcludedFromFit": { "type": "boolean" },
+        "privateChallengeHidden": { "type": "boolean" }
+      }
+    },
+    "contamination": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "policyVersion",
+        "evidenceRef",
+        "evidenceHash",
+        "suspectedAction",
+        "confirmedAction"
+      ],
+      "properties": {
+        "policyVersion": { "$ref": "#/$defs/version" },
+        "evidenceRef": { "$ref": "#/$defs/portableRef" },
+        "evidenceHash": { "$ref": "#/$defs/hash" },
+        "suspectedAction": { "const": "quarantine" },
+        "confirmedAction": { "const": "retire" }
+      }
+    },
+    "saturation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "policyVersion",
+        "metric",
+        "threshold",
+        "minimumSamples",
+        "action"
+      ],
+      "properties": {
+        "policyVersion": { "$ref": "#/$defs/version" },
+        "metric": { "const": "pass_rate" },
+        "threshold": { "type": "number", "exclusiveMinimum": 0, "exclusiveMaximum": 1 },
+        "minimumSamples": { "type": "integer", "minimum": 1 },
+        "action": { "const": "refresh_private_challenge" }
+      }
+    },
+    "reproducibility": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "runManifestRequired",
+        "artifactEvidenceRequired",
+        "immutableEnvironmentRequired"
+      ],
+      "properties": {
+        "runManifestRequired": { "type": "boolean" },
+        "artifactEvidenceRequired": { "type": "boolean" },
+        "immutableEnvironmentRequired": { "type": "boolean" }
+      }
+    },
+    "leaderboard": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["forceRanking", "incomparableDisplay"],
+      "properties": {
+        "forceRanking": { "type": "boolean" },
+        "incomparableDisplay": { "const": "INCOMPARABLE" }
+      }
+    },
+    "domainAdapters": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["domain", "adapterId", "adapterVersion", "status"],
+        "properties": {
+          "domain": { "$ref": "#/$defs/domain" },
+          "adapterId": { "$ref": "#/$defs/semanticId" },
+          "adapterVersion": { "$ref": "#/$defs/version" },
+          "status": { "enum": ["candidate", "active"] },
+          "observabilityBoundary": { "$ref": "#/$defs/evidenceBinding" },
+          "targetPack": { "$ref": "#/$defs/evidenceBinding" },
+          "conformance": { "$ref": "#/$defs/evidenceBinding" }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "hash": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "semanticId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+(?:[-+][A-Za-z0-9.-]+)?$"
+    },
+    "timestamp": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$"
+    },
+    "portableRef": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512,
+      "not": {
+        "anyOf": [
+          { "pattern": "^/" },
+          { "pattern": "^[A-Za-z]:" },
+          { "pattern": "(^|/)\\.\\.(/|$)" },
+          { "pattern": "\\\\" },
+          { "pattern": "://" }
+        ]
+      }
+    },
+    "splitId": {
+      "enum": [
+        "development",
+        "calibration",
+        "holdout",
+        "private_challenge"
+      ]
+    },
+    "domain": {
+      "enum": [
+        "browser",
+        "research",
+        "multimodal",
+        "customer_support"
+      ]
+    },
+    "identities": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "taskHash",
+        "environmentHash",
+        "runnerHash",
+        "policyHash",
+        "harnessHash"
+      ],
+      "properties": {
+        "taskHash": { "$ref": "#/$defs/hash" },
+        "environmentHash": { "$ref": "#/$defs/hash" },
+        "runnerHash": { "$ref": "#/$defs/hash" },
+        "policyHash": { "$ref": "#/$defs/hash" },
+        "harnessHash": { "$ref": "#/$defs/hash" }
+      }
+    },
+    "evidenceBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ref", "hash"],
+      "properties": {
+        "ref": { "$ref": "#/$defs/portableRef" },
+        "hash": { "$ref": "#/$defs/hash" }
+      }
+    }
+  }
+}

@@ -81,12 +81,77 @@ interface FileSnapshot {
 }
 
 interface IsolationBoundaryProbe {
-  signingKeyRead: "EPERM";
-  networkDenied: "EPERM";
-  nestedProcessDenied: "EPERM";
+  signingKeyRead: "EPERM" | "ABSENT_FROM_MOUNT_NAMESPACE";
+  networkDenied: "EPERM" | "NETWORK_UNREACHABLE";
+  nestedProcessDenied: "EPERM" | "DENIED";
+}
+
+export type ReferenceObserverIsolationBackend =
+  | "macos-seatbelt"
+  | "linux-oci-docker";
+
+export interface ReferenceObserverIsolationConfig {
+  backend?: ReferenceObserverIsolationBackend;
+  dockerExecutable?: string;
+  image?: string;
+  imageId?: string;
+}
+
+export interface ReferenceObserverIsolationManifest {
+  backend: ReferenceObserverIsolationBackend;
+  platform: string;
+  runtimeVersion: string;
+  image?: string;
+  imageId?: string;
+  policyHash: string;
+  mountManifestHash: string;
+  networkMode: "none";
+  processPolicy:
+    | "seatbelt_process_exec_allowlist"
+    | "seccomp_launcher_no_child_process";
+  capabilities: {
+    drop: string[];
+    add: string[];
+  };
+  noNewPrivileges: boolean;
+  readOnlyRootfs: boolean;
+  writableMounts: string[];
+  canaries: {
+    signingKeyRead: "EPERM" | "ABSENT_FROM_MOUNT_NAMESPACE";
+    networkDenied: "EPERM" | "NETWORK_UNREACHABLE";
+    nestedProcessDenied: "EPERM" | "DENIED";
+    outOfScopeWriteDenied: "EPERM" | "EROFS" | "EACCES";
+  };
+  manifestHash: string;
+}
+
+export interface LinuxOciDockerRunPlan {
+  executable: string;
+  args: string[];
+  manifest: ReferenceObserverIsolationManifest;
+}
+
+export interface LinuxOciDockerRunPlanInput {
+  dockerExecutable: string;
+  image: string;
+  imageId: string;
+  runtimeVersion: string;
+  runnerUser: string;
+  workspaceRoot: string;
+  commandCwd: string;
+  privateKeyPath: string;
+  command: {
+    executable: string;
+    args: string[];
+    env?: Record<string, string>;
+  };
+  canaries: ReferenceObserverIsolationManifest["canaries"];
 }
 
 const MACOS_SANDBOX_EXECUTABLE = "/usr/bin/sandbox-exec";
+const CONTAINER_WORKSPACE = "/workspace";
+const LINUX_SECCOMP_LAUNCHER = "/usr/local/bin/awb-seccomp-launcher";
+const LINUX_TMPFS_SIZE_BYTES = 64 * 1024 * 1024;
 
 export function referenceObserverImplementationHash(): string {
   const modulePath = fileURLToPath(import.meta.url);
@@ -117,10 +182,261 @@ export function referenceObserverImplementationHash(): string {
   );
 }
 
+export function assertReferenceObserverIsolationConfig(
+  config: ReferenceObserverIsolationConfig
+): void {
+  const backend = config.backend ?? "macos-seatbelt";
+  if (backend === "macos-seatbelt") {
+    return;
+  }
+  if (backend !== "linux-oci-docker") {
+    throw new Error("Unsupported Reference Observer isolation backend.");
+  }
+  if (!config.dockerExecutable?.trim()) {
+    throw new Error("linux-oci-docker requires an explicit Docker executable.");
+  }
+  if (!config.image || !isImmutableDockerImage(config.image)) {
+    throw new Error(
+      "linux-oci-docker requires an immutable image digest or image id."
+    );
+  }
+  if (config.imageId !== undefined && !isDockerImageId(config.imageId)) {
+    throw new Error("linux-oci-docker requires an immutable image id.");
+  }
+}
+
+export function buildLinuxOciDockerRunPlan(
+  input: LinuxOciDockerRunPlanInput
+): LinuxOciDockerRunPlan {
+  assertReferenceObserverIsolationConfig({
+    backend: "linux-oci-docker",
+    dockerExecutable: input.dockerExecutable,
+    image: input.image,
+    imageId: input.imageId
+  });
+  const workspaceRoot = path.resolve(input.workspaceRoot);
+  const commandCwd = path.resolve(input.commandCwd);
+  if (!/^[1-9][0-9]*:[0-9]+$/u.test(input.runnerUser)) {
+    throw new Error(
+      "linux-oci-docker requires an explicit non-root host uid:gid for writable bind-mount parity."
+    );
+  }
+  assertWithin(workspaceRoot, commandCwd, "Linux OCI Docker Runner cwd");
+  const privateKeyPath = path.resolve(input.privateKeyPath);
+  const privateKeyRelative = path.relative(workspaceRoot, privateKeyPath);
+  if (
+    privateKeyRelative === "" ||
+    (!privateKeyRelative.startsWith(`..${path.sep}`) &&
+      privateKeyRelative !== ".." &&
+      !path.isAbsolute(privateKeyRelative))
+  ) {
+    throw new Error(
+      "linux-oci-docker requires the Observer private key outside the mounted Runner workspace."
+    );
+  }
+  if (isForbiddenDockerCommand(input.command.executable, input.command.args)) {
+    throw new Error(
+      "linux-oci-docker Runner command may not access Docker or host namespace control surfaces."
+    );
+  }
+  const relativeCwd = portableRelative(workspaceRoot, commandCwd);
+  const workdir =
+    relativeCwd === "" ? CONTAINER_WORKSPACE : `${CONTAINER_WORKSPACE}/${relativeCwd}`;
+  const normalizedExecutable = normalizeLinuxContainerExecutable(
+    input.command.executable,
+    workspaceRoot
+  );
+  const normalizedArgs = input.command.args.map((value) =>
+    normalizeLinuxContainerArgument(value, workspaceRoot)
+  );
+  const envArgs = Object.entries(input.command.env ?? {})
+    .sort(([left], [right]) => left.localeCompare(right))
+    .flatMap(([key, value]) => {
+      if (/(private|secret|token|credential|signing|observer.*key|key.*observer)/iu.test(key)) {
+        throw new Error(`Runner environment key ${key} is forbidden by Observer isolation.`);
+      }
+      if (/PRIVATE KEY/iu.test(value)) {
+        throw new Error(`Runner environment value for ${key} contains private key material.`);
+      }
+      return [
+        "--env",
+        `${key}=${normalizeLinuxContainerEnvironmentValue(
+          key,
+          value,
+          workspaceRoot
+        )}`
+      ];
+    });
+  const mountManifest = {
+    workspace: {
+      containerPath: CONTAINER_WORKSPACE,
+      mode: "rw",
+      propagation: "rprivate"
+    },
+    tmpfs: {
+      containerPath: "/tmp",
+      bytes: LINUX_TMPFS_SIZE_BYTES,
+      options: ["rw", "noexec", "nosuid", "nodev"]
+    },
+    forbidden: [
+      "observer_private_key",
+      "docker_socket",
+      "host_namespaces",
+      "extra_mounts",
+      "privileged",
+      "root_user",
+      "cap_add"
+    ]
+  };
+  const policy = {
+    pull: "never",
+    network: "none",
+    readOnlyRootfs: true,
+    capDrop: ["ALL"],
+    capAdd: [],
+    privileged: false,
+    noNewPrivileges: true,
+    user: input.runnerUser,
+    pid: "container-private",
+    pidsLimit: 64,
+    launcher: LINUX_SECCOMP_LAUNCHER,
+    seccompPolicy: "clone3-enosys_clone-thread-only_v1",
+    ipc: "private",
+    uts: "private"
+  };
+  const canaries = input.canaries;
+  const manifest = buildReferenceObserverIsolationManifest({
+    backend: "linux-oci-docker",
+    platform: "linux",
+    runtimeVersion: input.runtimeVersion,
+    image: input.image,
+    imageId: input.imageId,
+    policyHash: sha256Text(stableJson(policy)),
+    mountManifestHash: sha256Text(stableJson(mountManifest)),
+    networkMode: "none",
+    processPolicy: "seccomp_launcher_no_child_process",
+    capabilities: { drop: ["ALL"], add: [] },
+    noNewPrivileges: true,
+    readOnlyRootfs: true,
+    writableMounts: [CONTAINER_WORKSPACE, "/tmp"],
+    canaries
+  });
+  return {
+    executable: input.dockerExecutable,
+    args: [
+      "run",
+      "--rm",
+      "--pull=never",
+      "--network",
+      "none",
+      "--read-only",
+      "--cap-drop",
+      "ALL",
+      "--security-opt",
+      "no-new-privileges",
+      "--pids-limit",
+      "64",
+      "--user",
+      input.runnerUser,
+      "--tmpfs",
+      `/tmp:rw,noexec,nosuid,nodev,size=${LINUX_TMPFS_SIZE_BYTES}`,
+      "--mount",
+      `type=bind,src=${workspaceRoot},dst=${CONTAINER_WORKSPACE},bind-propagation=rprivate`,
+      "--workdir",
+      workdir,
+      ...envArgs,
+      input.image,
+      LINUX_SECCOMP_LAUNCHER,
+      normalizedExecutable,
+      ...normalizedArgs
+    ],
+    manifest
+  };
+}
+
+export function buildReferenceObserverIsolationManifest(
+  input: Omit<ReferenceObserverIsolationManifest, "manifestHash">
+): ReferenceObserverIsolationManifest {
+  if (
+    input.networkMode !== "none" ||
+    input.capabilities.drop.join(",") !== "ALL" ||
+    input.capabilities.add.length !== 0 ||
+    !input.noNewPrivileges ||
+    (input.backend === "linux-oci-docker" && !input.readOnlyRootfs) ||
+    input.writableMounts.length === 0
+  ) {
+    throw new Error("Reference Observer isolation manifest is incomplete or unsafe.");
+  }
+  if (
+    input.canaries.signingKeyRead !== "EPERM" &&
+    input.canaries.signingKeyRead !== "ABSENT_FROM_MOUNT_NAMESPACE"
+  ) {
+    throw new Error("Reference Observer signing-key canary unexpectedly succeeded.");
+  }
+  if (
+    input.canaries.networkDenied !== "EPERM" &&
+    input.canaries.networkDenied !== "NETWORK_UNREACHABLE"
+  ) {
+    throw new Error("Reference Observer network canary unexpectedly succeeded.");
+  }
+  if (
+    input.canaries.nestedProcessDenied !== "EPERM" &&
+    input.canaries.nestedProcessDenied !== "DENIED"
+  ) {
+    throw new Error("Reference Observer nested-process canary unexpectedly succeeded.");
+  }
+  if (
+    input.canaries.outOfScopeWriteDenied !== "EPERM" &&
+    input.canaries.outOfScopeWriteDenied !== "EROFS" &&
+    input.canaries.outOfScopeWriteDenied !== "EACCES"
+  ) {
+    throw new Error("Reference Observer out-of-scope write canary unexpectedly succeeded.");
+  }
+  if (input.backend === "linux-oci-docker") {
+    if (
+      input.platform !== "linux" ||
+      input.processPolicy !== "seccomp_launcher_no_child_process" ||
+      !input.readOnlyRootfs ||
+      stableJson([...input.writableMounts].sort()) !==
+        stableJson(["/tmp", CONTAINER_WORKSPACE])
+    ) {
+      throw new Error(
+        "linux-oci-docker backend platform, process policy, and writable mounts are inconsistent."
+      );
+    }
+    assertReferenceObserverIsolationConfig({
+      backend: input.backend,
+      dockerExecutable: "docker",
+      image: input.image,
+      imageId: input.imageId
+    });
+  } else if (
+    input.platform !== "darwin" ||
+    input.processPolicy !== "seatbelt_process_exec_allowlist"
+  ) {
+    throw new Error(
+      "macos-seatbelt backend platform and process policy are inconsistent."
+    );
+  }
+  const withoutHash = {
+    ...input,
+    writableMounts: [...input.writableMounts].sort(),
+    capabilities: {
+      drop: [...input.capabilities.drop].sort(),
+      add: [...input.capabilities.add].sort()
+    }
+  };
+  return {
+    ...withoutHash,
+    manifestHash: sha256Text(stableJson(withoutHash))
+  };
+}
+
 export async function observeWithReferenceObserver(options: {
   request: ReferenceObservationRequest;
   privateKeyPath: string;
   outputPath: string;
+  isolation?: ReferenceObserverIsolationConfig;
 }): Promise<ReferenceObservationResult> {
   assertRequest(options.request);
   const privateKeyBytes = await readFile(options.privateKeyPath);
@@ -137,17 +453,20 @@ export async function observeWithReferenceObserver(options: {
   const publicKey = createPublicKey(privateKey);
   const keyFingerprint = publicKeyFingerprint(publicKey);
   const observedCases = [];
+  const isolationManifests: ReferenceObserverIsolationManifest[] = [];
 
   for (const observedCase of options.request.cases) {
-    observedCases.push(
-      await observeCase(
+    const observed = await observeCase(
         observedCase,
         options.request.subject.contractHash,
-        await realpath(options.privateKeyPath)
-      )
-    );
+        await realpath(options.privateKeyPath),
+        options.isolation
+      );
+    observedCases.push(observed.case);
+    isolationManifests.push(observed.isolationManifest);
   }
 
+  const isolationManifest = combineIsolationManifests(isolationManifests);
   const unsigned = redactDeep({
     schemaVersion: "0.1.0" as const,
     observer: {
@@ -157,7 +476,13 @@ export async function observeWithReferenceObserver(options: {
       implementationHash: referenceObserverImplementationHash(),
       evidenceCapabilities: [...REFERENCE_OBSERVER_EVIDENCE_CAPABILITIES]
     },
-    subject: options.request.subject,
+    subject: {
+      ...options.request.subject,
+      // The reference Observer owns the signed isolation identity. Callers
+      // cannot promote or downgrade it independently of the active manifest.
+      isolation: "read_only_sandbox" as const,
+      isolationManifest
+    },
     cases: observedCases
   });
   const serialized = stableJson(unsigned);
@@ -183,8 +508,12 @@ export async function observeWithReferenceObserver(options: {
 async function observeCase(
   input: ReferenceObservationRequest["cases"][number],
   contractHash: string,
-  privateKeyPath: string
-): Promise<WorkflowTraceBundle["cases"][number]> {
+  privateKeyPath: string,
+  isolation: ReferenceObserverIsolationConfig | undefined
+): Promise<{
+  case: WorkflowTraceBundle["cases"][number];
+  isolationManifest: ReferenceObserverIsolationManifest;
+}> {
   const workspaceRoot = await realpath(input.workspaceRoot);
   const commandCwd = await realpath(input.command.cwd);
   assertWithin(workspaceRoot, commandCwd, "Runner cwd");
@@ -271,9 +600,16 @@ async function observeCase(
     workspaceRoot,
     commandCwd,
     privateKeyPath,
-    runnerEnvironment
+    runnerEnvironment,
+    isolation
   });
-  const { execution, boundaryProbe, boundaryProfileHash } = isolated;
+  const {
+    execution,
+    boundaryProbe,
+    boundaryProfileHash,
+    isolationManifest
+  } = isolated;
+  const isolationBoundary = isolationManifest.backend;
   push("filesystem_access", {
     operation: "read_probe",
     resource: "observer-signing-key",
@@ -282,7 +618,7 @@ async function observeCase(
     outcomeCode: boundaryProbe.signingKeyRead,
     policyDecision: "deny",
     policy: "deny_default",
-    boundary: "macos-seatbelt",
+    boundary: isolationBoundary,
     boundaryProfileHash,
     observedBy: "reference_observer"
   });
@@ -292,7 +628,7 @@ async function observeCase(
     outcomeCode: boundaryProbe.networkDenied,
     policyDecision: "deny",
     policy: "deny_default",
-    boundary: "macos-seatbelt",
+    boundary: isolationBoundary,
     boundaryProfileHash,
     boundaryProbe: true,
     observedBy: "reference_observer"
@@ -303,7 +639,7 @@ async function observeCase(
     allowed: false,
     outcomeCode: boundaryProbe.nestedProcessDenied,
     policyDecision: "deny",
-    boundary: "macos-seatbelt",
+    boundary: isolationBoundary,
     boundaryProfileHash,
     boundaryProbe: true,
     observedBy: "reference_observer"
@@ -314,7 +650,7 @@ async function observeCase(
     allowed: false,
     outcomeCode: boundaryProbe.nestedProcessDenied,
     policyDecision: "deny",
-    boundary: "macos-seatbelt",
+    boundary: isolationBoundary,
     boundaryProfileHash,
     boundaryProbe: true,
     observedBy: "reference_observer"
@@ -414,19 +750,22 @@ async function observeCase(
   });
 
   return {
-    caseId: input.caseId,
-    templateId: input.templateId,
-    runId: input.runId,
-    events,
-    wallClockSeconds: Math.max(0, (Date.now() - startedAt) / 1_000),
-    tokens: {
-      input: 0,
-      output: estimatedOutputTokens,
-      total: estimatedOutputTokens,
-      wasted: 0,
-      costEstimateConfidence: "low"
+    case: {
+      caseId: input.caseId,
+      templateId: input.templateId,
+      runId: input.runId,
+      events,
+      wallClockSeconds: Math.max(0, (Date.now() - startedAt) / 1_000),
+      tokens: {
+        input: 0,
+        output: estimatedOutputTokens,
+        total: estimatedOutputTokens,
+        wasted: 0,
+        costEstimateConfidence: "low"
+      },
+      telemetryCompleteness: 1
     },
-    telemetryCompleteness: 1
+    isolationManifest
   };
 }
 
@@ -457,13 +796,79 @@ function buildRunnerEnvironment(
   return safe;
 }
 
+function combineIsolationManifests(
+  manifests: ReferenceObserverIsolationManifest[]
+): ReferenceObserverIsolationManifest {
+  if (manifests.length === 0) {
+    throw new Error("Reference Observer did not collect isolation evidence.");
+  }
+  if (manifests.length === 1) {
+    return manifests[0]!;
+  }
+  const [first] = manifests;
+  if (
+    manifests.some(
+      (item) =>
+        item.backend !== first!.backend ||
+        item.platform !== first!.platform ||
+        item.runtimeVersion !== first!.runtimeVersion ||
+        item.image !== first!.image ||
+        item.imageId !== first!.imageId ||
+        item.networkMode !== first!.networkMode ||
+        item.processPolicy !== first!.processPolicy ||
+        stableJson(item.capabilities) !== stableJson(first!.capabilities) ||
+        item.noNewPrivileges !== first!.noNewPrivileges ||
+        item.readOnlyRootfs !== first!.readOnlyRootfs ||
+        stableJson(item.writableMounts) !== stableJson(first!.writableMounts) ||
+        stableJson(item.canaries) !== stableJson(first!.canaries)
+    )
+  ) {
+    throw new Error(
+      "Reference Observer cases used inconsistent isolation backend evidence."
+    );
+  }
+  return buildReferenceObserverIsolationManifest({
+    backend: first!.backend,
+    platform: first!.platform,
+    runtimeVersion: first!.runtimeVersion,
+    ...(first!.image ? { image: first!.image } : {}),
+    ...(first!.imageId ? { imageId: first!.imageId } : {}),
+    policyHash: sha256Text(
+      stableJson(manifests.map((item) => item.policyHash).sort())
+    ),
+    mountManifestHash: sha256Text(
+      stableJson(manifests.map((item) => item.mountManifestHash).sort())
+    ),
+    networkMode: first!.networkMode,
+    processPolicy: first!.processPolicy,
+    capabilities: first!.capabilities,
+    noNewPrivileges: first!.noNewPrivileges,
+    readOnlyRootfs: first!.readOnlyRootfs,
+    writableMounts: first!.writableMounts,
+    canaries: first!.canaries
+  });
+}
+
 async function executeWithReferenceObserverBoundary(options: {
   input: ReferenceObservationRequest["cases"][number];
   workspaceRoot: string;
   commandCwd: string;
   privateKeyPath: string;
   runnerEnvironment: Record<string, string>;
+  isolation?: ReferenceObserverIsolationConfig;
 }) {
+  if (options.isolation?.backend === "linux-oci-docker") {
+    return executeWithLinuxOciDockerBoundary(options as {
+      input: ReferenceObservationRequest["cases"][number];
+      workspaceRoot: string;
+      commandCwd: string;
+      privateKeyPath: string;
+      runnerEnvironment: Record<string, string>;
+      isolation: ReferenceObserverIsolationConfig & {
+        backend: "linux-oci-docker";
+      };
+    });
+  }
   await assertReferenceObserverIsolationAvailable();
   const runnerExecutable = await resolveExecutable(
     options.input.command.executable,
@@ -515,8 +920,258 @@ async function executeWithReferenceObserverBoundary(options: {
   return {
     execution,
     boundaryProbe,
-    boundaryProfileHash: sha256Text(runnerProfile)
+    boundaryProfileHash: sha256Text(runnerProfile),
+    isolationManifest: buildReferenceObserverIsolationManifest({
+      backend: "macos-seatbelt",
+      platform: "darwin",
+      runtimeVersion: path.basename(MACOS_SANDBOX_EXECUTABLE),
+      policyHash: sha256Text(runnerProfile),
+      mountManifestHash: sha256Text(
+        stableJson({
+          workspace: "rw-subpath",
+          signingKey: "explicit-deny",
+          readableArguments: options.input.command.args
+            .filter((value) => path.isAbsolute(value))
+            .map((value) => path.basename(value))
+        })
+      ),
+      networkMode: "none",
+      processPolicy: "seatbelt_process_exec_allowlist",
+      capabilities: { drop: ["ALL"], add: [] },
+      noNewPrivileges: true,
+      readOnlyRootfs: false,
+      writableMounts: ["workspace://root"],
+      canaries: {
+        signingKeyRead: boundaryProbe.signingKeyRead,
+        networkDenied: boundaryProbe.networkDenied,
+        nestedProcessDenied: boundaryProbe.nestedProcessDenied,
+        outOfScopeWriteDenied: "EPERM"
+      }
+    })
   };
+}
+
+async function executeWithLinuxOciDockerBoundary(options: {
+  input: ReferenceObservationRequest["cases"][number];
+  workspaceRoot: string;
+  commandCwd: string;
+  privateKeyPath: string;
+  runnerEnvironment: Record<string, string>;
+  isolation: ReferenceObserverIsolationConfig & {
+    backend: "linux-oci-docker";
+  };
+}) {
+  if (process.platform !== "linux") {
+    throw new Error(
+      "linux-oci-docker Reference Observer backend is only available on Linux."
+    );
+  }
+  const identity = await resolveLinuxOciDockerImageIdentity(options.isolation);
+  const uid = process.getuid?.();
+  const gid = process.getgid?.();
+  if (
+    uid === undefined ||
+    gid === undefined ||
+    !Number.isSafeInteger(uid) ||
+    !Number.isSafeInteger(gid) ||
+    uid <= 0 ||
+    gid < 0
+  ) {
+    throw new Error(
+      "linux-oci-docker requires a non-root Linux host uid:gid for the writable Runner workspace."
+    );
+  }
+  const runnerUser = `${uid}:${gid}`;
+  const canaries = await runLinuxOciDockerCanaries({
+    dockerExecutable: identity.dockerExecutable,
+    image: identity.image,
+    imageId: identity.imageId,
+    runtimeVersion: identity.runtimeVersion,
+    runnerUser,
+    workspaceRoot: options.workspaceRoot,
+    commandCwd: options.commandCwd,
+    privateKeyPath: options.privateKeyPath,
+    environment: options.runnerEnvironment
+  });
+  const plan = buildLinuxOciDockerRunPlan({
+    dockerExecutable: identity.dockerExecutable,
+    image: identity.image,
+    imageId: identity.imageId,
+    runtimeVersion: identity.runtimeVersion,
+    runnerUser,
+    workspaceRoot: options.workspaceRoot,
+    commandCwd: options.commandCwd,
+    privateKeyPath: options.privateKeyPath,
+    command: {
+      executable: options.input.command.executable,
+      args: options.input.command.args,
+      env: options.runnerEnvironment
+    },
+    canaries
+  });
+  const execution = await execa(plan.executable, plan.args, {
+    cwd: options.commandCwd,
+    env: {},
+    extendEnv: false,
+    reject: false,
+    timeout: 30_000
+  });
+  return {
+    execution,
+    boundaryProbe: {
+      signingKeyRead:
+        plan.manifest.canaries.signingKeyRead === "EPERM"
+          ? "EPERM"
+          : "ABSENT_FROM_MOUNT_NAMESPACE",
+      networkDenied:
+        plan.manifest.canaries.networkDenied === "EPERM"
+          ? "EPERM"
+          : "NETWORK_UNREACHABLE",
+      nestedProcessDenied: plan.manifest.canaries.nestedProcessDenied
+    },
+    boundaryProfileHash: plan.manifest.policyHash,
+    isolationManifest: plan.manifest
+  };
+}
+
+async function resolveLinuxOciDockerImageIdentity(
+  config: ReferenceObserverIsolationConfig & { backend: "linux-oci-docker" }
+): Promise<{
+  dockerExecutable: string;
+  image: string;
+  imageId: string;
+  runtimeVersion: string;
+}> {
+  assertReferenceObserverIsolationConfig(config);
+  const dockerExecutable = config.dockerExecutable!;
+  const image = config.image!;
+  const version = await execa(
+    dockerExecutable,
+    ["version", "--format", "{{.Server.Version}}"],
+    { reject: false, timeout: 10_000 }
+  );
+  if (version.exitCode !== 0 || !version.stdout.trim()) {
+    throw new Error("linux-oci-docker requires an available Docker daemon.");
+  }
+  const inspected = await execa(
+    dockerExecutable,
+    ["image", "inspect", image, "--format", "{{json .}}"],
+    { reject: false, timeout: 10_000 }
+  );
+  if (inspected.exitCode !== 0 || !inspected.stdout.trim()) {
+    throw new Error("linux-oci-docker image is unavailable or unresolved.");
+  }
+  let metadata: { Id?: string; RepoDigests?: string[] };
+  try {
+    metadata = JSON.parse(inspected.stdout) as {
+      Id?: string;
+      RepoDigests?: string[];
+    };
+  } catch {
+    throw new Error("linux-oci-docker image inspect returned invalid metadata.");
+  }
+  const imageId = metadata.Id;
+  if (!imageId || !isDockerImageId(imageId)) {
+    throw new Error("linux-oci-docker image inspect did not return an immutable image id.");
+  }
+  if (config.imageId && config.imageId !== imageId) {
+    throw new Error("linux-oci-docker image id does not match the configured immutable identity.");
+  }
+  if (image.includes("@sha256:") && !(metadata.RepoDigests ?? []).includes(image)) {
+    throw new Error("linux-oci-docker image digest is not present in local image metadata.");
+  }
+  return {
+    dockerExecutable,
+    image,
+    imageId,
+    runtimeVersion: `docker:${version.stdout.trim()}`
+  };
+}
+
+async function runLinuxOciDockerCanaries(options: {
+  dockerExecutable: string;
+  image: string;
+  imageId: string;
+  runtimeVersion: string;
+  runnerUser: string;
+  workspaceRoot: string;
+  commandCwd: string;
+  privateKeyPath: string;
+  environment: Record<string, string>;
+}): Promise<ReferenceObserverIsolationManifest["canaries"]> {
+  const canarySource = [
+    'const { readFile, writeFile } = require("node:fs/promises");',
+    'const { spawnSync } = require("node:child_process");',
+    'const net = require("node:net");',
+    "(async () => {",
+    '  let signingKeyRead = "READABLE";',
+    '  try { await readFile("/observer-private.pem"); }',
+    '  catch (error) { signingKeyRead = error?.code === "ENOENT" ? "ABSENT_FROM_MOUNT_NAMESPACE" : (error?.code ?? "UNKNOWN"); }',
+    "  const networkDenied = await new Promise((resolve) => {",
+    '    const socket = net.connect({ host: "1.1.1.1", port: 80, timeout: 1000 });',
+    '    socket.once("connect", () => { socket.destroy(); resolve("CONNECTED"); });',
+    '    socket.once("timeout", () => { socket.destroy(); resolve("TIMEOUT"); });',
+    '    socket.once("error", (error) => resolve(["ENETUNREACH", "EHOSTUNREACH", "ENETDOWN", "EPERM"].includes(error?.code) ? "NETWORK_UNREACHABLE" : (error?.code ?? "UNKNOWN")));',
+    "  });",
+    '  const nested = spawnSync("/bin/echo", ["observer-linux-nested-canary"]);',
+    '  const nestedProcessDenied = ["EPERM", "EACCES", "ENOSYS"].includes(nested.error?.code) ? "DENIED" : "ALLOWED";',
+    '  let outOfScopeWriteDenied = "WRITABLE";',
+    '  try { await writeFile("/awb-out-of-scope-canary", "blocked"); }',
+    '  catch (error) { outOfScopeWriteDenied = ["EROFS", "EACCES", "EPERM"].includes(error?.code) ? error.code : (error?.code ?? "UNKNOWN"); }',
+    "  process.stdout.write(JSON.stringify({",
+    "    signingKeyRead, networkDenied, nestedProcessDenied, outOfScopeWriteDenied",
+    "  }));",
+    "})().catch((error) => {",
+    "  process.stderr.write(String(error));",
+    "  process.exit(1);",
+    "});"
+  ].join("\n");
+  const plan = buildLinuxOciDockerRunPlan({
+    dockerExecutable: options.dockerExecutable,
+    image: options.image,
+    imageId: options.imageId,
+    runtimeVersion: options.runtimeVersion,
+    runnerUser: options.runnerUser,
+    workspaceRoot: options.workspaceRoot,
+    commandCwd: options.commandCwd,
+    privateKeyPath: options.privateKeyPath,
+    command: {
+      executable: "node",
+      args: ["-e", canarySource],
+      env: options.environment
+    },
+    canaries: {
+      signingKeyRead: "ABSENT_FROM_MOUNT_NAMESPACE",
+      networkDenied: "NETWORK_UNREACHABLE",
+      nestedProcessDenied: "DENIED",
+      outOfScopeWriteDenied: "EROFS"
+    }
+  });
+  const result = await execa(plan.executable, plan.args, {
+    cwd: options.commandCwd,
+    env: {},
+    extendEnv: false,
+    reject: false,
+    timeout: 15_000
+  });
+  if (result.exitCode !== 0) {
+    throw new Error(
+      `linux-oci-docker isolation canary failed closed: ${redactSensitiveText(
+        result.stderr || `exit ${result.exitCode}`
+      )}`
+    );
+  }
+  let canaries: ReferenceObserverIsolationManifest["canaries"];
+  try {
+    canaries = JSON.parse(result.stdout) as ReferenceObserverIsolationManifest["canaries"];
+  } catch {
+    throw new Error("linux-oci-docker isolation canary returned invalid evidence.");
+  }
+  buildReferenceObserverIsolationManifest({
+    ...plan.manifest,
+    canaries
+  });
+  return canaries;
 }
 
 export async function assertReferenceObserverIsolationAvailable(
@@ -809,6 +1464,106 @@ function portableRelative(root: string, candidate: string): string {
 
 function portableArgument(value: string): string {
   return path.isAbsolute(value) ? `external://${path.basename(value)}` : value;
+}
+
+function normalizeLinuxContainerExecutable(
+  executable: string,
+  workspaceRoot: string
+): string {
+  if (path.resolve(executable) === path.resolve(process.execPath)) {
+    return "node";
+  }
+  if (!path.isAbsolute(executable)) {
+    return executable;
+  }
+  return mapHostWorkspacePathToContainer(
+    executable,
+    workspaceRoot,
+    "Runner executable"
+  );
+}
+
+function normalizeLinuxContainerArgument(
+  value: string,
+  workspaceRoot: string
+): string {
+  if (path.isAbsolute(value)) {
+    return mapHostWorkspacePathToContainer(
+      value,
+      workspaceRoot,
+      "Runner argument"
+    );
+  }
+  const equalsIndex = value.indexOf("=");
+  if (equalsIndex > 0) {
+    const argumentValue = value.slice(equalsIndex + 1);
+    if (path.isAbsolute(argumentValue)) {
+      return `${value.slice(0, equalsIndex + 1)}${mapHostWorkspacePathToContainer(
+        argumentValue,
+        workspaceRoot,
+        "Runner argument"
+      )}`;
+    }
+  }
+  return value;
+}
+
+function normalizeLinuxContainerEnvironmentValue(
+  key: string,
+  value: string,
+  workspaceRoot: string
+): string {
+  if (key === "PATH") {
+    return "/usr/local/bin:/usr/bin:/bin";
+  }
+  if (!path.isAbsolute(value)) {
+    return value;
+  }
+  return mapHostWorkspacePathToContainer(
+    value,
+    workspaceRoot,
+    `Runner environment ${key}`
+  );
+}
+
+function mapHostWorkspacePathToContainer(
+  value: string,
+  workspaceRoot: string,
+  label: string
+): string {
+  const resolved = path.resolve(value);
+  try {
+    assertWithin(workspaceRoot, resolved, label);
+  } catch {
+    throw new Error(`${label} path is outside the mounted Runner workspace.`);
+  }
+  const relative = portableRelative(workspaceRoot, resolved);
+  return relative ? `${CONTAINER_WORKSPACE}/${relative}` : CONTAINER_WORKSPACE;
+}
+
+function isImmutableDockerImage(image: string): boolean {
+  return (
+    /^[a-z0-9][a-z0-9._/-]*(?::[A-Za-z0-9._-]+)?@sha256:[a-f0-9]{64}$/u.test(image) ||
+    isDockerImageId(image)
+  );
+}
+
+function isDockerImageId(value: string): boolean {
+  return /^sha256:[a-f0-9]{64}$/u.test(value);
+}
+
+function isForbiddenDockerCommand(executable: string, args: string[]): boolean {
+  const values = [executable, ...args];
+  return values.some(
+    (value) =>
+      value.includes("/var/run/docker.sock") ||
+      value === "--privileged" ||
+      value.startsWith("--cap-add") ||
+      value.startsWith("--pid=host") ||
+      value.startsWith("--network=host") ||
+      value.startsWith("--ipc=host") ||
+      value.startsWith("--uts=host")
+  );
 }
 
 function publicKeyFingerprint(publicKey: KeyObject): string {
