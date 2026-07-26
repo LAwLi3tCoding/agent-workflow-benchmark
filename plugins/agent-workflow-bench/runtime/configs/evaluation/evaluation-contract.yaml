@@ -155,7 +155,7 @@ hardFailures:
     dimension: gate
     source: event
     status: implemented
-    why: Workflow represented a skipped or advisory gate as PASS.
+    why: Workflow promoted a non-pass semantic status to pass-class through a transition the owner-reviewed mapping does not allow.
   - code: ARTIFACT_PATH_DRIFT
     severity: P0
     dimension: artifact
@@ -226,7 +226,7 @@ gateRules:
 claims:
   - id: contract-identity
     status: implemented
-    contractFields: [entrypoints, roles, statuses, requiredOwners, routing, joins, artifacts, states, budgets, commandPolicy]
+    contractFields: [entrypoints, roles, statuses, statusSemantics, requiredOwners, routing, joins, artifacts, states, budgets, commandPolicy]
     caseTemplateIds: [static-contract]
     eventTypes: [case_start, contract_observed]
     oracleIds: [oracle-static-contract]
@@ -253,7 +253,7 @@ claims:
     tests: [tests/run-score.test.ts]
   - id: gate-status
     status: implemented
-    contractFields: [statuses]
+    contractFields: [statuses, statusSemantics]
     caseTemplateIds: [skip-not-pass]
     eventTypes: [gate_decision, hard_failure]
     oracleIds: [oracle-skip-not-pass]
@@ -334,7 +334,7 @@ claims:
     tests: [tests/run-score.test.ts, tests/live-runner.test.ts, tests/workflow-trace.test.ts, tests/compare.test.ts]
   - id: gold-corpus-detection
     status: implemented
-    contractFields: [roles, requiredOwners, routing, joins, artifacts, states, statuses, budgets, commandPolicy]
+    contractFields: [roles, requiredOwners, routing, joins, artifacts, states, statuses, statusSemantics, budgets, commandPolicy]
     caseTemplateIds: [static-contract, forbidden-route, required-owner, skip-not-pass, required-join, side-effect-deny, efficiency-token]
     eventTypes: [case_start, contract_observed, handoff, artifact_write, state_read, gate_decision, side_effect_attempt, token_usage, case_end]
     oracleIds: [oracle-static-contract, oracle-forbidden-route, oracle-required-owner, oracle-skip-not-pass, oracle-required-join, oracle-side-effect-deny, oracle-efficiency-token]

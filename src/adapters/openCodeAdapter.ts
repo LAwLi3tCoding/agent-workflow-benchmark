@@ -243,14 +243,10 @@ export async function runLiveOpenCodeCase(
     parsed: normalizedResult.parsed,
     verdict: normalizedResult.verdict,
     caveats: normalizedResult.caveats,
-    hardFailureCodes: normalizedResult.hardFailureCodes
+    hardFailureCodes: normalizedResult.hardFailureCodes,
+    observationLevel: "capability_only",
+    authoritative: false
   });
-  for (const code of normalizedResult.hardFailureCodes) {
-    push("hard_failure", "opencode", {
-      code,
-      why: `OpenCode reported hard failure ${code}.`
-    });
-  }
   push("runner_exit", "opencode", {
     exitCode: result.exitCode ?? 1,
     timedOut: result.timedOut ?? false,

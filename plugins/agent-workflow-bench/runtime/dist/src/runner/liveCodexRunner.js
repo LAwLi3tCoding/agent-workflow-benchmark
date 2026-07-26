@@ -79,11 +79,10 @@ export async function runLiveCodexCase(testCase, contract, capability, options) 
         parsed: liveResult.parsed,
         verdict: liveResult.verdict,
         caveats: liveResult.caveats,
-        hardFailureCodes: liveResult.hardFailureCodes
+        hardFailureCodes: liveResult.hardFailureCodes,
+        observationLevel: "contract_summary",
+        authoritative: false
     });
-    for (const code of liveResult.hardFailureCodes) {
-        push("hard_failure", "codex", { code, why: `Live runner reported hard failure ${code}.` });
-    }
     push("runner_exit", "codex", {
         exitCode: result.exitCode ?? null,
         timedOut: result.timedOut ?? false,
@@ -173,11 +172,10 @@ export async function runLiveClaudeCase(testCase, contract, capability, options)
         parsed: liveResult.parsed,
         verdict: liveResult.verdict,
         caveats: liveResult.caveats,
-        hardFailureCodes: liveResult.hardFailureCodes
+        hardFailureCodes: liveResult.hardFailureCodes,
+        observationLevel: "contract_summary",
+        authoritative: false
     });
-    for (const code of liveResult.hardFailureCodes) {
-        push("hard_failure", "claude", { code, why: `Live runner reported hard failure ${code}.` });
-    }
     push("runner_exit", "claude", {
         exitCode: result.exitCode ?? null,
         timedOut: result.timedOut ?? false,
@@ -245,6 +243,7 @@ function buildPrompt(testCase, contract) {
         targetType: contract.targetType,
         roles: contract.roles.map((role) => ({ id: role.id, ownerScopes: role.ownerScopes, path: role.path })),
         statuses: contract.statuses,
+        statusSemantics: contract.statusSemantics,
         requiredOwners: contract.requiredOwners,
         routingForbidden: contract.routing.forbidden,
         joins: contract.joins,
@@ -285,16 +284,18 @@ function buildPrompt(testCase, contract) {
         "",
         "Required evidence:",
         "- roles: at least one declared role and every binding role should exist in ContractModel roles.",
-        "- artifacts: every case artifact binding should map to a declared artifact path or explicit fallback path.",
-        "- statuses: PASS, FAILED, SKIPPED, and ADVISORY should be represented when the target declares gate statuses.",
+        "- artifacts: every present case artifact binding should map to a declared artifact or state path; an omitted binding is not applicable.",
+        "- statuses: target status codes are raw vocabulary and may use arbitrary names; never require canonical literals.",
+        "- statusSemantics: interpret a raw status only through its owner-reviewed semanticClass and scope. Missing or ambiguous mappings are UNVERIFIED.",
         "- contractHash: the caseContractHash must equal the ContractModel contractHash.",
         "- caseHash: caseHash is a case identity hash and must not be compared to the ContractModel contractHash.",
         "",
         "Verdict rules:",
-        "- PASS: all Required evidence bullets can be verified from this prompt and no concrete contradiction is observed.",
+        "- PASS: the AWB runner verdict is PASS when all Required evidence bullets can be verified and no concrete contradiction is observed; it is not a target status code.",
         "- FAIL: a Required evidence bullet is contradicted, or the prompt evidence shows a concrete violation matching an expectedHardFailures item.",
         "- UNVERIFIED: a Required evidence bullet cannot be checked from this prompt.",
         "- hardFailureCodes: include an expectedHardFailures code only when FAIL is based on observed contradictory evidence for that failure type; never copy codes from expectedHardFailures just because they are declared.",
+        "- This prompt is contract_summary evidence, not a workflow trace. It cannot by itself prove a gate transition or authorize an event-derived P0.",
         "Allowed hardFailureCodes are TARGET_ROUTE_FORBIDDEN, TARGET_OWNER_BYPASS, GATE_FALSE_PASS, ARTIFACT_PATH_DRIFT, TARGET_JOIN_MISSING, and PRODUCTION_SIDE_EFFECT.",
         "",
         "Return only JSON."

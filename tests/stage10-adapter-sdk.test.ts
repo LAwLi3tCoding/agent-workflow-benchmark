@@ -396,6 +396,7 @@ describe("Stage 10 Adapter SDK and conformance", () => {
       caveats: ["final"],
       hardFailureCodes: ["HF-FINAL"]
     });
+    expect(run.events.filter((event) => event.type === "hard_failure")).toEqual([]);
   });
 });
 

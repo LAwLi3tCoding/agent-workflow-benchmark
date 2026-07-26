@@ -6,6 +6,8 @@ export function normalizeCaseBindings(contract, bindings, defaults = {}) {
     const joinId = resolveJoinBinding(contract, bindings?.joinId ?? defaults.joinId);
     const artifactPath = resolveArtifactPathBinding(contract, bindings?.artifactPath ?? defaults.artifactPath);
     const statePath = resolveStatePathBinding(contract, bindings?.statePath ?? defaults.statePath);
+    const statusScope = resolveStatusScopeBinding(contract, bindings?.statusScope ?? defaults.statusScope);
+    const statusCode = resolveStatusCodeBinding(contract, bindings?.statusCode ?? defaults.statusCode, statusScope);
     if (primaryRole) {
         normalized.primaryRole = primaryRole;
     }
@@ -20,6 +22,12 @@ export function normalizeCaseBindings(contract, bindings, defaults = {}) {
     }
     if (statePath) {
         normalized.statePath = statePath;
+    }
+    if (statusCode) {
+        normalized.statusCode = statusCode;
+    }
+    if (statusScope) {
+        normalized.statusScope = statusScope;
     }
     return normalized;
 }
@@ -50,9 +58,6 @@ export function resolveJoinBinding(contract, value) {
         return undefined;
     }
     const joinId = stripPrefix(value.trim(), "join:");
-    if (joinId === "not-applicable") {
-        return joinId;
-    }
     const byId = contract.joins.find((join) => join.id === joinId);
     if (byId) {
         return byId.id;
@@ -92,6 +97,29 @@ export function resolveStatePathBinding(contract, value) {
     }
     const byUniqueBasename = contract.states.filter((state) => path.basename(state.path) === path.basename(stateValue));
     return byUniqueBasename.length === 1 ? byUniqueBasename[0].path : undefined;
+}
+export function resolveStatusScopeBinding(contract, value) {
+    if (!value) {
+        return undefined;
+    }
+    const scope = value.trim();
+    return (contract.statusSemantics ?? []).some((mapping) => mapping.scope === scope)
+        ? scope
+        : undefined;
+}
+export function resolveStatusCodeBinding(contract, value, scope) {
+    if (!value) {
+        return undefined;
+    }
+    const code = stripPrefix(value.trim(), "status:");
+    if (!contract.statuses.includes(code)) {
+        return undefined;
+    }
+    if (scope &&
+        !(contract.statusSemantics ?? []).some((mapping) => mapping.code === code && mapping.scope === scope)) {
+        return undefined;
+    }
+    return code;
 }
 function stripPrefix(value, prefix) {
     return value.startsWith(prefix) ? value.slice(prefix.length) : value;

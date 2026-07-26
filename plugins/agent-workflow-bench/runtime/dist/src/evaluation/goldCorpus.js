@@ -4,10 +4,11 @@ import YAML from "yaml";
 import { getBenchmarkRoot } from "../core/targetRegistry.js";
 import { deriveWorkflowCoverageTargets } from "../generator/coverage.js";
 import { semanticCaseSetHash } from "../regression/provenance.js";
-import { scoreCase } from "../scorer/score.js";
+import { scoreCaseWithContract } from "../scorer/score.js";
 import { baselineGatePolicyRules } from "../calibration/policyArtifact.js";
 import { hashFile } from "../utils/hash.js";
 import { getScorePolicy } from "./evaluationContract.js";
+import { isFalsePassTransition } from "./statusSemantics.js";
 export const REQUIRED_GOLD_FAILURE_CODES = [
     "TRACE_EVENT_MISSING",
     "TRACE_EVENT_ORDER_INVALID",
@@ -294,7 +295,7 @@ export function scoreGoldCorpusCase(corpus, corpusCase, contract, benchmarkCase)
     const rawRun = materializeGoldTrajectory(corpus.base, corpusCase.trajectory, contract, benchmarkCase);
     const detectedFailures = detectTrajectoryFailures(rawRun, contract, benchmarkCase);
     const scoredRun = appendDetectedFailures(rawRun, detectedFailures);
-    const caseResult = scoreCase(benchmarkCase, scoredRun, baselineGatePolicyRules());
+    const caseResult = scoreCaseWithContract(benchmarkCase, scoredRun, contract, baselineGatePolicyRules());
     return {
         corpusCase,
         caseResult,
@@ -430,12 +431,9 @@ export function detectTrajectoryFailures(run, contract, testCase) {
             }
         }
     }
-    const nonPassStatuses = new Set(["FAILED", "SKIPPED", "ADVISORY", "BYPASSED"]);
     for (const event of events) {
         if (event.type === "gate_decision" &&
-            event.payload.status === "PASS" &&
-            typeof event.payload.sourceStatus === "string" &&
-            nonPassStatuses.has(event.payload.sourceStatus)) {
+            isFalsePassTransition(contract, event.payload)) {
             add("GATE_FALSE_PASS", [event.eventId]);
         }
     }
@@ -522,7 +520,7 @@ function appendDetectedFailures(run, detected) {
                 eventId: `oracle-hard-failure-${String(index + 1).padStart(3, "0")}`,
                 timestamp: new Date(new Date(lastTimestamp).getTime() + (index + 1) * 1000).toISOString(),
                 type: "hard_failure",
-                actor: "awb-oracle",
+                actor: "benchmark",
                 payload: {
                     code: failure.code,
                     evidenceEventIds: failure.evidenceEventIds

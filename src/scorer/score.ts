@@ -17,6 +17,11 @@ import {
   getHardFailureDefinition,
   getImplementedDimensions
 } from "../evaluation/evaluationContract.js";
+import {
+  isFalsePassTransition,
+  resolveStatusSemantic,
+  statusMappingDiagnostics
+} from "../evaluation/statusSemantics.js";
 import type { EvidenceKind, ObservationLevel } from "../doctor/doctor.js";
 import {
   gatePolicyBinding,
@@ -36,12 +41,30 @@ export function scoreCase(
   run: CaseRun,
   policyRules: GatePolicyRules = loadCanonicalGatePolicy().rules
 ): CaseResult {
-  const hardFailures = collectHardFailures(run);
+  return scoreCaseAgainstContract(testCase, run, undefined, policyRules);
+}
+
+export function scoreCaseWithContract(
+  testCase: BenchmarkCase,
+  run: CaseRun,
+  contract: ContractModel,
+  policyRules: GatePolicyRules = loadCanonicalGatePolicy().rules
+): CaseResult {
+  return scoreCaseAgainstContract(testCase, run, contract, policyRules);
+}
+
+function scoreCaseAgainstContract(
+  testCase: BenchmarkCase,
+  run: CaseRun,
+  contract: ContractModel | undefined,
+  policyRules: GatePolicyRules
+): CaseResult {
+  const hardFailures = collectHardFailures(run, contract);
   const runnerFailure = hasRunnerFailure(run);
   const runnerDiagnostic = getRunnerDiagnosticReason(run);
-  const runnerFail = hasRunnerFailResult(run);
   const runner = runnerForRun(run);
-  if (runnerFail) {
+  const authoritativeRunnerFail = hasAuthoritativeRunnerFailResult(run, runner);
+  if (authoritativeRunnerFail) {
     const evaluationDimensions = evaluateCaseDimensions(
       testCase,
       run,
@@ -50,7 +73,8 @@ export function scoreCase(
         status: "FAIL",
         why: "Runner returned FAIL for the provided oracle evidence."
       },
-      policyRules
+      policyRules,
+      contract
     );
     return {
       schemaVersion: "0.1.0",
@@ -97,7 +121,8 @@ export function scoreCase(
         status: "DIAGNOSTIC_ONLY",
         why: reason
       },
-      policyRules
+      policyRules,
+      contract
     );
     return {
       schemaVersion: "0.1.0",
@@ -144,7 +169,8 @@ export function scoreCase(
       status: "PASS",
       why: "Runner produced comparable PASS evidence."
     },
-    policyRules
+    policyRules,
+    contract
   );
   const policy = policyRules.score;
   const rawScore = Math.max(
@@ -206,8 +232,16 @@ export function scoreCase(
     scoreProvenance: {
       oracleResults: testCase.oracleIds.map((oracleId) => ({
         oracleId,
-        status: hardFailures.length === 0 ? "PASS" : "FAIL",
-        why: hardFailures.length === 0 ? "Required evidence was observed." : hardFailures[0]!.why
+        status:
+          hardFailures.length === 0 && !hasDiagnosticOnlyDimension
+            ? "PASS"
+            : "FAIL",
+        why:
+          hardFailures.length > 0
+            ? hardFailures[0]!.why
+            : hasDiagnosticOnlyDimension
+              ? "Required evidence is incomplete; the oracle remains diagnostic-only."
+              : "Required evidence was observed."
       })),
       dimensionProvenance: toDimensionProvenance(evaluationDimensions)
     }
@@ -223,8 +257,22 @@ function getRunnerDiagnosticReason(run: CaseRun): string | undefined {
   return verdict;
 }
 
-function hasRunnerFailResult(run: CaseRun): boolean {
-  return run.events.some((event) => event.type === "runner_result" && typeof event.payload.verdict === "string" && event.payload.verdict.toLowerCase() === "fail");
+function hasAuthoritativeRunnerFailResult(
+  run: CaseRun,
+  runner: NonNullable<CaseRun["runner"]>
+): boolean {
+  return (
+    runner.comparability.workflowScore === "comparable" &&
+    run.events.some(
+      (event) =>
+        event.type === "runner_result" &&
+        event.actor === "observer" &&
+        event.payload.authoritative === true &&
+        event.payload.observationLevel === "workflow_trace" &&
+        typeof event.payload.verdict === "string" &&
+        event.payload.verdict.toLowerCase() === "fail"
+    )
+  );
 }
 
 function hasRunnerFailure(run: CaseRun): boolean {
@@ -252,10 +300,16 @@ export function scoreSuite(
   const cappedSuiteScore = Math.round(avg(caseResults.map((result) => result.cappedScore)));
   const telemetryCompleteness = Number(avg(caseResults.map((result) => result.telemetryCompleteness)).toFixed(2));
   const dimensionScores = aggregateDimensionScores(caseResults);
-  const recommendations = buildRecommendations(caseResults, dimensionScores);
+  const contractDiagnostics = statusMappingDiagnostics(contract);
+  const recommendations = buildRecommendations(
+    caseResults,
+    dimensionScores,
+    contractDiagnostics
+  );
   const p0CaseRecords = buildP0CaseRecords(runId, contract, suite, caseResults);
   const hasHardFailure = caseResults.some((result) => result.hardFailures.length > 0);
   const hasCaseFailure = caseResults.some((result) => result.verdict === "FAIL");
+  const hasContractMappingGap = contractDiagnostics.length > 0;
   const hasDiagnosticOnly = caseResults.length === 0 || caseResults.some((result) => result.verdict === "DIAGNOSTIC_ONLY");
   const hasNotComparableWorkflow = caseResults.some((result) => result.runner.comparability.workflowScore === "not_comparable");
   const evidenceCeilingRuleId = evidenceCeilingRuleIdFor(
@@ -263,7 +317,8 @@ export function scoreSuite(
   );
   const releaseDecision = hasHardFailure || hasCaseFailure
     ? "BLOCK"
-    : evidenceCeilingRuleId ||
+    : hasContractMappingGap ||
+        evidenceCeilingRuleId ||
         hasDiagnosticOnly ||
         hasNotComparableWorkflow ||
         telemetryCompleteness < gatePolicy.rules.telemetry.minimumCompleteness
@@ -290,6 +345,7 @@ export function scoreSuite(
     dimensionScores,
     recommendations,
     p0CaseRecords,
+    contractDiagnostics,
     rawSuiteScore,
     cappedSuiteScore,
     releaseDecision,
@@ -297,6 +353,7 @@ export function scoreSuite(
       releaseDecision,
       hasHardFailure,
       hasCaseFailure,
+      hasContractMappingGap,
       evidenceCeilingRuleId,
       hasDiagnosticOnly,
       hasNotComparableWorkflow,
@@ -320,6 +377,7 @@ function releaseRuleIdFor(options: {
   releaseDecision: SuiteResult["releaseDecision"];
   hasHardFailure: boolean;
   hasCaseFailure: boolean;
+  hasContractMappingGap: boolean;
   evidenceCeilingRuleId?: string;
   hasDiagnosticOnly: boolean;
   hasNotComparableWorkflow: boolean;
@@ -331,6 +389,9 @@ function releaseRuleIdFor(options: {
   }
   if (options.hasCaseFailure) {
     return "REL-CASE-FAILED";
+  }
+  if (options.hasContractMappingGap) {
+    return "REL-CONTRACT-MAPPING-MISSING";
   }
   if (options.evidenceCeilingRuleId) {
     return options.evidenceCeilingRuleId;
@@ -410,7 +471,8 @@ function evaluateCaseDimensions(
   run: CaseRun,
   hardFailures: HardFailure[],
   runnerDimension: { status: EvaluationStatus; why: string },
-  policyRules: GatePolicyRules
+  policyRules: GatePolicyRules,
+  contract?: ContractModel
 ): CaseEvaluationDimension[] {
   const hardFailureCodes = new Set(hardFailures.map((failure) => failure.code));
   const byCode = (code: string) => hardFailures.filter((failure) => failure.code === code);
@@ -461,24 +523,80 @@ function evaluateCaseDimensions(
     "A declared owner boundary was bypassed.",
     "Owner routing evidence did not produce an owner bypass hard failure."
   );
-  addFailureDimension(
-    add,
-    "gate",
-    byCode("GATE_FALSE_PASS"),
-    "A skipped, advisory, or failed gate was represented as PASS.",
-    hasEvent("gate_decision") ? "Gate decision evidence was observed without a false PASS hard failure." : "No gate decision event was observed.",
-    hasEvent("gate_decision") ? 100 : 70,
-    hasEvent("gate_decision") ? "PASS" : "WARN",
-    eventIds("gate_decision")
+  const gateFailures = byCode("GATE_FALSE_PASS");
+  const requiredStatusCode = testCase.bindings.statusCode;
+  const requiredStatusScope = testCase.bindings.statusScope;
+  const unscopedStatusSemantic =
+    requiredStatusCode && contract
+      ? resolveStatusSemantic(contract, requiredStatusCode)
+      : undefined;
+  const unscopedStatusIsUnambiguous =
+    Boolean(requiredStatusScope) &&
+    unscopedStatusSemantic?.scope === requiredStatusScope;
+  const matchingGateEvents = run.events.filter(
+    (event) =>
+      event.type === "gate_decision" &&
+      (!requiredStatusCode || event.payload.status === requiredStatusCode) &&
+      (!requiredStatusScope ||
+        event.payload.scope === requiredStatusScope ||
+        (event.payload.scope === undefined && unscopedStatusIsUnambiguous))
   );
+  const gateApplies =
+    Boolean(requiredStatusCode) ||
+    testCase.templateId === "skip-not-pass" ||
+    gateFailures.length > 0 ||
+    hasEvent("gate_decision");
+  if (gateFailures.length > 0) {
+    add(
+      "gate",
+      0,
+      "FAIL",
+      "A non-pass semantic status was promoted to pass-class through a transition the owner-reviewed mapping does not allow.",
+      gateFailures.flatMap((failure) => failure.evidenceEventIds),
+      [...new Set(gateFailures.map((failure) => failure.code))]
+    );
+  } else if (requiredStatusCode && matchingGateEvents.length === 0) {
+    add(
+      "gate",
+      0,
+      "DIAGNOSTIC_ONLY",
+      `Required gate status ${requiredStatusCode}${
+        requiredStatusScope ? ` in scope ${requiredStatusScope}` : ""
+      } was not observed.`,
+      []
+    );
+  } else {
+    add(
+      "gate",
+      !gateApplies || hasEvent("gate_decision") ? 100 : 70,
+      !gateApplies || hasEvent("gate_decision") ? "PASS" : "WARN",
+      !gateApplies
+        ? "No gate assertion applies to this case."
+        : hasEvent("gate_decision")
+          ? "Gate decision evidence was observed without a false-pass hard failure."
+          : "No gate decision event was observed.",
+      matchingGateEvents.length > 0
+        ? matchingGateEvents.map((event) => event.eventId)
+        : eventIds("gate_decision")
+    );
+  }
+  const artifactFailures = byCode("ARTIFACT_PATH_DRIFT");
+  const artifactApplies =
+    Boolean(testCase.bindings.artifactPath) ||
+    artifactFailures.length > 0 ||
+    hasEvent("artifact_write");
   addFailureDimension(
     add,
     "artifact",
-    byCode("ARTIFACT_PATH_DRIFT"),
+    artifactFailures,
     "A required artifact was written to the wrong path.",
-    hasEvent("artifact_write") ? "Artifact write evidence was observed at the declared path." : "No artifact write event was observed.",
-    hasEvent("artifact_write") ? 100 : 70,
-    hasEvent("artifact_write") ? "PASS" : "WARN",
+    !artifactApplies
+      ? "No artifact assertion applies to this case."
+      : hasEvent("artifact_write")
+        ? "Artifact write evidence was observed at the declared path."
+        : "No artifact write event was observed.",
+    !artifactApplies || hasEvent("artifact_write") ? 100 : 70,
+    !artifactApplies || hasEvent("artifact_write") ? "PASS" : "WARN",
     eventIds("artifact_write")
   );
   const requiredStatePath = testCase.bindings.statePath;
@@ -503,7 +621,7 @@ function evaluateCaseDimensions(
     "join",
     byCode("TARGET_JOIN_MISSING"),
     "A required join or callback was missing before downstream work.",
-    testCase.bindings.joinId && testCase.bindings.joinId !== "not-applicable"
+    testCase.bindings.joinId
       ? "No missing join hard failure was observed for the declared join binding."
       : "No join binding applies to this case."
   );
@@ -704,7 +822,11 @@ function aggregateStatus(statuses: EvaluationStatus[], score: number): Evaluatio
   return "PASS";
 }
 
-function buildRecommendations(caseResults: CaseResult[], dimensionScores: SuiteDimensionScore[]): AgentWorkflowRecommendation[] {
+function buildRecommendations(
+  caseResults: CaseResult[],
+  dimensionScores: SuiteDimensionScore[],
+  contractDiagnostics: ReturnType<typeof statusMappingDiagnostics>
+): AgentWorkflowRecommendation[] {
   const recommendations = new Map<string, AgentWorkflowRecommendation>();
   for (const result of caseResults) {
     for (const failure of result.hardFailures) {
@@ -727,6 +849,20 @@ function buildRecommendations(caseResults: CaseResult[], dimensionScores: SuiteD
     }
     const recommendation = recommendationForDimension(dimension);
     recommendations.set(recommendation.id, recommendation);
+  }
+
+  if (contractDiagnostics.length > 0) {
+    recommendations.set("contract-status-semantics", {
+      id: "contract-status-semantics",
+      priority: "P1",
+      category: "contract",
+      summary: "Status semantics mapping is missing or invalid.",
+      suggestedChange:
+        "Add an owner-reviewed statusSemantics mapping for every declared status, including scope, semantic class, blocking/terminal flags, and allowed transitions.",
+      evidenceCaseIds: [],
+      sourceFailureCodes: ["CONTRACT_MAPPING_MISSING"],
+      targetRoles: []
+    });
   }
 
   return [...recommendations.values()].sort((left, right) => priorityRank(left.priority) - priorityRank(right.priority) || left.id.localeCompare(right.id));
@@ -766,7 +902,7 @@ function failureRecommendation(code: string): Pick<AgentWorkflowRecommendation, 
     TARGET_ROUTE_FORBIDDEN: {
       category: "routing",
       summary: "Forbidden workflow route was observed.",
-      suggestedChange: "Remove forbidden direct routing and send work through the declared owner or scrum-master dispatch boundary."
+      suggestedChange: "Remove forbidden direct routing and send work through the declared owner or an allowed dispatch boundary."
     },
     TARGET_OWNER_BYPASS: {
       category: "ownership",
@@ -776,7 +912,7 @@ function failureRecommendation(code: string): Pick<AgentWorkflowRecommendation, 
     GATE_FALSE_PASS: {
       category: "gate",
       summary: "Gate status semantics were weakened.",
-      suggestedChange: "Preserve FAILED, PENDING, ADVISORY, and BYPASSED states instead of presenting them as PASS."
+      suggestedChange: "Preserve each raw status and allow pass-class promotion only through an owner-reviewed transition."
     },
     ARTIFACT_PATH_DRIFT: {
       category: "artifact",
@@ -808,7 +944,7 @@ function recommendationForSoftDimension(dimension: EvaluationDimension): string 
     contract: "Review hard-failure evidence and align the workflow with the declared ContractModel.",
     routing: "Make routing decisions explicit and record handoff evidence for every owner boundary.",
     ownership: "Ensure owner-scoped work is completed by the declared owner role.",
-    gate: "Emit structured gate decisions and preserve non-PASS statuses.",
+    gate: "Emit structured gate decisions and preserve raw codes with their non-pass semantic classes.",
     artifact: "Write required evidence to the canonical artifact paths declared by the target pack.",
     state: "Read the declared workflow state before repeated or recovery work and emit state-read evidence.",
     join: "Record producer-to-consumer callbacks before downstream execution.",
@@ -848,7 +984,10 @@ function priorityRank(priority: AgentWorkflowRecommendation["priority"]): number
   return priority === "P0" ? 0 : priority === "P1" ? 1 : 2;
 }
 
-function collectHardFailures(run: CaseRun): HardFailure[] {
+function collectHardFailures(
+  run: CaseRun,
+  contract?: ContractModel
+): HardFailure[] {
   const failures = new Map<string, HardFailure>();
   const addFailure = (definition: ReturnType<typeof requiredHardFailureDefinition>, eventIds: string[]) => {
     const existing = failures.get(definition.code);
@@ -865,6 +1004,16 @@ function collectHardFailures(run: CaseRun): HardFailure[] {
   };
   for (const event of run.events) {
     if (event.type === "hard_failure" && typeof event.payload.code === "string") {
+      const benchmarkOwned =
+        event.actor === "benchmark" &&
+        (!run.runner || run.runner.name === "simulated");
+      const observerOwned =
+        event.actor === "observer" &&
+        (!run.runner ||
+          run.runner.comparability.workflowScore === "comparable");
+      if (!benchmarkOwned && !observerOwned) {
+        continue;
+      }
       const definition =
         getHardFailureDefinition(event.payload.code) ??
         requiredHardFailureDefinition("UNREGISTERED_HARD_FAILURE");
@@ -881,6 +1030,14 @@ function collectHardFailures(run: CaseRun): HardFailure[] {
       (event.payload.allowed === true || event.payload.policyDecision !== "deny")
     ) {
       const definition = requiredHardFailureDefinition("PRODUCTION_SIDE_EFFECT");
+      addFailure(definition, [event.eventId]);
+    }
+    if (
+      contract &&
+      event.type === "gate_decision" &&
+      isFalsePassTransition(contract, event.payload)
+    ) {
+      const definition = requiredHardFailureDefinition("GATE_FALSE_PASS");
       addFailure(definition, [event.eventId]);
     }
   }

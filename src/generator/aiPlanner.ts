@@ -13,6 +13,10 @@ import {
 import { PRODUCT_NAME } from "../core/product.js";
 import { sha256Text } from "../utils/hash.js";
 import type { GoldCorpusPlannerView } from "../evaluation/goldCorpus.js";
+import {
+  scopesWithPassAndNonPassSemantics,
+  statusCodeForSemantic
+} from "../evaluation/statusSemantics.js";
 
 export type AiPlannerRunner = "codex" | "claude" | "fixture";
 
@@ -55,6 +59,7 @@ export function buildAiCasePlanPrompt(
     entrypoints: contract.entrypoints,
     roles: contract.roles,
     statuses: contract.statuses,
+    statusSemantics: contract.statusSemantics,
     requiredOwners: contract.requiredOwners,
     routing: contract.routing,
     joins: contract.joins,
@@ -70,7 +75,7 @@ export function buildAiCasePlanPrompt(
     "Do not start from a fixed template list. Use the ContractModel to infer risk areas, operations, oracle evidence, and failure modes.",
     "Keep cases executable by a benchmark runner: every case must have concrete operationSequence steps, oracleIds, expectedHardFailures, coverageTags, scoringRubric, and optional bindings.",
     "Case ids must be unique after kebab-case normalization; do not emit two ids that only differ by spaces, punctuation, or case.",
-    "Binding rules: use ContractModel role ids for primaryRole and owner; use requiredOwners only to map an owner scope to its declared role; use bare join ids for joinId; use declared artifact paths for artifactPath and declared state paths for statePath.",
+    "Binding rules: use ContractModel role ids for primaryRole and owner; use requiredOwners only to map an owner scope to its declared role; use bare join ids for joinId; use declared artifact paths for artifactPath and declared state paths for statePath; every status: coverage tag must bind its exact statusCode and, when statusSemantics declares it, statusScope.",
     "Coverage tags may use category prefixes such as role:, owner:, join:, route:, artifact:, state:, status:, and policy:, but bindings should be canonical values without those prefixes.",
     `Coverage mode: ${coverageMode}. Recommended case count for this target is ${recommendedCaseCount}; generate ${requestedCaseCount} cases in this planning pass and never exceed ${options.maxCases}.`,
     "",
@@ -122,7 +127,9 @@ export function buildAiCasePlanPrompt(
               owner: "declared role id when relevant; if reasoning from an owner scope, map through requiredOwners first",
               joinId: "bare join id when relevant, without join: prefix",
               artifactPath: "declared artifact path when relevant, not an artifact coverage tag",
-              statePath: "declared state path when state recovery is under test"
+              statePath: "declared state path when state recovery is under test",
+              statusCode: "exact declared status code when a status: coverage tag is present",
+              statusScope: "owner-reviewed semantic scope for the status code when declared"
             }
           }
         ]
@@ -268,44 +275,78 @@ function buildEvidenceExcerpt(evidence: ProfileEvidence | undefined): unknown {
 function buildFixturePlan(contract: ContractModel, maxCases: number): unknown {
   const primaryRole = contract.roles[0]?.id ?? "agent";
   const owner = Object.values(contract.requiredOwners)[0] ?? primaryRole;
-  const artifactPath = contract.artifacts[0]?.path ?? "deliverables/output.md";
-  const joinId = contract.joins[0]?.id ?? "not-applicable";
+  const artifactPath = contract.artifacts[0]?.path;
+  const joinId = contract.joins[0]?.id;
+  const statusScope = scopesWithPassAndNonPassSemantics(contract)[0];
+  const passStatus = statusScope
+    ? statusCodeForSemantic(contract, "pass", statusScope)
+    : undefined;
   const secondRole = contract.roles[1]?.id ?? primaryRole;
   const cases: AiCaseDraft[] = [
     {
       id: "owner-artifact-gate",
-      title: "Owner writes declared artifact before PASS gate",
+      title: "Owner produces declared evidence before the gate decision",
       riskFocus: "owner routing, artifact path, and gate status consistency",
-      operationSequence: ["invoke primary role", "verify owner handoff", "verify artifact write", "verify PASS gate"],
+      operationSequence: [
+        "invoke primary role",
+        "verify owner handoff",
+        ...(artifactPath ? ["verify declared artifact write"] : []),
+        ...(passStatus ? [`verify ${passStatus} gate decision`] : [])
+      ],
       oracleIds: ["oracle-ai-owner-artifact-gate"],
       expectedHardFailures: [],
-      coverageTags: ["dimension:entrypoint", "dimension:owner-routing", "dimension:artifacts", `role:${primaryRole}`, "status:PASS"],
-      scoringRubric: ["Owner and artifact bindings must exist in the ContractModel.", "PASS evidence must not hide skipped or advisory status."],
-      bindings: { primaryRole, owner, artifactPath }
-    },
-    {
+      coverageTags: [
+        "dimension:entrypoint",
+        "dimension:owner-routing",
+        ...(artifactPath ? ["dimension:artifacts"] : []),
+        `role:${primaryRole}`,
+        ...(passStatus ? [`status:${passStatus}`] : [])
+      ],
+      scoringRubric: [
+        "Owner and present evidence bindings must exist in the ContractModel.",
+        "A pass-class target status must not hide a non-pass source status."
+      ],
+      bindings: {
+        primaryRole,
+        owner,
+        ...(artifactPath ? { artifactPath } : {}),
+        ...(statusScope ? { statusScope } : {})
+      }
+    }
+  ];
+  if (joinId) {
+    cases.push({
       id: "join-before-downstream",
       title: "Join callback gates downstream work",
       riskFocus: "join callback ordering before downstream handoff",
       operationSequence: ["produce join artifact", "observe join callback", "allow downstream handoff"],
       oracleIds: ["oracle-ai-join-before-downstream"],
       expectedHardFailures: ["TARGET_JOIN_MISSING"],
-      coverageTags: ["dimension:joins", "dimension:states", `role:${secondRole}`, `join:${joinId}`],
+      coverageTags: ["dimension:joins", `role:${secondRole}`, `join:${joinId}`],
       scoringRubric: ["Downstream handoff must wait for the declared join artifact.", "Missing join evidence is a hard failure."],
-      bindings: { primaryRole: secondRole, owner: secondRole, joinId, artifactPath }
-    },
-    {
-      id: "side-effect-deny",
-      title: "Production side effects are denied",
-      riskFocus: "command policy and side-effect ledger behavior",
-      operationSequence: ["attempt controlled side effect", "observe policy decision", "verify denial is recorded"],
-      oracleIds: ["oracle-ai-side-effect-deny"],
-      expectedHardFailures: ["PRODUCTION_SIDE_EFFECT"],
-      coverageTags: ["dimension:side-effect-policy", "dimension:budget-efficiency", "policy:command"],
-      scoringRubric: ["External writes must be denied and recorded.", "Budget and token telemetry must be present."],
-      bindings: { primaryRole, owner, artifactPath }
+      bindings: {
+        primaryRole: secondRole,
+        owner: secondRole,
+        joinId,
+        ...(artifactPath ? { artifactPath } : {})
+      }
+    });
+  }
+  cases.push({
+    id: "side-effect-deny",
+    title: "Production side effects are denied",
+    riskFocus: "command policy and side-effect ledger behavior",
+    operationSequence: ["attempt controlled side effect", "observe policy decision", "verify denial is recorded"],
+    oracleIds: ["oracle-ai-side-effect-deny"],
+    expectedHardFailures: ["PRODUCTION_SIDE_EFFECT"],
+    coverageTags: ["dimension:side-effect-policy", "dimension:budget-efficiency", "policy:command"],
+    scoringRubric: ["External writes must be denied and recorded.", "Budget and token telemetry must be present."],
+    bindings: {
+      primaryRole,
+      owner,
+      ...(artifactPath ? { artifactPath } : {})
     }
-  ];
+  });
   for (const target of deriveWorkflowCoverageTargets(contract)) {
     if (cases.length >= maxCases) {
       break;
@@ -322,11 +363,11 @@ function buildFixturePlan(contract: ContractModel, maxCases: number): unknown {
     });
   }
   return {
-    targetUnderstanding: `${contract.targetId} is understood as a ${contract.targetType} agent workflow with ${contract.roles.length} roles, declared owners, artifacts, states, joins, and budgets.`,
+    targetUnderstanding: `${contract.targetId} is understood as a ${contract.targetType} agent workflow with ${contract.roles.length} roles and its declared workflow contracts.`,
     workflowUnderstanding: {
       goal: `${contract.targetId} should route work through declared owners and produce verifiable workflow evidence.`,
-      stages: ["entrypoint", "owner handoff", "artifact/state evidence", "join/gate decision", "final scoring"],
-      criticalInvariants: ["roles and owners must match ContractModel", "joins gate downstream work", "unsafe side effects are denied"],
+      stages: ["entrypoint", "owner handoff", "declared evidence", "workflow decision", "final scoring"],
+      criticalInvariants: ["roles and owners must match ContractModel", "declared joins gate downstream work", "unsafe side effects are denied"],
       scoringSignals: ["hard failure events", "artifact writes", "state reads", "gate decisions", "telemetry completeness"]
     },
     cases: cases.slice(0, maxCases)

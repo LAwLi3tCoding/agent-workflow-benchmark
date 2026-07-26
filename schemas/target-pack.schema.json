@@ -65,7 +65,12 @@
       "additionalProperties": false,
       "required": ["statuses", "requiredOwners", "routing", "joins", "artifacts", "states", "budgets"],
       "properties": {
-        "statuses": { "$ref": "#/$defs/nonEmptyStringArray" },
+        "statuses": { "$ref": "#/$defs/stringArray" },
+        "statusSemantics": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/statusSemantic" }
+        },
         "requiredOwners": {
           "type": "object",
           "minProperties": 1,
@@ -190,6 +195,39 @@
       "items": { "type": "string", "minLength": 1 },
       "minItems": 1,
       "uniqueItems": true
+    },
+    "statusSemantic": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "code",
+        "semanticClass",
+        "scope",
+        "blocking",
+        "terminal",
+        "allowedTransitions"
+      ],
+      "properties": {
+        "code": { "type": "string", "minLength": 1 },
+        "semanticClass": {
+          "enum": [
+            "pass",
+            "failure",
+            "skipped",
+            "advisory",
+            "pending",
+            "blocked",
+            "ready",
+            "in_progress",
+            "completed",
+            "cancelled"
+          ]
+        },
+        "scope": { "type": "string", "minLength": 1 },
+        "blocking": { "type": "boolean" },
+        "terminal": { "type": "boolean" },
+        "allowedTransitions": { "$ref": "#/$defs/stringArray" }
+      }
     }
   }
 }

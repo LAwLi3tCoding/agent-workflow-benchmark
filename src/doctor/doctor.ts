@@ -1,5 +1,6 @@
 import type { ProfileResult, RunnerCapability } from "../core/types.js";
 import { PRODUCT_NAME } from "../core/product.js";
+import { statusMappingDiagnostics } from "../evaluation/statusSemantics.js";
 
 export type EvidenceKind = "live" | "simulated" | "unknown";
 export type ObservationLevel = "workflow_trace" | "contract_summary" | "synthetic_events" | "capability_only";
@@ -39,6 +40,8 @@ export function diagnoseWorkflow(profile: ProfileResult, capability: RunnerCapab
   const boundary = evidenceBoundary(capability);
   const targetStatus = profile.evidence.missingFiles.length === 0 ? "PASS" : "FAIL";
   const contractReady = profile.contract.roles.length > 0 && profile.contract.entrypoints.length > 0;
+  const contractDiagnostics = statusMappingDiagnostics(profile.contract);
+  const hasContractMappingGap = contractDiagnostics.length > 0;
   const checks: DoctorCheck[] = [
     {
       id: "target-files",
@@ -50,10 +53,16 @@ export function diagnoseWorkflow(profile: ProfileResult, capability: RunnerCapab
     },
     {
       id: "contract-profile",
-      status: contractReady ? "PASS" : "FAIL",
-      why: contractReady
-        ? "The target produced a ContractModel with roles and entrypoints."
-        : "The ContractModel must include at least one role and one entrypoint."
+      status: !contractReady
+        ? "FAIL"
+        : hasContractMappingGap
+          ? "WARN"
+          : "PASS",
+      why: !contractReady
+        ? "The ContractModel must include at least one role and one entrypoint."
+        : hasContractMappingGap
+          ? `CONTRACT_MAPPING_MISSING: owner-reviewed status semantics are missing for ${contractDiagnostics[0]!.statusCodes.join(", ")}.`
+          : "The target produced a ContractModel with roles, entrypoints, and owner-reviewed status semantics."
     },
     {
       id: "runner-capability",
@@ -72,9 +81,10 @@ export function diagnoseWorkflow(profile: ProfileResult, capability: RunnerCapab
   const readiness =
     targetStatus === "FAIL" || !contractReady || !capability.supported
       ? "BLOCK"
-      : boundary.observationLevel === "workflow_trace"
-        ? "PASS"
-        : "DIAGNOSTIC_ONLY";
+      : hasContractMappingGap ||
+          boundary.observationLevel !== "workflow_trace"
+        ? "DIAGNOSTIC_ONLY"
+        : "PASS";
 
   return {
     schemaVersion: "0.1.0",

@@ -17,7 +17,7 @@ import { runLiveClaudeCase, runLiveCodexCase } from "../runner/liveCodexRunner.j
 import { loadAdapterContract } from "../adapters/sdk.js";
 import { createOpenCodeRunnerAdapter } from "../adapters/openCodeAdapter.js";
 import { assertAdapterConformanceReportIntegrity, runRunnerAdapterConformance } from "../adapters/conformance.js";
-import { scoreCase, scoreSuite } from "../scorer/score.js";
+import { scoreCaseWithContract, scoreSuite } from "../scorer/score.js";
 import { prepareDebugEnvironment, reverseValidate } from "../debug/debugWorkflow.js";
 import { renderMarkdownReport } from "../report/report.js";
 import { ensureDir, readJson, readYaml, writeJson, writeYaml } from "../utils/io.js";
@@ -385,7 +385,7 @@ program
         if (executionMode === "live") {
             liveTranscriptCount += 1;
         }
-        const result = scoreCase(testCase, run);
+        const result = scoreCaseWithContract(testCase, run, contract);
         caseResults.push(result);
         await writeJson(path.join(runDir, "events", `${testCase.id}.json`), run.events);
         await writeJson(path.join(runDir, "case-results", `${testCase.id}.json`), result);
@@ -467,7 +467,7 @@ program
         if (!run) {
             throw new Error(`Verified workflow trace is missing case ${testCase.id}.`);
         }
-        const result = scoreCase(testCase, run);
+        const result = scoreCaseWithContract(testCase, run, contract);
         caseResults.push(result);
         await writeJson(path.join(options.out, "events", `${testCase.id}.json`), run.events);
         await writeJson(path.join(options.out, "case-results", `${testCase.id}.json`), result);
@@ -640,7 +640,7 @@ program
         if (executionMode === "live") {
             liveTranscriptCount += 1;
         }
-        const result = scoreCase(testCase, run);
+        const result = scoreCaseWithContract(testCase, run, profile.contract);
         caseResults.push(result);
         await writeJson(path.join(runDir, "events", `${testCase.id}.json`), run.events);
         await writeJson(path.join(runDir, "case-results", `${testCase.id}.json`), result);

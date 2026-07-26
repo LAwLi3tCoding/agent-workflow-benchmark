@@ -2,6 +2,8 @@ import { describe, expect, test } from "vitest";
 import { loadTargetPack } from "../src/core/targetRegistry.js";
 import { profileTarget } from "../src/profiler/profileTarget.js";
 import { materializeAiSuite, materializeSmokeSuite } from "../src/generator/materialize.js";
+import { runCase } from "../src/runner/simulatedRunner.js";
+import { scoreCase } from "../src/scorer/score.js";
 
 describe("case materialization", () => {
   test("materializes ten generic smoke templates for a directory target", async () => {
@@ -13,6 +15,222 @@ describe("case materialization", () => {
     expect(suite.applicability.every((item) => item.status === "materialized")).toBe(true);
     expect(suite.cases.map((item) => item.templateId)).toContain("required-join");
     expect(suite.manifest.contractHash).toBe(profile.contract.contractHash);
+  });
+
+  test("marks topology-specific templates not applicable instead of inventing bindings", async () => {
+    const profile = await profileTarget(
+      await loadTargetPack("minimal-directory-agent")
+    );
+    const contract = structuredClone(profile.contract);
+    contract.roles = contract.roles.slice(0, 1);
+    contract.routing.forbidden = [];
+    contract.joins = [];
+    contract.artifacts = [];
+    contract.states = [];
+    contract.statuses = [];
+    delete contract.statusSemantics;
+
+    const suite = materializeSmokeSuite(contract);
+    const notApplicable = suite.applicability
+      .filter((item) => item.status === "notApplicable")
+      .map((item) => item.templateId);
+
+    expect(notApplicable).toEqual(
+      expect.arrayContaining([
+        "forbidden-route",
+        "required-join",
+        "role-boundary",
+        "state-recovery",
+        "skip-not-pass"
+      ])
+    );
+    expect(suite.cases.map((item) => item.templateId)).not.toEqual(
+      expect.arrayContaining(notApplicable)
+    );
+    const run = runCase(suite.cases[0]!, contract);
+    expect(run.events.some((event) => event.type === "state_read")).toBe(false);
+    const result = scoreCase(suite.cases[0]!, run);
+    expect(
+      result.evaluationDimensions.find(
+        (dimension) => dimension.dimension === "artifact"
+      )
+    ).toMatchObject({
+      status: "PASS",
+      why: "No artifact assertion applies to this case."
+    });
+    expect(
+      result.evaluationDimensions.find(
+        (dimension) => dimension.dimension === "gate"
+      )
+    ).toMatchObject({
+      status: "PASS",
+      why: "No gate assertion applies to this case."
+    });
+  });
+
+  test("materializes independent gate evidence for every pass/non-pass status scope", async () => {
+    const profile = await profileTarget(
+      await loadTargetPack("minimal-directory-agent")
+    );
+    const contract = structuredClone(profile.contract);
+    contract.statuses = [
+      "BUILD_GREEN",
+      "BUILD_WAIT",
+      "RELEASE_GREEN",
+      "RELEASE_WAIT"
+    ];
+    contract.statusSemantics = [
+      {
+        code: "BUILD_GREEN",
+        semanticClass: "pass",
+        scope: "build-gate",
+        blocking: false,
+        terminal: true,
+        allowedTransitions: []
+      },
+      {
+        code: "BUILD_WAIT",
+        semanticClass: "pending",
+        scope: "build-gate",
+        blocking: true,
+        terminal: false,
+        allowedTransitions: ["BUILD_GREEN"]
+      },
+      {
+        code: "RELEASE_GREEN",
+        semanticClass: "pass",
+        scope: "release-gate",
+        blocking: false,
+        terminal: true,
+        allowedTransitions: []
+      },
+      {
+        code: "RELEASE_WAIT",
+        semanticClass: "pending",
+        scope: "release-gate",
+        blocking: true,
+        terminal: false,
+        allowedTransitions: ["RELEASE_GREEN"]
+      }
+    ];
+    const testCases = materializeSmokeSuite(contract).cases.filter(
+      (item) => item.templateId === "skip-not-pass"
+    );
+
+    expect(testCases.map((item) => item.bindings.statusScope)).toEqual([
+      "build-gate",
+      "release-gate"
+    ]);
+    expect(new Set(testCases.map((item) => item.id)).size).toBe(2);
+    expect(
+      testCases.map((testCase) =>
+        runCase(testCase, contract).events.find(
+          (event) => event.type === "gate_decision"
+        )?.payload
+      )
+    ).toEqual([
+      expect.objectContaining({
+        status: "BUILD_GREEN",
+        sourceStatus: "BUILD_GREEN",
+        scope: "build-gate",
+        transition: { from: "BUILD_GREEN", to: "BUILD_GREEN" },
+        readbackStatus: "BUILD_GREEN"
+      }),
+      expect.objectContaining({
+        status: "RELEASE_GREEN",
+        sourceStatus: "RELEASE_GREEN",
+        scope: "release-gate",
+        transition: { from: "RELEASE_GREEN", to: "RELEASE_GREEN" },
+        readbackStatus: "RELEASE_GREEN"
+      })
+    ]);
+  });
+
+  test("turns a status coverage tag into executable status and scope bindings", async () => {
+    const profile = await profileTarget(
+      await loadTargetPack("minimal-directory-agent")
+    );
+    const contract = structuredClone(profile.contract);
+    contract.statuses = [
+      "BUILD_GREEN",
+      "BUILD_WAIT",
+      "RELEASE_GREEN",
+      "RELEASE_WAIT"
+    ];
+    contract.statusSemantics = [
+      {
+        code: "BUILD_GREEN",
+        semanticClass: "pass",
+        scope: "build-gate",
+        blocking: false,
+        terminal: true,
+        allowedTransitions: []
+      },
+      {
+        code: "BUILD_WAIT",
+        semanticClass: "pending",
+        scope: "build-gate",
+        blocking: true,
+        terminal: false,
+        allowedTransitions: ["BUILD_GREEN"]
+      },
+      {
+        code: "RELEASE_GREEN",
+        semanticClass: "pass",
+        scope: "release-gate",
+        blocking: false,
+        terminal: true,
+        allowedTransitions: []
+      },
+      {
+        code: "RELEASE_WAIT",
+        semanticClass: "pending",
+        scope: "release-gate",
+        blocking: true,
+        terminal: false,
+        allowedTransitions: ["RELEASE_GREEN"]
+      }
+    ];
+    const suite = materializeAiSuite(contract, {
+      planner: "fixture",
+      plan: {
+        planner: "fixture",
+        targetUnderstanding: "A multi-stage workflow with scoped gate statuses.",
+        workflowUnderstanding: {
+          goal: "Preserve scoped gate semantics.",
+          stages: ["build gate", "release gate"],
+          criticalInvariants: ["Each status is evaluated in its declared scope."],
+          scoringSignals: ["Exact gate status and scope evidence."]
+        },
+        cases: [
+          {
+            id: "release-wait",
+            title: "Observe the release wait state",
+            riskFocus: "release status evidence",
+            operationSequence: ["enter release gate", "emit wait", "read back wait"],
+            oracleIds: ["oracle-release-wait"],
+            expectedHardFailures: [],
+            coverageTags: ["dimension:gate-statuses", "status:RELEASE_WAIT"],
+            scoringRubric: ["The exact status and scope must be observed."]
+          }
+        ]
+      }
+    });
+    const testCase = suite.cases[0]!;
+    const gate = runCase(testCase, contract).events.find(
+      (event) => event.type === "gate_decision"
+    );
+
+    expect(testCase.bindings).toMatchObject({
+      statusCode: "RELEASE_WAIT",
+      statusScope: "release-gate"
+    });
+    expect(gate?.payload).toMatchObject({
+      status: "RELEASE_WAIT",
+      sourceStatus: "RELEASE_WAIT",
+      scope: "release-gate",
+      readbackStatus: "RELEASE_WAIT"
+    });
   });
 
   test("materializes cases from an AI understanding plan", async () => {

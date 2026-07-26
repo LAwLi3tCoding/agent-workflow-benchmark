@@ -1,7 +1,7 @@
 import { cp, mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { runCase } from "../runner/simulatedRunner.js";
-import { scoreCase } from "../scorer/score.js";
+import { scoreCaseWithContract } from "../scorer/score.js";
 import { hashPath, sha256Text, stableJson } from "../utils/hash.js";
 export async function prepareDebugEnvironment(target, contract, testCase, options) {
     const debugId = path.basename(options.outDir);
@@ -78,9 +78,9 @@ export async function reverseValidate(target, contract, testCase, options) {
         mockProfile: "strict",
         outDir: path.join(options.outDir, "env")
     });
-    const baseline = scoreCase(testCase, runCase(testCase, contract));
-    const mutant = scoreCase(testCase, runCase(testCase, contract, options.mutation));
-    const restore = scoreCase(testCase, runCase(testCase, contract));
+    const baseline = scoreCaseWithContract(testCase, runCase(testCase, contract), contract);
+    const mutant = scoreCaseWithContract(testCase, runCase(testCase, contract, options.mutation), contract);
+    const restore = scoreCaseWithContract(testCase, runCase(testCase, contract), contract);
     const expectedVerdict = options.expectedVerdict ?? options.mutation.expectedVerdict;
     const expectedHardFailureMatched = !options.mutation.expectedHardFailureCode || mutant.hardFailures.some((failure) => failure.code === options.mutation.expectedHardFailureCode);
     const mutationKilled = isMutationKilled(baseline, mutant, options.mutation, expectedVerdict);

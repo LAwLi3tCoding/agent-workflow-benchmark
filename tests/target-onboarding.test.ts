@@ -2,13 +2,71 @@ import { cp, mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { execa } from "execa";
+import { Ajv2020 } from "ajv/dist/2020.js";
 import YAML from "yaml";
 import { describe, expect, test } from "vitest";
+import { loadTargetPack } from "../src/core/targetRegistry.js";
+import { profileTarget } from "../src/profiler/profileTarget.js";
+import { inferTargetPackDraft } from "../src/profiler/targetPackInitializer.js";
 import { hashFile } from "../src/utils/hash.js";
 
 const cwd = process.cwd();
 
 describe("target onboarding trust boundary", () => {
+  test("preserves arbitrary raw status codes without guessing their semantics", async () => {
+    const agentRoot = await mkdtemp(
+      path.join(tmpdir(), "awb-target-statuses-")
+    );
+    try {
+      await mkdir(path.join(agentRoot, "coordinator"), { recursive: true });
+      await writeFile(
+        path.join(agentRoot, "coordinator", "AGENTS.md"),
+        [
+          "# Coordinator",
+          "Owns triage.",
+          "Statuses: BYPASSED_BY_CONFIG, ADVISORY_CONTINUE."
+        ].join("\n")
+      );
+
+      const result = await inferTargetPackDraft({
+        agentRoot,
+        targetId: "custom-status-agent"
+      });
+
+      expect(result.targetPack.contracts.statuses).toEqual([
+        "ADVISORY_CONTINUE",
+        "BYPASSED_BY_CONFIG"
+      ]);
+      expect(result.targetPack.contracts.statuses).not.toEqual(
+        expect.arrayContaining(["PASS", "FAILED", "SKIPPED", "ADVISORY"])
+      );
+      expect(result.targetPack.contracts.statusSemantics).toBeUndefined();
+      expect(result.gapsMarkdown).toContain(
+        "Confirm owner-reviewed status semantics"
+      );
+    } finally {
+      await rm(agentRoot, { recursive: true, force: true });
+    }
+  });
+
+  test("contract-model schema accepts targets with no status vocabulary", async () => {
+    const profile = await profileTarget(
+      await loadTargetPack("minimal-directory-agent")
+    );
+    const contract = structuredClone(profile.contract);
+    contract.statuses = [];
+    delete contract.statusSemantics;
+    const schema = JSON.parse(
+      await readFile(
+        path.join(cwd, "schemas", "contract-model.schema.json"),
+        "utf8"
+      )
+    );
+    const validate = new Ajv2020({ strict: false }).compile(schema);
+
+    expect(validate(contract), JSON.stringify(validate.errors)).toBe(true);
+  });
+
   test("a generated-style draft can be reviewed but cannot be registered", async () => {
     const fixture = await makeBenchmarkRoot({
       status: "draft"

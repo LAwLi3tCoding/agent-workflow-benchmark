@@ -14,6 +14,15 @@ export const CONTRACT_HASH_FIELDS = [
   "commandPolicy"
 ] as const;
 
+export function contractHashFieldsFor(target: TargetPack): string[] {
+  if (!target.contracts.statusSemantics) {
+    return [...CONTRACT_HASH_FIELDS];
+  }
+  const fields: string[] = [...CONTRACT_HASH_FIELDS];
+  fields.splice(fields.indexOf("statuses") + 1, 0, "statusSemantics");
+  return fields;
+}
+
 export function buildContractModel(target: TargetPack): ContractModel {
   const contractBase: Omit<ContractModel, "contractHash"> = {
     schemaVersion: "0.1.0",
@@ -23,6 +32,9 @@ export function buildContractModel(target: TargetPack): ContractModel {
     entrypoints: target.entrypoints,
     roles: target.roles,
     statuses: target.contracts.statuses,
+    ...(target.contracts.statusSemantics
+      ? { statusSemantics: target.contracts.statusSemantics }
+      : {}),
     requiredOwners: target.contracts.requiredOwners,
     routing: target.contracts.routing,
     joins: target.contracts.joins,

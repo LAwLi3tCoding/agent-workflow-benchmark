@@ -45,6 +45,7 @@ trajectories:
     benchmarkCaseId: minimal-directory-agent-smoke-005-skip-not-pass
     patches:
       - { op: set_payload, eventId: gate, key: sourceStatus, value: SKIPPED }
+      - { op: set_payload, eventId: gate, key: transition, value: { from: SKIPPED, to: PASS } }
   - id: dev-t007
     benchmarkCaseId: minimal-directory-agent-smoke-006-required-join
     patches:

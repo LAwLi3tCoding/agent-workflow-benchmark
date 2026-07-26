@@ -4,7 +4,7 @@ Status: PENDING_HOLDOUT
 Assessment: harness_diagnostic
 Release eligible: false
 Policy: awb-gate-policy@1.0.0
-Policy hash: sha256:280378f348874572dc1eb39106a2e63ff8768c0581e608fe1ca37305a2e16dfc
+Policy hash: sha256:6928be26f1cb30cd07e8ec2ba02b228f517fd6c5c6efcc212db1846eef73bd98
 Rules hash: sha256:a58f969de636f05f318fa292e2957b0c014e80856419564421e1e5089a199c19
 Fit splits: development, calibration
 Fit sample size: 24

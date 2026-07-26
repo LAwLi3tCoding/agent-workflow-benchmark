@@ -16,6 +16,31 @@ roles:
     ownerScopes: [implementation]
 contracts:
   statuses: [PASS, FAILED, SKIPPED, ADVISORY]
+  statusSemantics:
+    - code: PASS
+      semanticClass: pass
+      scope: workflow-gate
+      blocking: false
+      terminal: true
+      allowedTransitions: []
+    - code: FAILED
+      semanticClass: failure
+      scope: workflow-gate
+      blocking: true
+      terminal: true
+      allowedTransitions: []
+    - code: SKIPPED
+      semanticClass: skipped
+      scope: workflow-gate
+      blocking: false
+      terminal: true
+      allowedTransitions: []
+    - code: ADVISORY
+      semanticClass: advisory
+      scope: workflow-gate
+      blocking: false
+      terminal: true
+      allowedTransitions: []
   requiredOwners:
     design: orchestrator-agent
     implementation: worker-agent
@@ -57,4 +82,4 @@ contractReview:
   reviewerId: generic-fixture-maintainer
   reviewedAt: 2026-07-25T00:00:00.000Z
   artifactPath: configs/targets/reviews/minimal-directory-agent.contract-validity.json
-  artifactHash: sha256:09b8ab7cac7c528e89458bfc6c25d42e3853b0924999429ca4fed3027f38ea45
+  artifactHash: sha256:166c00ece90054d78c118dbfed87ad059b3875d7fb2fbfcbc5d7cc8dc48c830e

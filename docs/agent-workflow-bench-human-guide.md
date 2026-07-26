@@ -60,7 +60,7 @@ Agent workflow 的失败往往不是一个最终答案错了，而是过程错�
 | 静态合约一致性 | 文档、agent 目录、状态、gate 是否一致 | 防止 workflow 说明和实际运行漂移 |
 | 需求理解与准入 | 是否先判断需求可执行性 | 防止信息不足时瞎做 |
 | 分级与路由正确性 | L1/L2/L3 是否派给正确 agent | 直接影响返工率和质量 |
-| 状态机与 GatePolicy | PASS、FAILED、skip、advisory 是否合法 | 保证质量门禁可信 |
+| 状态机与 GatePolicy | 目标原始状态码及其 owner-reviewed semanticClass / scope 是否合法 | 保证质量门禁可信 |
 | 产物完整性与路径规范 | 文件是否存在、非空、路径正确 | 保证后续 agent 能接棒 |
 | 证据质量 | 结论是否基于源码、state、测试、KB | 防止凭直觉或训练记忆下结论 |
 | 任务完成有效性 | 最终交付是否真的可用 | 评估真实交付能力 |
@@ -143,7 +143,7 @@ MVP 先做 10 类通用 smoke 模板。每个新的 agent workflow 都用自己�
 | simple-route | `minimal-directory-agent-smoke-002-simple-route` | 简单需求是否走 target fast path | 简单任务被过度编排或错派 |
 | forbidden-route | `minimal-directory-agent-smoke-003-forbidden-route` | 复杂需求是否避开 forbidden route | 复杂需求被错误降级 |
 | required-owner | `minimal-directory-agent-smoke-004-required-owner` | owner-only 工作是否派给声明 owner | 职责错派 |
-| skip-not-pass | `minimal-directory-agent-smoke-005-skip-not-pass` | skip/advisory 是否不伪装 PASS | Gate 可信度破坏 |
+| skip-not-pass | `minimal-directory-agent-smoke-005-skip-not-pass` | 非通过语义状态是否未被伪装成通过语义 | Gate 可信度破坏 |
 | required-join | `minimal-directory-agent-smoke-006-required-join` | required join 是否完成后再进入下游 | 下游输入未收口 |
 | role-boundary | `minimal-directory-agent-smoke-007-role-boundary` | 受限角色是否只回 declared owner | DoD 和调度权被绕过 |
 | state-recovery | `minimal-directory-agent-smoke-008-state-recovery` | state READY 后是否接棒而不是重跑 | 恢复能力差 |

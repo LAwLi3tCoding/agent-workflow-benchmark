@@ -3,7 +3,13 @@ import { loadTargetPack } from "../src/core/targetRegistry.js";
 import { profileTarget } from "../src/profiler/profileTarget.js";
 import { materializeSmokeSuite } from "../src/generator/materialize.js";
 import { runCase } from "../src/runner/simulatedRunner.js";
-import { scoreCase, scoreSuite } from "../src/scorer/score.js";
+import { statusMappingDiagnostics } from "../src/evaluation/statusSemantics.js";
+import {
+  scoreCase,
+  scoreCaseWithContract,
+  scoreSuite
+} from "../src/scorer/score.js";
+import { renderMarkdownReport } from "../src/report/report.js";
 
 describe("run and score", () => {
   test("keeps simulated case scores but does not make a target release approval", async () => {
@@ -180,9 +186,9 @@ describe("run and score", () => {
     run.runner = {
       name: "codex",
       comparability: {
-        workflowScore: "directional_only",
-        efficiency: "directional_only",
-        tokenCost: "directional_only"
+        workflowScore: "comparable",
+        efficiency: "comparable",
+        tokenCost: "comparable"
       }
     };
     run.events.push({
@@ -196,7 +202,7 @@ describe("run and score", () => {
       eventId: "event-live-hard-failure",
       timestamp: new Date(0).toISOString(),
       type: "hard_failure",
-      actor: "codex",
+      actor: "observer",
       payload: { code: "TARGET_ROUTE_FORBIDDEN", why: "Live runner reported forbidden routing." }
     });
 
@@ -227,6 +233,277 @@ describe("run and score", () => {
 
     expect(suite.releaseDecision).toBe("DIAGNOSTIC_ONLY");
     expect(suite.releaseRuleId).toBe("REL-EVIDENCE-CONTRACT-SUMMARY");
+  });
+
+  test("missing owner-reviewed status semantics caps qualified evidence at diagnostic-only", async () => {
+    const profile = await profileTarget(await loadTargetPack("minimal-directory-agent"));
+    const contract = structuredClone(profile.contract) as typeof profile.contract & {
+      statusSemantics?: unknown;
+    };
+    delete contract.statusSemantics;
+    const testCase = materializeSmokeSuite(contract).cases[0]!;
+    const run = runCase(testCase, contract);
+    run.runner = {
+      name: "codex",
+      comparability: {
+        workflowScore: "comparable",
+        efficiency: "comparable",
+        tokenCost: "comparable"
+      }
+    };
+    const result = scoreCase(testCase, run);
+    const suite = scoreSuite(
+      "status-mapping-missing",
+      contract,
+      "smoke",
+      [result],
+      {
+        evidenceKind: "live",
+        observationLevel: "workflow_trace",
+        observerQualification: "valid"
+      }
+    ) as ReturnType<typeof scoreSuite> & {
+      contractDiagnostics: Array<{
+        code: string;
+        statusCodes: string[];
+      }>;
+    };
+
+    expect(suite.releaseDecision).toBe("DIAGNOSTIC_ONLY");
+    expect(suite.releaseRuleId).toBe("REL-CONTRACT-MAPPING-MISSING");
+    expect(suite.contractDiagnostics).toContainEqual({
+      code: "CONTRACT_MAPPING_MISSING",
+      statusCodes: contract.statuses
+    });
+    expect(suite.p0CaseRecords).toEqual([]);
+    expect(suite.recommendations).toContainEqual(
+      expect.objectContaining({
+        category: "contract",
+        sourceFailureCodes: ["CONTRACT_MAPPING_MISSING"]
+      })
+    );
+    const report = renderMarkdownReport(suite);
+    expect(report).toContain("Release Rule: REL-CONTRACT-MAPPING-MISSING");
+    expect(report).toContain("## Contract Mapping Diagnostics");
+    expect(report).toContain("CONTRACT_MAPPING_MISSING");
+    expect(report).toContain(contract.statuses.join(", "));
+  });
+
+  test("a status-bound case without matching gate evidence is diagnostic-only", async () => {
+    const profile = await profileTarget(
+      await loadTargetPack("minimal-directory-agent")
+    );
+    const testCase = structuredClone(
+      materializeSmokeSuite(profile.contract).cases[0]!
+    );
+    testCase.bindings.statusCode = "PASS";
+    testCase.bindings.statusScope = "release-gate";
+    const run = runCase(testCase, profile.contract);
+    run.events = run.events.filter((event) => event.type !== "gate_decision");
+
+    const result = scoreCaseWithContract(testCase, run, profile.contract);
+
+    expect(
+      result.evaluationDimensions.find(
+        (dimension) => dimension.dimension === "gate"
+      )
+    ).toMatchObject({
+      status: "DIAGNOSTIC_ONLY",
+      score: 0,
+      evidenceEventIds: []
+    });
+    expect(result.verdict).toBe("DIAGNOSTIC_ONLY");
+    expect(result.scoreProvenance.oracleResults).toEqual([
+      expect.objectContaining({
+        status: "FAIL",
+        why: expect.stringContaining("incomplete")
+      })
+    ]);
+  });
+
+  test("accepts an unscoped gate status only when its contract scope is unambiguous", async () => {
+    const profile = await profileTarget(
+      await loadTargetPack("minimal-directory-agent")
+    );
+    const testCase = materializeSmokeSuite(profile.contract).cases.find(
+      (item) => item.templateId === "skip-not-pass"
+    )!;
+    const run = runCase(testCase, profile.contract);
+    delete run.events.find(
+      (event) => event.type === "gate_decision"
+    )!.payload.scope;
+
+    expect(
+      scoreCaseWithContract(
+        testCase,
+        run,
+        profile.contract
+      ).evaluationDimensions.find(
+        (dimension) => dimension.dimension === "gate"
+      )
+    ).toMatchObject({
+      status: "PASS"
+    });
+
+    const ambiguousContract = structuredClone(profile.contract);
+    ambiguousContract.statusSemantics!.push({
+      ...ambiguousContract.statusSemantics!.find(
+        (mapping) => mapping.code === testCase.bindings.statusCode
+      )!,
+      scope: "release-gate"
+    });
+    expect(
+      scoreCaseWithContract(
+        testCase,
+        run,
+        ambiguousContract
+      ).evaluationDimensions.find(
+        (dimension) => dimension.dimension === "gate"
+      )
+    ).toMatchObject({
+      status: "DIAGNOSTIC_ONLY"
+    });
+  });
+
+  test("derives false-pass failure only from complete contract-mapped gate evidence", async () => {
+    const profile = await profileTarget(await loadTargetPack("minimal-directory-agent"));
+    const contract = structuredClone(profile.contract);
+    contract.statuses = ["GREEN", "WAIVED"];
+    contract.statusSemantics = [
+      {
+        code: "GREEN",
+        semanticClass: "pass",
+        scope: "release-gate",
+        blocking: false,
+        terminal: true,
+        allowedTransitions: []
+      },
+      {
+        code: "WAIVED",
+        semanticClass: "skipped",
+        scope: "release-gate",
+        blocking: false,
+        terminal: true,
+        allowedTransitions: []
+      }
+    ];
+    const testCase = materializeSmokeSuite(contract).cases.find(
+      (item) => item.templateId === "skip-not-pass"
+    )!;
+    const run = runCase(testCase, contract);
+    const gate = run.events.find((event) => event.type === "gate_decision")!;
+    gate.payload = {
+      status: "GREEN",
+      sourceStatus: "WAIVED",
+      scope: "release-gate",
+      flowDecision: "release",
+      transition: { from: "WAIVED", to: "GREEN" },
+      readbackStatus: "GREEN"
+    };
+
+    expect(
+      scoreCaseWithContract(testCase, run, contract).hardFailures.map(
+        (failure) => failure.code
+      )
+    ).toContain("GATE_FALSE_PASS");
+
+    const incompleteRun = structuredClone(run);
+    delete incompleteRun.events.find(
+      (event) => event.type === "gate_decision"
+    )!.payload.transition;
+    expect(
+      scoreCaseWithContract(testCase, incompleteRun, contract).hardFailures.map(
+        (failure) => failure.code
+      )
+    ).not.toContain("GATE_FALSE_PASS");
+
+    const allowedRun = structuredClone(run);
+    contract.statusSemantics[1]!.blocking = true;
+    contract.statusSemantics[1]!.terminal = false;
+    contract.statusSemantics[1]!.allowedTransitions = ["GREEN"];
+    expect(
+      scoreCaseWithContract(testCase, allowedRun, contract).hardFailures.map(
+        (failure) => failure.code
+      )
+    ).not.toContain("GATE_FALSE_PASS");
+  });
+
+  test("terminal status mappings with outgoing transitions remain diagnostic-only", async () => {
+    const profile = await profileTarget(await loadTargetPack("minimal-directory-agent"));
+    const contract = structuredClone(profile.contract);
+    contract.statuses = ["GREEN", "FAILED_FINAL"];
+    contract.statusSemantics = [
+      {
+        code: "GREEN",
+        semanticClass: "pass",
+        scope: "release-gate",
+        blocking: false,
+        terminal: true,
+        allowedTransitions: []
+      },
+      {
+        code: "FAILED_FINAL",
+        semanticClass: "failure",
+        scope: "release-gate",
+        blocking: true,
+        terminal: true,
+        allowedTransitions: ["GREEN"]
+      }
+    ];
+    const testCase = materializeSmokeSuite(contract).cases[0]!;
+    const result = scoreCase(testCase, runCase(testCase, contract));
+    const suite = scoreSuite(
+      "terminal-transition-contradiction",
+      contract,
+      "smoke",
+      [result],
+      {
+        evidenceKind: "live",
+        observationLevel: "workflow_trace",
+        observerQualification: "valid"
+      }
+    );
+
+    expect(suite.contractDiagnostics).toEqual([
+      {
+        code: "CONTRACT_MAPPING_MISSING",
+        statusCodes: ["FAILED_FINAL"]
+      }
+    ]);
+    expect(suite.p0CaseRecords).toEqual([]);
+    expect(suite.releaseDecision).toBe("DIAGNOSTIC_ONLY");
+    expect(suite.releaseRuleId).toBe("REL-CONTRACT-MAPPING-MISSING");
+  });
+
+  test("diagnoses transition targets that are not mapped in the same scope", async () => {
+    const profile = await profileTarget(await loadTargetPack("minimal-directory-agent"));
+    const contract = structuredClone(profile.contract);
+    contract.statuses = ["GREEN", "WAIT"];
+    contract.statusSemantics = [
+      {
+        code: "GREEN",
+        semanticClass: "pass",
+        scope: "release-gate",
+        blocking: false,
+        terminal: true,
+        allowedTransitions: []
+      },
+      {
+        code: "WAIT",
+        semanticClass: "pending",
+        scope: "build-gate",
+        blocking: true,
+        terminal: false,
+        allowedTransitions: ["GREEN"]
+      }
+    ];
+
+    expect(statusMappingDiagnostics(contract)).toEqual([
+      {
+        code: "CONTRACT_MAPPING_MISSING",
+        statusCodes: ["GREEN", "WAIT"]
+      }
+    ]);
   });
 
   test("conditional approval has a distinct release rule id", async () => {
@@ -285,16 +562,117 @@ describe("run and score", () => {
     expect(result.scoreProvenance.oracleResults[0]?.why).toContain("cannot_verify");
   });
 
-  test("live runner fail result becomes failed case", async () => {
+  test("directional-only contract-summary runner FAIL remains diagnostic-only", async () => {
     const profile = await profileTarget(await loadTargetPack("minimal-directory-agent"));
     const testCase = materializeSmokeSuite(profile.contract).cases[0]!;
     const run = runCase(testCase, profile.contract);
+    run.runner = {
+      name: "codex",
+      comparability: {
+        workflowScore: "directional_only",
+        efficiency: "directional_only",
+        tokenCost: "directional_only"
+      }
+    };
     run.events.push({
       eventId: "event-runner-result",
       timestamp: new Date(0).toISOString(),
       type: "runner_result",
       actor: "codex",
-      payload: { verdict: "FAIL" }
+      payload: {
+        verdict: "FAIL",
+        observationLevel: "contract_summary",
+        authoritative: false
+      }
+    });
+
+    const result = scoreCase(testCase, run);
+
+    expect(result.verdict).toBe("DIAGNOSTIC_ONLY");
+    expect(result.score).toBe(0);
+    expect(result.scoreProvenance.oracleResults[0]?.why).toContain("fail");
+  });
+
+  test("ignores runner-authored hard failures from contract-summary evidence", async () => {
+    const profile = await profileTarget(
+      await loadTargetPack("minimal-directory-agent")
+    );
+    const testCase = materializeSmokeSuite(profile.contract).cases[0]!;
+    const run = runCase(testCase, profile.contract);
+    run.runner = {
+      name: "codex",
+      comparability: {
+        workflowScore: "directional_only",
+        efficiency: "directional_only",
+        tokenCost: "directional_only"
+      }
+    };
+    run.events.push(
+      {
+        eventId: "event-runner-result",
+        timestamp: new Date(20_000).toISOString(),
+        type: "runner_result",
+        actor: "codex",
+        payload: {
+          verdict: "FAIL",
+          observationLevel: "contract_summary",
+          authoritative: false,
+          hardFailureCodes: ["GATE_FALSE_PASS"]
+        }
+      },
+      {
+        eventId: "event-runner-hard-failure",
+        timestamp: new Date(21_000).toISOString(),
+        type: "hard_failure",
+        actor: "codex",
+        payload: {
+          code: "GATE_FALSE_PASS",
+          why: "Runner summary asserted a hard failure."
+        }
+      }
+    );
+
+    const result = scoreCaseWithContract(testCase, run, profile.contract);
+    const suite = scoreSuite(
+      "contract-summary-hard-failure",
+      profile.contract,
+      "smoke",
+      [result],
+      {
+        evidenceKind: "live",
+        observationLevel: "contract_summary"
+      }
+    );
+
+    expect(result.hardFailures).toEqual([]);
+    expect(result.verdict).toBe("DIAGNOSTIC_ONLY");
+    expect(suite.p0CaseRecords).toEqual([]);
+    expect(suite.releaseDecision).toBe("DIAGNOSTIC_ONLY");
+    expect(suite.releaseRuleId).toBe("REL-EVIDENCE-CONTRACT-SUMMARY");
+  });
+
+  test("comparable workflow-trace runner FAIL remains a failed case", async () => {
+    const profile = await profileTarget(await loadTargetPack("minimal-directory-agent"));
+    const testCase = materializeSmokeSuite(profile.contract).cases[0]!;
+    const run = runCase(testCase, profile.contract);
+    run.runner = {
+      name: "codex",
+      comparability: {
+        workflowScore: "comparable",
+        efficiency: "comparable",
+        tokenCost: "comparable"
+      }
+    };
+    run.events.push({
+      eventId: "event-runner-result",
+      timestamp: new Date(0).toISOString(),
+      type: "runner_result",
+      actor: "observer",
+      payload: {
+        verdict: "FAIL",
+        observationLevel: "workflow_trace",
+        authoritative: true
+      }
     });
 
     const result = scoreCase(testCase, run);
@@ -311,17 +689,21 @@ describe("run and score", () => {
     failedRun.runner = {
       name: "codex",
       comparability: {
-        workflowScore: "directional_only",
-        efficiency: "directional_only",
-        tokenCost: "directional_only"
+        workflowScore: "comparable",
+        efficiency: "comparable",
+        tokenCost: "comparable"
       }
     };
     failedRun.events.push({
       eventId: "event-runner-fail",
       timestamp: new Date(0).toISOString(),
       type: "runner_result",
-      actor: "codex",
-      payload: { verdict: "FAIL" }
+      actor: "observer",
+      payload: {
+        verdict: "FAIL",
+        observationLevel: "workflow_trace",
+        authoritative: true
+      }
     });
     const failed = scoreCase(smoke.cases[0]!, failedRun);
     const passes = smoke.cases.slice(1, 10).map((testCase) => {

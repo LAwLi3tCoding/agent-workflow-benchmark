@@ -11,16 +11,16 @@
     "goldCorpus": {
       "corpusId": "awb-gold-corpus",
       "corpusVersion": "1.0.0",
-      "corpusHash": "sha256:bbc06437165d6375304f2d8f15041b0d1c66d399dd50264b03d4ee133267e797",
+      "corpusHash": "sha256:3834bb903d91d028d08b3e3acbc520cc0eeae57d8c4085a3a6a4717f46e8bb60",
       "labelsHash": "sha256:9f5d6c016f7f301c332204ee82290fcaa71d42531d9c96b41842d92e47c12eac",
-      "trajectoriesHash": "sha256:d56395eaf6e7dc0a51766ce48529a6aa0ebb24700b402fd7528c9467b4d5e603"
+      "trajectoriesHash": "sha256:1a89a7035814f845e676af0e6e120cc9b8826ab53c36045438955638e1ff1e22"
     },
     "fitSplits": [
       "development",
       "calibration"
     ],
     "splitHashes": {
-      "development": "sha256:b1776c63b3f579143708a432e554bfbb2604a054d791c734c9e70f58c40eac55",
+      "development": "sha256:3621b7166bc3b258abc7b837c74ef8d219c331e1ac47711c7565fd506f57500d",
       "calibration": "sha256:bb23e29975811e475e8088b2fc67986a4165c54867ceeea2bd60f6dfadefbac7"
     },
     "sampleCount": 24,
@@ -87,9 +87,9 @@
       "minimumMeaningfulScoreDelta": 1
     }
   },
-  "policyHash": "sha256:280378f348874572dc1eb39106a2e63ff8768c0581e608fe1ca37305a2e16dfc",
+  "policyHash": "sha256:6928be26f1cb30cd07e8ec2ba02b228f517fd6c5c6efcc212db1846eef73bd98",
   "integrity": {
     "status": "VERIFIED_AT_WRITE",
-    "contentHash": "sha256:6a12783b86edd07c6ceb3485ea09a46a68be1421421c1528a02e4c7d518ed66c"
+    "contentHash": "sha256:73bf1d8ea0b38b7b571406df66b882c31e052c40fabec66fb236bb327820cf3b"
   }
 }

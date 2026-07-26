@@ -2,6 +2,12 @@ import { PRODUCT_NAME } from "../core/product.js";
 export function renderMarkdownReport(result) {
     const failed = result.caseResults.filter((item) => item.verdict === "FAIL");
     const p0Cases = result.p0CaseRecords;
+    const topRisks = [
+        ...failed.map((item) => `- ${item.caseId}: ${item.hardFailures
+            .map((failure) => `${failure.severity}:${failure.code}`)
+            .join(", ")}`),
+        ...result.contractDiagnostics.map((diagnostic) => `- ${diagnostic.code}: ${diagnostic.statusCodes.join(", ")}`)
+    ];
     const lines = [
         `# ${PRODUCT_NAME} Report`,
         ``,
@@ -9,12 +15,14 @@ export function renderMarkdownReport(result) {
         `Suite: ${result.suite}`,
         `Run: ${result.runId}`,
         `Benchmark Evidence Decision: ${result.releaseDecision}`,
+        `Release Rule: ${result.releaseRuleId}`,
         `Decision Scope: collected benchmark evidence only; not release approval unless real workflow trace events are emitted.`,
         `Score: ${result.cappedSuiteScore}`,
         `Telemetry Completeness: ${result.telemetryCompleteness}`,
         ``,
         `## Executive Summary`,
         `- Benchmark Evidence Decision: ${result.releaseDecision}`,
+        `- Release Rule: ${result.releaseRuleId}`,
         `- Decision Scope: collected benchmark evidence only; not release approval unless real workflow trace events are emitted.`,
         `- Raw Score: ${result.rawSuiteScore}`,
         `- Capped Score: ${result.cappedSuiteScore}`,
@@ -22,9 +30,16 @@ export function renderMarkdownReport(result) {
         `- Recommendations: ${result.recommendations.length}`,
         ``,
         `## Top Risks`,
-        failed.length === 0
+        topRisks.length === 0
             ? `No blocking hard failures were observed.`
-            : failed.map((item) => `- ${item.caseId}: ${item.hardFailures.map((failure) => `${failure.severity}:${failure.code}`).join(", ")}`).join("\n"),
+            : topRisks.join("\n"),
+        ``,
+        `## Contract Mapping Diagnostics`,
+        result.contractDiagnostics.length === 0
+            ? `No contract mapping diagnostics were recorded.`
+            : result.contractDiagnostics
+                .map((diagnostic) => `- ${diagnostic.code}: ${diagnostic.statusCodes.join(", ")}`)
+                .join("\n"),
         ``,
         `## Dimension Scores`,
         result.dimensionScores.length === 0

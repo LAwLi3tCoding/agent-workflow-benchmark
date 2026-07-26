@@ -51,6 +51,10 @@ run:
       payload:
         status: PASS
         sourceStatus: PASS
+        scope: workflow-gate
+        flowDecision: release
+        transition: { from: PASS, to: PASS }
+        readbackStatus: PASS
     - eventId: side-effect
       type: side_effect_attempt
       actor: observer

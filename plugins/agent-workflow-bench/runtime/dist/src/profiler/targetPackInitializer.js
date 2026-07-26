@@ -1,7 +1,6 @@
 import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import fg from "fast-glob";
-const statusOrder = ["PASS", "FAILED", "SKIPPED", "ADVISORY", "PENDING", "BLOCKED", "READY"];
 const knownScopes = ["triage", "dod", "implementation", "design", "architecture", "review", "qa", "testing", "planning"];
 export async function inferTargetPackDraft(options) {
     const agentRoot = path.resolve(options.agentRoot);
@@ -83,14 +82,10 @@ async function inferRoles(agentRoot, targetId) {
     return dedupeRoles(roles);
 }
 function roleSortKey(filePath) {
-    const id = roleIdFromPath(filePath, "target");
-    if (id.includes("scrum-master") || id === "sm" || id.includes("orchestrator")) {
+    if (filePath === "AGENTS.md" || filePath === "CLAUDE.md") {
         return `0-${filePath}`;
     }
-    if (filePath === "AGENTS.md" || filePath === "CLAUDE.md") {
-        return `1-${filePath}`;
-    }
-    return `2-${filePath}`;
+    return `1-${filePath}`;
 }
 function roleIdFromPath(filePath, targetId) {
     const parsed = path.parse(filePath);
@@ -114,7 +109,7 @@ function inferOwnerScopes(roleId, text) {
             scopes.add(scope === "testing" ? "qa" : scope === "architecture" ? "design" : scope);
         }
     }
-    if (roleHaystack.includes("scrum") || textHaystack.includes("owns triage")) {
+    if (textHaystack.includes("owns triage")) {
         scopes.add("triage");
     }
     if (roleHaystack.includes("dod") || textHaystack.includes("owns dod") || textHaystack.includes("owns definition of done")) {
@@ -129,20 +124,18 @@ function inferOwnerScopes(roleId, text) {
     return [...scopes].sort();
 }
 function chooseEntrypointRole(roles) {
-    return roles.find((role) => role.id.includes("scrum-master") || role.id.includes("orchestrator")) ?? roles[0];
+    return roles[0];
 }
 function inferStatuses(roles) {
     const combined = roles.map((role) => role.text).join("\n");
     const found = new Set();
-    for (const status of statusOrder) {
-        if (new RegExp(`\\b${status}\\b`, "u").test(combined)) {
-            found.add(status);
+    const declaration = /\b(?:gate\s+|workflow\s+)?statuses?(?:\s+codes?)?\s*(?:[:=]|\bare\b)\s*([^\n.]+)/giu;
+    for (const match of combined.matchAll(declaration)) {
+        for (const code of match[1].match(/\b[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)*\b/gu) ?? []) {
+            found.add(code);
         }
     }
-    if (/\bFAIL\b/u.test(combined)) {
-        found.add("FAILED");
-    }
-    return found.size > 0 ? statusOrder.filter((status) => found.has(status)) : ["PASS", "FAILED", "SKIPPED", "ADVISORY"];
+    return [...found].sort();
 }
 function inferRequiredOwners(roles, fallbackRoleId) {
     const owners = {};
@@ -241,12 +234,14 @@ function renderGapsMarkdown(targetPack) {
         `- artifacts: ${targetPack.contracts.artifacts.length}`,
         `- states: ${targetPack.contracts.states.length}`,
         `- joins: ${targetPack.contracts.joins.length}`,
+        `- raw statuses: ${targetPack.contracts.statuses.join(", ") || "none inferred"}`,
         "",
         "## Needs Owner Confirmation",
         "",
         "- Confirm required owner scopes and role ownership.",
         "- Confirm forbidden routes and handoff boundaries; static inference leaves routing.forbidden empty.",
         "- Confirm artifacts/states are canonical paths, not examples or aliases.",
+        "- Confirm owner-reviewed status semantics, scopes, blocking behavior, terminal behavior, and allowed transitions for every raw status code.",
         "- Confirm budgets and commandPolicy before using this target for release gates.",
         "- Produce a contract-validity artifact that binds the owner review to the final contractHash.",
         "- Move the reviewed draft to configs/targets/<target-id>.yaml and register it in configs/targets/registry.yaml."

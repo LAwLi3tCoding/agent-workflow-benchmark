@@ -60,6 +60,7 @@ describe("AI case planner", () => {
 
     expect(prompt).toContain("understand the target agent workflow first");
     expect(prompt).toContain("ContractModel");
+    expect(prompt).toContain("statusSemantics");
     expect(prompt).toContain("Workflow evidence excerpts");
     expect(prompt).toContain("CoverageTargets");
     expect(prompt).toContain("Scoring policy");
@@ -71,6 +72,72 @@ describe("AI case planner", () => {
     expect(prompt).toContain("operationSequence");
     expect(prompt).toContain("coverageTags");
     expect(prompt).toContain("minimal-directory-agent");
+  });
+
+  test("fixture planning uses the target pass mapping instead of status:PASS", async () => {
+    const out = await mkdtemp(path.join(tmpdir(), "awb-ai-planner-status-"));
+    try {
+      const profile = await profileTarget(
+        await loadTargetPack("minimal-directory-agent")
+      );
+      const contract = structuredClone(profile.contract);
+      contract.statuses = [
+        "BUILD_GREEN",
+        "BUILD_WAIT",
+        "RELEASE_GREEN",
+        "RELEASE_WAIT"
+      ];
+      contract.statusSemantics = [
+        {
+          code: "BUILD_GREEN",
+          semanticClass: "pass",
+          scope: "build-gate",
+          blocking: false,
+          terminal: true,
+          allowedTransitions: []
+        },
+        {
+          code: "BUILD_WAIT",
+          semanticClass: "pending",
+          scope: "build-gate",
+          blocking: true,
+          terminal: false,
+          allowedTransitions: ["BUILD_GREEN"]
+        },
+        {
+          code: "RELEASE_GREEN",
+          semanticClass: "pass",
+          scope: "release-gate",
+          blocking: false,
+          terminal: true,
+          allowedTransitions: []
+        },
+        {
+          code: "RELEASE_WAIT",
+          semanticClass: "pending",
+          scope: "release-gate",
+          blocking: true,
+          terminal: false,
+          allowedTransitions: ["RELEASE_GREEN"]
+        }
+      ];
+
+      const run = await runAiCasePlanner(contract, {
+        runner: "fixture",
+        coverageMode: "smoke",
+        timeoutMs: 1000,
+        outDir: out,
+        maxCases: 1
+      });
+      const serialized = JSON.stringify(run.plan.cases[0]);
+
+      expect(run.plan.cases[0]?.coverageTags).toContain("status:BUILD_GREEN");
+      expect(run.plan.cases[0]?.bindings?.statusScope).toBe("build-gate");
+      expect(serialized).not.toContain("status:PASS");
+      expect(serialized).not.toContain("PASS gate");
+    } finally {
+      await rm(out, { recursive: true, force: true });
+    }
   });
 
   test("persists only portable planner evidence and a response digest", async () => {
@@ -241,6 +308,54 @@ describe("AI case planner", () => {
     expect(validation.status).toBe("FAIL");
     expect(validation.invalidBindings.map((item) => item.field)).toEqual(expect.arrayContaining(["owner", "joinId"]));
     expect(validation.missingCoverageTargetIds).toContain("role:worker-agent");
+  });
+
+  test("rejects not-applicable as a phantom join binding", async () => {
+    const profile = await profileTarget(await loadTargetPack("minimal-directory-agent"));
+    const contract = structuredClone(profile.contract);
+    contract.joins = [];
+    const plan = normalizeAiCasePlan({
+      targetUnderstanding: "A workflow that declares no join topology.",
+      workflowUnderstanding: {
+        goal: "Exercise a target without inventing a join.",
+        stages: ["entrypoint", "completion"],
+        criticalInvariants: ["bindings reference only declared topology"],
+        scoringSignals: ["binding validation"]
+      },
+      cases: [
+        {
+          id: "phantom-join",
+          title: "Phantom join binding is rejected",
+          riskFocus: "sentinel values masquerading as contract bindings",
+          operationSequence: ["invoke", "complete"],
+          oracleIds: ["oracle-no-join"],
+          expectedHardFailures: [],
+          coverageTags: ["role:orchestrator-agent"],
+          bindings: {
+            primaryRole: "orchestrator-agent",
+            joinId: "not-applicable",
+            statusScope: "not-applicable"
+          }
+        }
+      ]
+    }, "codex");
+
+    const validation = validateAiCasePlan(plan, contract);
+
+    expect(validation.invalidBindings).toContainEqual(
+      expect.objectContaining({
+        caseId: "phantom-join",
+        field: "joinId",
+        value: "not-applicable"
+      })
+    );
+    expect(validation.invalidBindings).toContainEqual(
+      expect.objectContaining({
+        caseId: "phantom-join",
+        field: "statusScope",
+        value: "not-applicable"
+      })
+    );
   });
 
   test("normalizes common AI coverage tag aliases before validation", async () => {

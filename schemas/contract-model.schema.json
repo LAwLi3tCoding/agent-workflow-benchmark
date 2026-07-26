@@ -39,6 +39,11 @@
       "items": { "$ref": "#/$defs/role" }
     },
     "statuses": { "$ref": "#/$defs/nonEmptyStringArray" },
+    "statusSemantics": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/statusSemantic" }
+    },
     "requiredOwners": {
       "type": "object",
       "minProperties": 1,
@@ -181,6 +186,43 @@
       "properties": {
         "id": { "$ref": "#/$defs/nonEmptyString" },
         "path": { "$ref": "#/$defs/portablePath" }
+      }
+    },
+    "statusSemantic": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "code",
+        "semanticClass",
+        "scope",
+        "blocking",
+        "terminal",
+        "allowedTransitions"
+      ],
+      "properties": {
+        "code": { "$ref": "#/$defs/nonEmptyString" },
+        "semanticClass": {
+          "enum": [
+            "pass",
+            "failure",
+            "skipped",
+            "advisory",
+            "pending",
+            "blocked",
+            "ready",
+            "in_progress",
+            "completed",
+            "cancelled"
+          ]
+        },
+        "scope": { "$ref": "#/$defs/nonEmptyString" },
+        "blocking": { "type": "boolean" },
+        "terminal": { "type": "boolean" },
+        "allowedTransitions": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/nonEmptyString" },
+          "uniqueItems": true
+        }
       }
     }
   }

@@ -1,6 +1,6 @@
 import path from "node:path";
 import type { ContractValidityArtifact, TargetPack } from "./types.js";
-import { buildContractModel, CONTRACT_HASH_FIELDS } from "./contractModel.js";
+import { buildContractModel, contractHashFieldsFor } from "./contractModel.js";
 import { hashFile, stableJson } from "../utils/hash.js";
 import { readJson } from "../utils/io.js";
 
@@ -33,7 +33,8 @@ export async function assertRegisteredTargetReview(
     artifact.decision !== "approved" ||
     artifact.reviewerId !== review.reviewerId ||
     artifact.reviewedAt !== review.reviewedAt ||
-    stableJson(artifact.reviewedContractFields) !== stableJson(CONTRACT_HASH_FIELDS)
+    stableJson(artifact.reviewedContractFields) !==
+      stableJson(contractHashFieldsFor(target))
   ) {
     throw new Error(
       `Registered target ${target.id} contract-validity artifact does not approve the current contractHash.`

@@ -940,6 +940,12 @@ describe("benchmark CLI", () => {
       expect(firstCase).toContain("suite: full-regression");
       const suite = JSON.parse(await readFile(path.join(out, "run", "suite-result.json"), "utf8"));
       await expectValidSchema("schemas/suite-result.schema.json", suite);
+      const missingContractDiagnostics = structuredClone(suite);
+      delete missingContractDiagnostics.contractDiagnostics;
+      await expectInvalidSchema(
+        "schemas/suite-result.schema.json",
+        missingContractDiagnostics
+      );
       expect(suite.suite).toBe("full-regression");
       expect(suite.dimensionScores.length).toBeGreaterThan(3);
       expect(suite.recommendations.length).toBeGreaterThan(0);

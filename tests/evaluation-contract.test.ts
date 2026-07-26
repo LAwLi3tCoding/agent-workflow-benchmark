@@ -240,14 +240,14 @@ describe("canonical evaluation contract", () => {
       eventId: "known-hard-failure",
       timestamp: new Date(0).toISOString(),
       type: "hard_failure",
-      actor: "runner",
+      actor: "observer",
       payload: { code: "TARGET_ROUTE_FORBIDDEN", why: "untrusted replacement text" }
     });
     const unknownRun = makeRun(testCase.id, {
       eventId: "unknown-hard-failure",
       timestamp: new Date(0).toISOString(),
       type: "hard_failure",
-      actor: "runner",
+      actor: "observer",
       payload: { code: "TARGET_PRIVATE_FAILURE", why: "private implementation detail" }
     });
 
@@ -268,13 +268,25 @@ describe("canonical evaluation contract", () => {
     });
     expect(unknown.why).not.toContain("TARGET_PRIVATE_FAILURE");
 
+    const runnerSummary = scoreCase(
+      testCase,
+      makeRun(testCase.id, {
+        eventId: "runner-summary-hard-failure",
+        timestamp: new Date(0).toISOString(),
+        type: "hard_failure",
+        actor: "runner",
+        payload: { code: "TARGET_ROUTE_FORBIDDEN" }
+      })
+    );
+    expect(runnerSummary.hardFailures).toEqual([]);
+
     const secretResult = scoreCase(
       testCase,
       makeRun(testCase.id, {
         eventId: "secret-hard-failure",
         timestamp: new Date(0).toISOString(),
         type: "hard_failure",
-        actor: "awb-oracle",
+        actor: "observer",
         payload: { code: "SECRET_LEAK" }
       })
     );
@@ -294,7 +306,7 @@ describe("canonical evaluation contract", () => {
         eventId: "telemetry-hard-failure",
         timestamp: new Date(0).toISOString(),
         type: "hard_failure",
-        actor: "awb-oracle",
+        actor: "observer",
         payload: { code: "TELEMETRY_MISSING" }
       })
     );

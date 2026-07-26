@@ -13,6 +13,31 @@ roles:
     ownerScopes: [triage, implementation, dod]
 contracts:
   statuses: [PASS, FAILED, SKIPPED, ADVISORY]
+  statusSemantics:
+    - code: PASS
+      semanticClass: pass
+      scope: workflow-gate
+      blocking: false
+      terminal: true
+      allowedTransitions: []
+    - code: FAILED
+      semanticClass: failure
+      scope: workflow-gate
+      blocking: true
+      terminal: true
+      allowedTransitions: []
+    - code: SKIPPED
+      semanticClass: skipped
+      scope: workflow-gate
+      blocking: false
+      terminal: true
+      allowedTransitions: []
+    - code: ADVISORY
+      semanticClass: advisory
+      scope: workflow-gate
+      blocking: false
+      terminal: true
+      allowedTransitions: []
   requiredOwners:
     implementation: cli-agent
   routing:
@@ -40,4 +65,4 @@ contractReview:
   reviewerId: generic-fixture-maintainer
   reviewedAt: 2026-07-25T00:00:00.000Z
   artifactPath: configs/targets/reviews/dummy-cli-agent.contract-validity.json
-  artifactHash: sha256:4e02d23aa8c02c237cccc5885c4714a3fbdbd022dd1b7362336ed133cad797ef
+  artifactHash: sha256:fc96ed5a926ab09e43d53214e31993c09db03dcf4191e50cc7b248777fbdd852

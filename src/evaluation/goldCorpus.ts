@@ -12,10 +12,11 @@ import type {
 import { getBenchmarkRoot } from "../core/targetRegistry.js";
 import { deriveWorkflowCoverageTargets } from "../generator/coverage.js";
 import { semanticCaseSetHash } from "../regression/provenance.js";
-import { scoreCase } from "../scorer/score.js";
+import { scoreCaseWithContract } from "../scorer/score.js";
 import { baselineGatePolicyRules } from "../calibration/policyArtifact.js";
 import { hashFile } from "../utils/hash.js";
 import { getScorePolicy } from "./evaluationContract.js";
+import { isFalsePassTransition } from "./statusSemantics.js";
 
 export const REQUIRED_GOLD_FAILURE_CODES = [
   "TRACE_EVENT_MISSING",
@@ -587,9 +588,10 @@ export function scoreGoldCorpusCase(
   );
   const detectedFailures = detectTrajectoryFailures(rawRun, contract, benchmarkCase);
   const scoredRun = appendDetectedFailures(rawRun, detectedFailures);
-  const caseResult = scoreCase(
+  const caseResult = scoreCaseWithContract(
     benchmarkCase,
     scoredRun,
+    contract,
     baselineGatePolicyRules()
   );
   return {
@@ -761,13 +763,10 @@ export function detectTrajectoryFailures(
     }
   }
 
-  const nonPassStatuses = new Set(["FAILED", "SKIPPED", "ADVISORY", "BYPASSED"]);
   for (const event of events) {
     if (
       event.type === "gate_decision" &&
-      event.payload.status === "PASS" &&
-      typeof event.payload.sourceStatus === "string" &&
-      nonPassStatuses.has(event.payload.sourceStatus)
+      isFalsePassTransition(contract, event.payload)
     ) {
       add("GATE_FALSE_PASS", [event.eventId]);
     }
@@ -883,7 +882,7 @@ function appendDetectedFailures(
           new Date(lastTimestamp).getTime() + (index + 1) * 1000
         ).toISOString(),
         type: "hard_failure" as const,
-        actor: "awb-oracle",
+        actor: "benchmark",
         payload: {
           code: failure.code,
           evidenceEventIds: failure.evidenceEventIds

@@ -42,7 +42,27 @@ describe("live Codex runner", () => {
       );
 
       const profile = await profileTarget(await loadTargetPack("minimal-directory-agent"));
-      const testCase = materializeSmokeSuite(profile.contract).cases[0]!;
+      const contract = structuredClone(profile.contract);
+      contract.statuses = ["BYPASSED_BY_CONFIG", "ADVISORY_CONTINUE"];
+      contract.statusSemantics = [
+        {
+          code: "BYPASSED_BY_CONFIG",
+          semanticClass: "skipped",
+          scope: "release-gate",
+          blocking: false,
+          terminal: true,
+          allowedTransitions: []
+        },
+        {
+          code: "ADVISORY_CONTINUE",
+          semanticClass: "advisory",
+          scope: "release-gate",
+          blocking: false,
+          terminal: true,
+          allowedTransitions: []
+        }
+      ];
+      const testCase = materializeSmokeSuite(contract).cases[0]!;
       const capability: RunnerCapability = {
         schemaVersion: "0.1.0",
         name: "codex",
@@ -61,7 +81,7 @@ describe("live Codex runner", () => {
         capabilitiesHash: "sha256:fake"
       };
 
-      const run = await runLiveCodexCase(testCase, profile.contract, capability, {
+      const run = await runLiveCodexCase(testCase, contract, capability, {
         sandboxRoot: root,
         transcriptPath: path.join(root, "transcript.jsonl"),
         lastMessagePath: path.join(root, "last-message.json"),
@@ -90,6 +110,12 @@ describe("live Codex runner", () => {
       expect(prompt).toContain("Required evidence");
       expect(prompt).toContain("roles");
       expect(prompt).toContain("artifacts");
+      expect(prompt).toContain("statusSemantics");
+      expect(prompt).toContain("BYPASSED_BY_CONFIG");
+      expect(prompt).toContain("ADVISORY_CONTINUE");
+      expect(prompt).not.toContain(
+        "PASS, FAILED, SKIPPED, and ADVISORY should be represented"
+      );
       expect(prompt).toContain("Verdict rules");
       expect(prompt).toContain("hardFailureCodes");
       expect(prompt).toContain("caseContractHash");
@@ -118,7 +144,7 @@ describe("live Codex runner", () => {
     }
   });
 
-  test("maps live hardFailureCodes into hard_failure events", async () => {
+  test("keeps contract-summary hardFailureCodes diagnostic instead of emitting hard_failure events", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "awb-live-hard-failure-"));
     try {
       const fakeCodex = path.join(root, "codex");
@@ -128,13 +154,13 @@ describe("live Codex runner", () => {
           "#!/usr/bin/env node",
           "const fs = require('fs');",
           "const outIndex = process.argv.indexOf('-o');",
-          "if (outIndex >= 0) fs.writeFileSync(process.argv[outIndex + 1], JSON.stringify({ verdict: 'FAIL', hardFailureCodes: ['TARGET_ROUTE_FORBIDDEN'], caveats: [] }));",
+          "if (outIndex >= 0) fs.writeFileSync(process.argv[outIndex + 1], JSON.stringify({ verdict: 'FAIL', hardFailureCodes: ['GATE_FALSE_PASS'], caveats: [] }));",
           "console.log(JSON.stringify({ type: 'message', role: 'assistant', content: 'FAIL' }));"
         ].join("\n"),
         { mode: 0o755 }
       );
       const profile = await profileTarget(await loadTargetPack("minimal-directory-agent"));
-      const testCase = materializeSmokeSuite(profile.contract).cases.find((item) => item.templateId === "forbidden-route")!;
+      const testCase = materializeSmokeSuite(profile.contract).cases.find((item) => item.templateId === "skip-not-pass")!;
       const capability: RunnerCapability = {
         schemaVersion: "0.1.0",
         name: "codex",
@@ -160,8 +186,8 @@ describe("live Codex runner", () => {
         timeoutMs: 10000
       });
 
-      expect(run.events.find((event) => event.type === "runner_result")?.payload.hardFailureCodes).toEqual(["TARGET_ROUTE_FORBIDDEN"]);
-      expect(run.events.find((event) => event.type === "hard_failure")?.payload.code).toBe("TARGET_ROUTE_FORBIDDEN");
+      expect(run.events.find((event) => event.type === "runner_result")?.payload.hardFailureCodes).toEqual(["GATE_FALSE_PASS"]);
+      expect(run.events.filter((event) => event.type === "hard_failure")).toEqual([]);
     } finally {
       await rm(root, { recursive: true, force: true });
     }

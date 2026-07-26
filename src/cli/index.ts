@@ -52,7 +52,7 @@ import {
   runRunnerAdapterConformance
 } from "../adapters/conformance.js";
 import {
-  scoreCase,
+  scoreCaseWithContract,
   scoreSuite,
   type SuiteEvidenceContext
 } from "../scorer/score.js";
@@ -698,7 +698,7 @@ program
       if (executionMode === "live") {
         liveTranscriptCount += 1;
       }
-      const result = scoreCase(testCase, run);
+      const result = scoreCaseWithContract(testCase, run, contract);
       caseResults.push(result);
       await writeJson(path.join(runDir, "events", `${testCase.id}.json`), run.events);
       await writeJson(path.join(runDir, "case-results", `${testCase.id}.json`), result);
@@ -814,7 +814,7 @@ program
         if (!run) {
           throw new Error(`Verified workflow trace is missing case ${testCase.id}.`);
         }
-        const result = scoreCase(testCase, run);
+        const result = scoreCaseWithContract(testCase, run, contract);
         caseResults.push(result);
         await writeJson(path.join(options.out, "events", `${testCase.id}.json`), run.events);
         await writeJson(path.join(options.out, "case-results", `${testCase.id}.json`), result);
@@ -1030,7 +1030,11 @@ program
         if (executionMode === "live") {
           liveTranscriptCount += 1;
         }
-        const result = scoreCase(testCase, run);
+        const result = scoreCaseWithContract(
+          testCase,
+          run,
+          profile.contract
+        );
         caseResults.push(result);
         await writeJson(path.join(runDir, "events", `${testCase.id}.json`), run.events);
         await writeJson(path.join(runDir, "case-results", `${testCase.id}.json`), result);

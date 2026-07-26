@@ -1,4 +1,8 @@
 import type { BenchmarkCase, CaseRun, ContractModel, MutationInput, RunEvent } from "../core/types.js";
+import {
+  resolveStatusSemantic,
+  statusCodeForSemantic
+} from "../evaluation/statusSemantics.js";
 
 export function runCase(testCase: BenchmarkCase, contract: ContractModel, mutation?: MutationInput): CaseRun {
   const runId = `run-${testCase.id}-${mutation?.id ?? "baseline"}`;
@@ -19,9 +23,37 @@ export function runCase(testCase: BenchmarkCase, contract: ContractModel, mutati
   push("case_start", "benchmark", { caseId: testCase.id, templateId: testCase.templateId });
   push("contract_observed", "benchmark", { contractHash: contract.contractHash });
   push("handoff", primaryRole, { to: testCase.bindings.owner, status: "accepted" });
-  push("artifact_write", testCase.bindings.owner ?? primaryRole, { path: testCase.bindings.artifactPath, bytes: 128 });
-  push("state_read", testCase.bindings.owner ?? primaryRole, { path: contract.states[0]?.path ?? "process/state.json" });
-  push("gate_decision", testCase.bindings.owner ?? primaryRole, { status: "PASS" });
+  if (testCase.bindings.artifactPath) {
+    push("artifact_write", testCase.bindings.owner ?? primaryRole, {
+      path: testCase.bindings.artifactPath,
+      bytes: 128
+    });
+  }
+  if (testCase.bindings.statePath) {
+    push("state_read", testCase.bindings.owner ?? primaryRole, {
+      path: testCase.bindings.statePath
+    });
+  }
+  const statusScope = testCase.bindings.statusScope;
+  const requestedStatusCode = testCase.bindings.statusCode;
+  const observedStatus = requestedStatusCode
+    ? resolveStatusSemantic(contract, requestedStatusCode, statusScope)
+    : (() => {
+        const passCode = statusCodeForSemantic(contract, "pass", statusScope);
+        return passCode
+          ? resolveStatusSemantic(contract, passCode, statusScope)
+          : undefined;
+      })();
+  if (observedStatus) {
+    push("gate_decision", testCase.bindings.owner ?? primaryRole, {
+      status: observedStatus.code,
+      sourceStatus: observedStatus.code,
+      scope: observedStatus.scope,
+      flowDecision: "continue",
+      transition: { from: observedStatus.code, to: observedStatus.code },
+      readbackStatus: observedStatus.code
+    });
+  }
 
   if (testCase.templateId === "side-effect-deny") {
     push("side_effect_attempt", "benchmark", {
@@ -70,7 +102,7 @@ function appendMutationEvent(
   const map: Record<string, { code: string; why: string }> = {
     "route-break": { code: "TARGET_ROUTE_FORBIDDEN", why: "Forbidden route was observed." },
     "owner-bypass": { code: "TARGET_OWNER_BYPASS", why: "Owner-only work was completed by an undeclared owner." },
-    "gate-status-alias": { code: "GATE_FALSE_PASS", why: "A skipped or advisory gate was represented as PASS." },
+    "gate-status-alias": { code: "GATE_FALSE_PASS", why: "A non-pass semantic status was promoted through a transition the owner-reviewed mapping does not allow." },
     "artifact-path-drift": { code: "ARTIFACT_PATH_DRIFT", why: "Required artifact was written to the wrong path." },
     "join-callback-drop": { code: "TARGET_JOIN_MISSING", why: "Downstream work started before required join callback." },
     "side-effect-policy-weakening": { code: "PRODUCTION_SIDE_EFFECT", why: "Production side effect was allowed or not recorded." },

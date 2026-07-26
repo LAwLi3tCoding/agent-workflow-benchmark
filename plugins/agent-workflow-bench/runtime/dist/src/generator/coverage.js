@@ -1,5 +1,5 @@
 import { getImplementedCoverageTargets } from "../evaluation/evaluationContract.js";
-import { resolveArtifactPathBinding, resolveJoinBinding, resolveOwnerBinding, resolveRoleBinding, resolveStatePathBinding } from "./bindings.js";
+import { resolveArtifactPathBinding, resolveJoinBinding, resolveOwnerBinding, resolveRoleBinding, resolveStatePathBinding, resolveStatusCodeBinding, resolveStatusScopeBinding } from "./bindings.js";
 import { dedupeCaseIds } from "./caseIds.js";
 export function deriveWorkflowCoverageTargets(contract) {
     const targets = [];
@@ -91,6 +91,8 @@ export function validateAiCasePlan(plan, contract, options = {}) {
         validateJoinBinding(invalidBindings, contract, testCase.id, testCase.bindings?.joinId);
         validateArtifactBinding(invalidBindings, contract, testCase.id, testCase.bindings?.artifactPath);
         validateStateBinding(invalidBindings, contract, testCase.id, testCase.bindings?.statePath);
+        validateStatusCodeBinding(invalidBindings, contract, testCase.id, testCase.bindings?.statusCode, testCase.bindings?.statusScope);
+        validateStatusScopeBinding(invalidBindings, contract, testCase.id, testCase.bindings?.statusScope);
     }
     const missing = targets.filter((target) => target.required && !covered.has(target.id)).map((target) => target.id);
     const warnings = buildWarnings(plan, targets.length, covered.size, missing.length, unknown.size);
@@ -143,6 +145,45 @@ function validateStateBinding(invalidBindings, contract, caseId, value) {
         });
     }
 }
+function validateStatusScopeBinding(invalidBindings, contract, caseId, value) {
+    if (value && !resolveStatusScopeBinding(contract, value)) {
+        invalidBindings.push({
+            caseId,
+            field: "statusScope",
+            value,
+            why: "Status scope binding is not declared in ContractModel status semantics."
+        });
+    }
+}
+function validateStatusCodeBinding(invalidBindings, contract, caseId, value, scope) {
+    if (!value) {
+        return;
+    }
+    if (!resolveStatusCodeBinding(contract, value, scope)) {
+        invalidBindings.push({
+            caseId,
+            field: "statusCode",
+            value,
+            why: scope
+                ? "Status code binding is not declared in the bound status scope."
+                : "Status code binding is not declared in ContractModel statuses."
+        });
+        return;
+    }
+    const matchingScopes = [
+        ...new Set((contract.statusSemantics ?? [])
+            .filter((mapping) => mapping.code === value)
+            .map((mapping) => mapping.scope))
+    ];
+    if (!scope && matchingScopes.length > 1) {
+        invalidBindings.push({
+            caseId,
+            field: "statusScope",
+            value: matchingScopes.join(","),
+            why: `Status code ${value} is declared in multiple scopes; the executable case must bind one statusScope.`
+        });
+    }
+}
 function normalizeBindings(bindings, contract) {
     const output = { ...bindings };
     if (output.primaryRole) {
@@ -160,6 +201,16 @@ function normalizeBindings(bindings, contract) {
     if (output.statePath) {
         output.statePath = resolveStatePathBinding(contract, output.statePath) ?? output.statePath.trim();
     }
+    if (output.statusCode) {
+        output.statusCode =
+            resolveStatusCodeBinding(contract, output.statusCode, output.statusScope) ??
+                output.statusCode.trim();
+    }
+    if (output.statusScope) {
+        output.statusScope =
+            resolveStatusScopeBinding(contract, output.statusScope) ??
+                output.statusScope.trim();
+    }
     return output;
 }
 function inferBindingsFromCoverageTags(contract, coverageTags) {
@@ -170,6 +221,8 @@ function inferBindingsFromCoverageTags(contract, coverageTags) {
     const joinId = unique(claims.joinId.map((claim) => claim.value));
     const artifactPath = unique(claims.artifactPath.map((claim) => claim.value));
     const statePath = unique(claims.statePath.map((claim) => claim.value));
+    const statusCode = unique(claims.statusCode.map((claim) => claim.value));
+    const statusScope = unique(claims.statusScope.map((claim) => claim.value));
     if (primaryRole) {
         inferred.primaryRole = primaryRole;
     }
@@ -184,6 +237,12 @@ function inferBindingsFromCoverageTags(contract, coverageTags) {
     }
     if (statePath) {
         inferred.statePath = statePath;
+    }
+    if (statusCode) {
+        inferred.statusCode = statusCode;
+    }
+    if (statusScope) {
+        inferred.statusScope = statusScope;
     }
     return inferred;
 }
@@ -209,6 +268,12 @@ function validateBindingClaims(invalidBindings, contract, caseId, coverageTags, 
     }
     if (!validateClaimedBinding(invalidBindings, caseId, "statePath", bindings?.statePath, claims.statePath.map((claim) => claim.value))) {
         recordInvalid(claims.statePath.map((claim) => claim.tag));
+    }
+    if (!validateClaimedBinding(invalidBindings, caseId, "statusCode", bindings?.statusCode, claims.statusCode.map((claim) => claim.value))) {
+        recordInvalid(claims.statusCode.map((claim) => claim.tag));
+    }
+    if (!validateClaimedBinding(invalidBindings, caseId, "statusScope", bindings?.statusScope, claims.statusScope.map((claim) => claim.value))) {
+        recordInvalid(claims.statusScope.map((claim) => claim.tag));
     }
     return invalidClaimTags;
 }
@@ -252,7 +317,9 @@ function collectBindingClaims(contract, coverageTags) {
         owner: [],
         joinId: [],
         artifactPath: [],
-        statePath: []
+        statePath: [],
+        statusCode: [],
+        statusScope: []
     };
     for (const tag of coverageTags) {
         if (tag.startsWith("role:")) {
@@ -283,6 +350,20 @@ function collectBindingClaims(contract, coverageTags) {
             const statePath = resolveStatePathBinding(contract, tag);
             if (statePath) {
                 claims.statePath.push({ tag, value: statePath });
+            }
+        }
+        else if (tag.startsWith("status:")) {
+            const statusCode = resolveStatusCodeBinding(contract, tag);
+            if (statusCode) {
+                claims.statusCode.push({ tag, value: statusCode });
+                const scopes = [
+                    ...new Set((contract.statusSemantics ?? [])
+                        .filter((mapping) => mapping.code === statusCode)
+                        .map((mapping) => mapping.scope))
+                ];
+                if (scopes.length === 1) {
+                    claims.statusScope.push({ tag, value: scopes[0] });
+                }
             }
         }
     }

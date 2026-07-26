@@ -13,6 +13,7 @@
     "dimensionScores",
     "recommendations",
     "p0CaseRecords",
+    "contractDiagnostics",
     "rawSuiteScore",
     "cappedSuiteScore",
     "releaseDecision",
@@ -138,6 +139,22 @@
           "why": { "type": "string" },
           "evidenceEventIds": { "type": "array", "items": { "type": "string" } },
           "recommendedAction": { "type": "string" }
+        }
+      }
+    },
+    "contractDiagnostics": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["code", "statusCodes"],
+        "properties": {
+          "code": { "const": "CONTRACT_MAPPING_MISSING" },
+          "statusCodes": {
+            "type": "array",
+            "items": { "type": "string", "minLength": 1 },
+            "uniqueItems": true
+          }
         }
       }
     },

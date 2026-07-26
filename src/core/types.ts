@@ -13,6 +13,27 @@ export interface TargetRole {
   ownerScopes: string[];
 }
 
+export type StatusSemanticClass =
+  | "pass"
+  | "failure"
+  | "skipped"
+  | "advisory"
+  | "pending"
+  | "blocked"
+  | "ready"
+  | "in_progress"
+  | "completed"
+  | "cancelled";
+
+export interface StatusSemantic {
+  code: string;
+  semanticClass: StatusSemanticClass;
+  scope: string;
+  blocking: boolean;
+  terminal: boolean;
+  allowedTransitions: string[];
+}
+
 export type TargetContractReview =
   | {
       status: "draft";
@@ -46,6 +67,7 @@ export interface TargetPack {
   roles: TargetRole[];
   contracts: {
     statuses: string[];
+    statusSemantics?: StatusSemantic[];
     requiredOwners: Record<string, string>;
     routing: {
       forbidden: Array<{ id: string; from: string; to: string; when: string }>;
@@ -93,6 +115,7 @@ export interface ContractModel {
   entrypoints: TargetEntrypoint[];
   roles: TargetRole[];
   statuses: string[];
+  statusSemantics?: StatusSemantic[];
   requiredOwners: Record<string, string>;
   routing: TargetPack["contracts"]["routing"];
   joins: TargetPack["contracts"]["joins"];
@@ -473,6 +496,10 @@ export interface SuiteResult {
   dimensionScores: SuiteDimensionScore[];
   recommendations: AgentWorkflowRecommendation[];
   p0CaseRecords: P0CaseRecord[];
+  contractDiagnostics: Array<{
+    code: "CONTRACT_MAPPING_MISSING";
+    statusCodes: string[];
+  }>;
   rawSuiteScore: number;
   cappedSuiteScore: number;
   releaseDecision: "APPROVE" | "CONDITIONAL_APPROVE" | "BLOCK" | "DIAGNOSTIC_ONLY";

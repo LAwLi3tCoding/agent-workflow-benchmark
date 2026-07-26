@@ -15,11 +15,13 @@ import { profileTarget } from "../src/profiler/profileTarget.js";
 import {
   DEFAULT_GOLD_CORPUS_PATH,
   REQUIRED_GOLD_FAILURE_CODES,
+  detectTrajectoryFailures,
   evaluateGoldCorpus,
   loadGoldCorpus,
   loadGoldCorpusPlannerView
 } from "../src/evaluation/goldCorpus.js";
 import { semanticCaseSetHash } from "../src/regression/provenance.js";
+import { runCase } from "../src/runner/simulatedRunner.js";
 import { listFiles } from "../src/utils/hash.js";
 
 describe("versioned Gold Corpus", () => {
@@ -202,5 +204,102 @@ describe("versioned Gold Corpus", () => {
       expect(content, file).not.toMatch(/\/Users\/|\/home\/|file:\/\/|@san\u006buai\.com|@mei\u0074uan\.com|git\.san\u006buai\.com/u);
       expect(content, file).not.toMatch(/-----BEGIN [A-Z ]*PRIVATE KEY-----|sk-[A-Za-z0-9_-]{16,}|Bearer [A-Za-z0-9._-]{16,}/u);
     }
+  });
+
+  test("detects the same false-pass transition after target status codes are renamed", async () => {
+    const profile = await profileTarget(await loadTargetPack("minimal-directory-agent"));
+    const contract = structuredClone(profile.contract) as typeof profile.contract & {
+      statusSemantics: Array<{
+        code: string;
+        semanticClass: string;
+        scope: string;
+        blocking: boolean;
+        terminal: boolean;
+        allowedTransitions: string[];
+      }>;
+    };
+    contract.statuses = ["GREEN", "WAIVED"];
+    contract.statusSemantics = [
+      {
+        code: "GREEN",
+        semanticClass: "pass",
+        scope: "release-gate",
+        blocking: false,
+        terminal: true,
+        allowedTransitions: []
+      },
+      {
+        code: "WAIVED",
+        semanticClass: "skipped",
+        scope: "release-gate",
+        blocking: false,
+        terminal: true,
+        allowedTransitions: []
+      }
+    ];
+    const testCase = materializeSmokeSuite(contract).cases.find(
+      (item) => item.templateId === "skip-not-pass"
+    )!;
+    const run = runCase(testCase, contract);
+    const gate = run.events.find((event) => event.type === "gate_decision")!;
+    gate.payload = {
+      status: "GREEN",
+      sourceStatus: "WAIVED",
+      scope: "release-gate",
+      flowDecision: "release",
+      transition: { from: "WAIVED", to: "GREEN" },
+      readbackStatus: "GREEN"
+    };
+
+    expect(
+      detectTrajectoryFailures(run, contract, testCase).map((failure) => failure.code)
+    ).toContain("GATE_FALSE_PASS");
+  });
+
+  test("does not infer false pass from status names without transition readback evidence", async () => {
+    const profile = await profileTarget(await loadTargetPack("minimal-directory-agent"));
+    const contract = structuredClone(profile.contract) as typeof profile.contract & {
+      statusSemantics: Array<{
+        code: string;
+        semanticClass: string;
+        scope: string;
+        blocking: boolean;
+        terminal: boolean;
+        allowedTransitions: string[];
+      }>;
+    };
+    contract.statuses = ["GREEN", "WAIVED"];
+    contract.statusSemantics = [
+      {
+        code: "GREEN",
+        semanticClass: "pass",
+        scope: "release-gate",
+        blocking: false,
+        terminal: true,
+        allowedTransitions: []
+      },
+      {
+        code: "WAIVED",
+        semanticClass: "skipped",
+        scope: "release-gate",
+        blocking: false,
+        terminal: true,
+        allowedTransitions: []
+      }
+    ];
+    const testCase = materializeSmokeSuite(contract).cases.find(
+      (item) => item.templateId === "skip-not-pass"
+    )!;
+    const run = runCase(testCase, contract);
+    const gate = run.events.find((event) => event.type === "gate_decision")!;
+    gate.payload = {
+      status: "GREEN",
+      sourceStatus: "WAIVED",
+      scope: "release-gate"
+    };
+
+    expect(
+      detectTrajectoryFailures(run, contract, testCase).map((failure) => failure.code)
+    ).not.toContain("GATE_FALSE_PASS");
   });
 });

@@ -9,7 +9,7 @@ import type {
   TargetPack
 } from "../core/types.js";
 import { runCase } from "../runner/simulatedRunner.js";
-import { scoreCase } from "../scorer/score.js";
+import { scoreCaseWithContract } from "../scorer/score.js";
 import { hashPath, sha256Text, stableJson } from "../utils/hash.js";
 
 export async function prepareDebugEnvironment(
@@ -101,9 +101,21 @@ export async function reverseValidate(
     outDir: path.join(options.outDir, "env")
   });
 
-  const baseline = scoreCase(testCase, runCase(testCase, contract));
-  const mutant = scoreCase(testCase, runCase(testCase, contract, options.mutation));
-  const restore = scoreCase(testCase, runCase(testCase, contract));
+  const baseline = scoreCaseWithContract(
+    testCase,
+    runCase(testCase, contract),
+    contract
+  );
+  const mutant = scoreCaseWithContract(
+    testCase,
+    runCase(testCase, contract, options.mutation),
+    contract
+  );
+  const restore = scoreCaseWithContract(
+    testCase,
+    runCase(testCase, contract),
+    contract
+  );
   const expectedVerdict = options.expectedVerdict ?? options.mutation.expectedVerdict;
   const expectedHardFailureMatched =
     !options.mutation.expectedHardFailureCode || mutant.hardFailures.some((failure) => failure.code === options.mutation.expectedHardFailureCode);
@@ -157,8 +169,8 @@ export async function reverseValidate(
 }
 
 function isMutationKilled(
-  baseline: ReturnType<typeof scoreCase>,
-  mutant: ReturnType<typeof scoreCase>,
+  baseline: ReturnType<typeof scoreCaseWithContract>,
+  mutant: ReturnType<typeof scoreCaseWithContract>,
   mutation: MutationInput,
   expectedVerdict: MutationInput["expectedVerdict"] | undefined
 ): boolean {

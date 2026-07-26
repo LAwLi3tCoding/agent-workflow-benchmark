@@ -1,4 +1,5 @@
 import { getImplementedOracles, getReliabilityPolicy } from "../evaluation/evaluationContract.js";
+import { scopesWithPassAndNonPassSemantics } from "../evaluation/statusSemantics.js";
 import { sha256Text, stableJson } from "../utils/hash.js";
 import { publicAiCasePlan } from "../utils/redaction.js";
 import { normalizeCaseId } from "./caseIds.js";
@@ -7,15 +8,24 @@ export function materializeSmokeSuite(contract, options = {}) {
     const suiteName = options.suite ?? "smoke";
     const seed = options.seed ?? getReliabilityPolicy().defaultSeed;
     const templates = getImplementedOracles();
-    const cases = templates.map((oracle, index) => makeCase(contract, suiteName, oracle.templateId, oracle.title, oracle.expectedHardFailures, index + 1, oracle.id));
+    const applicability = templates.map((oracle) => ({
+        templateId: oracle.templateId,
+        ...oracleApplicability(contract, oracle.templateId)
+    }));
+    const cases = templates.flatMap((oracle, index) => {
+        if (applicability[index].status !== "materialized") {
+            return [];
+        }
+        const statusScopes = oracle.templateId === "skip-not-pass"
+            ? scopesWithPassAndNonPassSemantics(contract)
+            : [undefined];
+        return statusScopes.map((statusScope) => makeCase(contract, suiteName, oracle.templateId, oracle.title, oracle.expectedHardFailures, index + 1, oracle.id, statusScope, statusScopes.length > 1));
+    });
     return {
         suite: suiteName,
         targetId: contract.targetId,
         cases,
-        applicability: templates.map((oracle) => ({
-            templateId: oracle.templateId,
-            status: "materialized"
-        })),
+        applicability,
         manifest: {
             schemaVersion: "0.1.0",
             artifactType: "generation_manifest",
@@ -65,13 +75,16 @@ export function materializeAiSuite(contract, options) {
         }
     };
 }
-function makeCase(contract, suite, templateId, title, expectedHardFailures, index, oracleId) {
+function makeCase(contract, suite, templateId, title, expectedHardFailures, index, oracleId, statusScope, qualifyStatusScope = false) {
     const primaryRole = contract.roles[0]?.id ?? "agent";
     const owner = Object.values(contract.requiredOwners)[0] ?? primaryRole;
     const join = contract.joins[0];
     const artifact = contract.artifacts[0];
     const state = contract.states[0];
-    const id = `${contract.targetId}-smoke-${String(index).padStart(3, "0")}-${templateId}`;
+    const statusCode = statusScope
+        ? (contract.statusSemantics ?? []).find((mapping) => mapping.scope === statusScope && mapping.semanticClass === "pass")?.code
+        : undefined;
+    const id = `${contract.targetId}-smoke-${String(index).padStart(3, "0")}-${templateId}${qualifyStatusScope && statusScope ? `-${normalizeCaseId(statusScope)}` : ""}`;
     const base = {
         schemaVersion: "0.1.0",
         id,
@@ -86,9 +99,13 @@ function makeCase(contract, suite, templateId, title, expectedHardFailures, inde
         bindings: {
             primaryRole,
             owner,
-            joinId: join?.id ?? "not-applicable",
-            artifactPath: artifact?.path ?? "deliverables/output.md",
-            ...(templateId === "state-recovery" && state ? { statePath: state.path } : {})
+            ...(templateId === "required-join" && join
+                ? { joinId: join.id }
+                : {}),
+            ...(artifact ? { artifactPath: artifact.path } : {}),
+            ...(templateId === "state-recovery" && state ? { statePath: state.path } : {}),
+            ...(statusCode ? { statusCode } : {}),
+            ...(statusScope ? { statusScope } : {})
         },
         budgets: contract.budgets
     };
@@ -97,11 +114,35 @@ function makeCase(contract, suite, templateId, title, expectedHardFailures, inde
         caseHash: sha256Text(stableJson(base))
     };
 }
+function oracleApplicability(contract, templateId) {
+    const unavailable = (reason) => ({
+        status: "notApplicable",
+        reason
+    });
+    if (templateId === "forbidden-route" &&
+        contract.routing.forbidden.length === 0) {
+        return unavailable("The target declares no forbidden routes.");
+    }
+    if (templateId === "required-join" && contract.joins.length === 0) {
+        return unavailable("The target declares no required joins.");
+    }
+    if (templateId === "role-boundary" && contract.roles.length < 2) {
+        return unavailable("The target has no cross-role boundary.");
+    }
+    if (templateId === "state-recovery" && contract.states.length === 0) {
+        return unavailable("The target declares no recoverable state.");
+    }
+    if (templateId === "skip-not-pass" && !hasPassAndNonPassSemantics(contract)) {
+        return unavailable("The target has no complete pass/non-pass status semantics for one gate scope.");
+    }
+    return { status: "materialized" };
+}
+function hasPassAndNonPassSemantics(contract) {
+    return scopesWithPassAndNonPassSemantics(contract).length > 0;
+}
 function makeAiCase(contract, suite, plan, draft, index) {
     const primaryRole = draft.bindings?.primaryRole ?? contract.roles[0]?.id ?? "agent";
     const owner = draft.bindings?.owner ?? Object.values(contract.requiredOwners)[0] ?? primaryRole;
-    const join = contract.joins[0];
-    const artifact = contract.artifacts[0];
     const templateId = `ai-${normalizeCaseId(draft.id)}`;
     const id = `${contract.targetId}-ai-${String(index).padStart(3, "0")}-${normalizeCaseId(draft.id)}`;
     const base = {
@@ -123,8 +164,6 @@ function makeAiCase(contract, suite, plan, draft, index) {
         bindings: {
             primaryRole,
             owner,
-            joinId: draft.bindings?.joinId ?? join?.id ?? "not-applicable",
-            artifactPath: draft.bindings?.artifactPath ?? artifact?.path ?? "deliverables/output.md",
             ...draft.bindings
         },
         budgets: contract.budgets,

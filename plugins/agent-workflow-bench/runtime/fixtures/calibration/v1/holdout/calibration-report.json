@@ -8,22 +8,22 @@
     "policyId": "awb-gate-policy",
     "policyVersion": "1.0.0",
     "rulesHash": "sha256:a58f969de636f05f318fa292e2957b0c014e80856419564421e1e5089a199c19",
-    "policyHash": "sha256:280378f348874572dc1eb39106a2e63ff8768c0581e608fe1ca37305a2e16dfc"
+    "policyHash": "sha256:6928be26f1cb30cd07e8ec2ba02b228f517fd6c5c6efcc212db1846eef73bd98"
   },
   "dataBoundary": {
     "goldCorpus": {
       "corpusId": "awb-gold-corpus",
       "corpusVersion": "1.0.0",
-      "corpusHash": "sha256:bbc06437165d6375304f2d8f15041b0d1c66d399dd50264b03d4ee133267e797",
+      "corpusHash": "sha256:3834bb903d91d028d08b3e3acbc520cc0eeae57d8c4085a3a6a4717f46e8bb60",
       "labelsHash": "sha256:9f5d6c016f7f301c332204ee82290fcaa71d42531d9c96b41842d92e47c12eac",
-      "trajectoriesHash": "sha256:d56395eaf6e7dc0a51766ce48529a6aa0ebb24700b402fd7528c9467b4d5e603"
+      "trajectoriesHash": "sha256:1a89a7035814f845e676af0e6e120cc9b8826ab53c36045438955638e1ff1e22"
     },
     "fitSplits": [
       "development",
       "calibration"
     ],
     "splitHashes": {
-      "development": "sha256:b1776c63b3f579143708a432e554bfbb2604a054d791c734c9e70f58c40eac55",
+      "development": "sha256:3621b7166bc3b258abc7b837c74ef8d219c331e1ac47711c7565fd506f57500d",
       "calibration": "sha256:bb23e29975811e475e8088b2fc67986a4165c54867ceeea2bd60f6dfadefbac7",
       "holdout": "sha256:5d39cbb66d782e0d8f128dd0dff417f123678b3ea150abc63759138407940e04"
     },
@@ -256,20 +256,20 @@
     },
     "falsePassCount": 0,
     "overallAgreement": {
-      "pointEstimate": 1,
+      "pointEstimate": 0.916667,
       "interval": {
         "kind": "wilson",
         "confidenceLevel": 0.95,
-        "lower": 0.757499,
-        "upper": 1
+        "lower": 0.646114,
+        "upper": 0.985135
       }
     },
     "cohenKappa": {
-      "pointEstimate": 1,
+      "pointEstimate": 0.846154,
       "interval": {
         "kind": "bootstrap",
         "confidenceLevel": 0.95,
-        "lower": 1,
+        "lower": 0.454545,
         "upper": 1
       }
     },
@@ -299,10 +299,10 @@
   },
   "integrity": {
     "status": "VERIFIED_AT_WRITE",
-    "contentHash": "sha256:0ce66bc0a1572914c6835bac35b709c92141568c7c6e3a966387478e071cebb7",
-    "policyHash": "sha256:280378f348874572dc1eb39106a2e63ff8768c0581e608fe1ca37305a2e16dfc",
+    "contentHash": "sha256:ca77ca674300d457d5d6f3c3da90f010842e00428518b792e646e0567e659358",
+    "policyHash": "sha256:6928be26f1cb30cd07e8ec2ba02b228f517fd6c5c6efcc212db1846eef73bd98",
     "rulesHash": "sha256:a58f969de636f05f318fa292e2957b0c014e80856419564421e1e5089a199c19",
-    "dataHash": "sha256:73f3249003eaba41470a405bcbeea08b454b05de3263d9bdbfa351b2b3ac5893",
-    "reportHash": "sha256:4863187430ddffa38397c7201b666c0402ad0d822b9ebdbb874e9e59389ef073"
+    "dataHash": "sha256:512cd2ccf09a4ff4ea9db715b3eed2ebfee7e631ae98326412abfc85aeafdc22",
+    "reportHash": "sha256:513c4785a469e54156a8a785dc6db484c14b5d9a3e69a1a9024e777ae20c3460"
   }
 }
