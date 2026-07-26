@@ -80,6 +80,13 @@ export async function validateExternalValidityPackage(
       "external-validity-human-labels.schema.json",
       artifacts.labelsTemplate,
       "External validity human-label template"
+    ),
+    ...artifacts.agentPrelabelTemplates.map((template) =>
+      assertExternalValiditySchema(
+        "external-validity-agent-prelabels.schema.json",
+        template,
+        "External validity agent-prelabel template"
+      )
     )
   ]);
 }

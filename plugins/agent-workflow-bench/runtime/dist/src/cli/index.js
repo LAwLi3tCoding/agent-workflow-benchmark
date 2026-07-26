@@ -40,7 +40,7 @@ import { assertCalibrationReportIntegrity, fitGatePolicy, loadCanonicalGatePolic
 import { artifactMigrationExitCode, migrateArtifact, writeArtifactMigration } from "../artifacts/migration.js";
 import { assertArtifactRegistryComplete } from "../artifacts/registry.js";
 import { buildProductionCanaryReport } from "../ci/canary.js";
-import { assessProductionCiGate, PRODUCTION_CANARY_POLICY, validateProductionIsolationManifest } from "../ci/productionGate.js";
+import { assessProductionCiGate, finalizeProductionBlockingAuthorization, prepareProductionBlockingAuthorization, PRODUCTION_CANARY_POLICY, validateProductionIsolationManifest } from "../ci/productionGate.js";
 import { buildDecisionReport, renderDecisionReportMarkdown } from "../report/decisionReport.js";
 import { buildTraceDiff } from "../report/traceDiff.js";
 import { buildTrendReport } from "../report/trends.js";
@@ -847,6 +847,60 @@ ci
     await writeJson(path.join(options.out, "production-ci-gate-result.json"), result);
     console.log(`production CI assessment ${result.decision}: ${options.out}`);
     process.exitCode = productionCiGateExitCode(result);
+});
+ci
+    .command("prepare-authorization")
+    .description("Prepare an integrity-bound payload for external human authorization signing")
+    .requiredOption("--gate-result <path>", "gate-result.json")
+    .requiredOption("--runtime-manifest <path>", "runtime-manifest.json")
+    .requiredOption("--provenance <path>", "provenance.json")
+    .requiredOption("--isolation-manifest <path>", "production-isolation-manifest.json")
+    .requiredOption("--canary-report <path>", "production-canary-report.json")
+    .requiredOption("--authorized-by <authority>", "external authority identifier such as authority://workflow-owner")
+    .requiredOption("--expires-at <timestamp>", "authorization expiry as an ISO-8601 UTC timestamp")
+    .requiredOption("--authority-public-key <path>", "external Ed25519 authorization public key")
+    .requiredOption("--out <dir>")
+    .action(async (options) => {
+    const gate = await readJsonWithSchema(await resolveExistingPath(options.gateResult), "gate-result.schema.json", "Gate result");
+    const runtimeManifest = await readJsonWithSchema(await resolveExistingPath(options.runtimeManifest), "runtime-manifest.schema.json", "Runtime manifest");
+    const provenance = await readJsonWithSchema(await resolveExistingPath(options.provenance), "provenance.schema.json", "Provenance");
+    const isolationManifest = await readJsonWithSchema(await resolveExistingPath(options.isolationManifest), "production-isolation-manifest.schema.json", "Production isolation manifest");
+    const canary = await readJsonWithSchema(await resolveExistingPath(options.canaryReport), "production-canary-report.schema.json", "Production canary report");
+    const authorityPublicKey = await readFile(await resolveExistingPath(options.authorityPublicKey));
+    const request = prepareProductionBlockingAuthorization({
+        gate,
+        runtimeManifest,
+        provenance,
+        isolationManifest,
+        canary,
+        authorizedBy: options.authorizedBy,
+        authorizedAt: new Date().toISOString(),
+        expiresAt: options.expiresAt,
+        authorityPublicKey
+    });
+    await assertJsonSchema(request, "production-blocking-authorization-request.schema.json", "Production blocking authorization request");
+    await ensureDir(options.out);
+    await Promise.all([
+        writeJson(path.join(options.out, "production-blocking-authorization-request.json"), request),
+        writeFile(path.join(options.out, "production-blocking-authorization.signing-payload.txt"), stableJson(request.unsignedAuthorization))
+    ]);
+    console.log(`production authorization awaiting external signature: ${options.out}`);
+});
+ci
+    .command("finalize-authorization")
+    .description("Attach and verify an externally produced Ed25519 authorization signature")
+    .requiredOption("--request <path>", "production-blocking-authorization-request.json")
+    .requiredOption("--signature <path>", "file containing the external base64 signature")
+    .requiredOption("--trusted-authorization-key <path>", "trusted external Ed25519 authorization public key")
+    .requiredOption("--out <dir>")
+    .action(async (options) => {
+    const request = await readJsonWithSchema(await resolveExistingPath(options.request), "production-blocking-authorization-request.schema.json", "Production blocking authorization request");
+    const signature = (await readFile(await resolveExistingPath(options.signature), "utf8")).trim();
+    const trustedAuthorizationKey = await readFile(await resolveExistingPath(options.trustedAuthorizationKey));
+    const authorization = finalizeProductionBlockingAuthorization(request, signature, trustedAuthorizationKey);
+    await assertJsonSchema(authorization, "production-blocking-authorization.schema.json", "Production blocking authorization");
+    await writeJson(path.join(options.out, "production-blocking-authorization.json"), authorization);
+    console.log(`production authorization signature verified: ${options.out}`);
 });
 ci
     .command("benchmark-health")
@@ -1834,6 +1888,7 @@ async function validateSchemasAndTargets() {
     const externalValiditySchemaFiles = [
         "external-validity-study.schema.json",
         "external-validity-labeling-package.schema.json",
+        "external-validity-agent-prelabels.schema.json",
         "external-validity-observations.schema.json",
         "external-validity-human-labels.schema.json",
         "validity-report.schema.json"
@@ -2348,7 +2403,8 @@ async function writeExternalValidityLabelingArtifacts(outDir, artifacts) {
     await Promise.all([
         writeJson(path.join(outDir, "external-validity-labeling-package.json"), artifacts.package),
         writeJson(path.join(outDir, "external-validity-observations.template.json"), artifacts.observationsTemplate),
-        writeJson(path.join(outDir, "external-validity-human-labels.template.json"), artifacts.labelsTemplate)
+        writeJson(path.join(outDir, "external-validity-human-labels.template.json"), artifacts.labelsTemplate),
+        ...artifacts.agentPrelabelTemplates.map((template) => writeJson(path.join(outDir, `external-validity-agent-prelabels.${template.laneId}.template.json`), template))
     ]);
 }
 function externalValidityExitCode(report) {

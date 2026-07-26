@@ -69,7 +69,11 @@ export function createExternalValidityLabelingPackage(study) {
             studyId: study.studyId,
             status: "DRAFT",
             items: []
-        }
+        },
+        agentPrelabelTemplates: [
+            createAgentPrelabelTemplate(study, "agent-rater-a"),
+            createAgentPrelabelTemplate(study, "agent-rater-b")
+        ]
     };
 }
 async function verifyExternalValidityObservations(study, observations, options) {
@@ -228,6 +232,11 @@ export function analyzeExternalValidity(study, observations, labels) {
     if (labels && labels.blindingAttestation !== "awb_decision_hidden") {
         blockers.add("BLINDING_ATTESTATION_MISSING");
     }
+    if (labels?.status === "COMPLETE" &&
+        labels.assistanceDisclosure === "agent_prelabels_reviewed" &&
+        !hasHumanConfirmationEvidence(labels)) {
+        blockers.add("HUMAN_CONFIRMATION_EVIDENCE_MISSING");
+    }
     const decisionRecords = [...observedItems, ...humanDecisions];
     if (decisionRecords.some(hasUnknownFailureCode)) {
         blockers.add("UNKNOWN_FAILURE_CODE");
@@ -246,15 +255,18 @@ export function analyzeExternalValidity(study, observations, labels) {
         blockers.add("UNRESOLVED_LABEL_DISAGREEMENT");
     }
     const metrics = calculateMetrics(study, observationsByItem, labelsByItem, adjudicationsByItem);
-    if (metrics.falsePassCount !== null &&
-        metrics.falsePassCount > policy.maximumFalsePassCount) {
-        failures.add("FALSE_PASS_DETECTED");
-    }
-    const resolvedHumanTruth = labels?.status === "COMPLETE" &&
+    const humanTruthConfirmed = labels?.status === "COMPLETE" &&
         hasCompleteHumanLabels &&
+        !blockers.has("HUMAN_CONFIRMATION_EVIDENCE_MISSING");
+    const resolvedHumanTruth = humanTruthConfirmed &&
         unresolvedDisagreements.size === 0 &&
         !blockers.has("HUMAN_LABELS_INVALID") &&
         !blockers.has("INDEPENDENT_RATERS_MISSING");
+    if (humanTruthConfirmed &&
+        metrics.falsePassCount !== null &&
+        metrics.falsePassCount > policy.maximumFalsePassCount) {
+        failures.add("FALSE_PASS_DETECTED");
+    }
     if (resolvedHumanTruth &&
         metrics.p0Recall !== null &&
         metrics.p0Recall < policy.p0RecallMinimum) {
@@ -277,6 +289,7 @@ export function analyzeExternalValidity(study, observations, labels) {
     const hasPendingHumanInput = [...blockers].some((blocker) => [
         "HUMAN_LABELS_MISSING",
         "HUMAN_LABELS_INCOMPLETE",
+        "HUMAN_CONFIRMATION_EVIDENCE_MISSING",
         "UNRESOLVED_LABEL_DISAGREEMENT",
         "INDEPENDENT_RATERS_MISSING"
     ].includes(blocker));
@@ -690,6 +703,15 @@ function hasIndependentRaters(labels, minimum) {
         labels.adjudications.every((item) => isSemanticId(item.adjudicatorId) &&
             !ids.includes(item.adjudicatorId)));
 }
+function hasHumanConfirmationEvidence(labels) {
+    return labels.raters.every((rater) => {
+        const confirmation = rater.confirmation;
+        return Boolean(confirmation?.status === "confirmed_by_human" &&
+            confirmation.method === "external_approval" &&
+            isPublicSafeRef(confirmation.artifactRef) &&
+            isSha256(confirmation.artifactHash));
+    });
+}
 function containsDuplicateEvidence(items) {
     const comparisonHashes = items.map((item) => item.evidence.comparisonHash);
     const attemptFingerprints = items.map((item) => item.evidence.attemptFingerprint);
@@ -719,6 +741,22 @@ function publicArtifactRef(artifact) {
     return {
         ref: `external://artifact/${artifact.contentHash.replace("sha256:", "")}`,
         contentHash: artifact.contentHash
+    };
+}
+function createAgentPrelabelTemplate(study, laneId) {
+    return {
+        schemaVersion: "0.1.0",
+        resultType: "external_validity_agent_prelabels",
+        studyId: study.studyId,
+        status: "DRAFT",
+        source: "agent_assisted_draft",
+        humanTruth: false,
+        awbDecisionVisible: false,
+        laneId,
+        items: study.items.map((item) => ({
+            itemId: item.blindedChangeId,
+            status: "UNASSESSED"
+        }))
     };
 }
 function isSha256(value) {

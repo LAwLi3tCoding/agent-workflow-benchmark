@@ -16,6 +16,7 @@ export const ARTIFACT_TYPES = [
     "provenance",
     "production_isolation_manifest",
     "production_canary_report",
+    "production_blocking_authorization_request",
     "production_blocking_authorization",
     "production_ci_gate_result",
     "decision_report",

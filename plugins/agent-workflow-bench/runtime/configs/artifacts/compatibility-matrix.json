@@ -142,6 +142,16 @@
       "action": "Rerun the observe-only canary under the current frozen production readiness policy."
     },
     {
+      "artifactType": "production_blocking_authorization_request",
+      "currentVersion": "0.1.0",
+      "readableVersions": ["0.1.x"],
+      "migrationMode": "diagnostic_on_missing_trust",
+      "requiredTrustFields": ["prerequisiteAssessment.bindings", "unsignedAuthorization.authorizationId", "signingPayloadHash", "humanCheckpoint.keyCustody", "integrity.contentHash"],
+      "missingTrustDisposition": "DIAGNOSTIC_ONLY",
+      "unsupportedCode": "ARTIFACT_SCHEMA_VERSION_UNSUPPORTED",
+      "action": "Regenerate the unsigned authorization request from current production evidence before requesting an external signature."
+    },
+    {
       "artifactType": "production_blocking_authorization",
       "currentVersion": "0.1.0",
       "readableVersions": ["0.1.x"],

@@ -102,6 +102,8 @@ describe("benchmark CLI", () => {
 
     expect(result.stdout).toContain("evaluate-canary");
     expect(result.stdout).toContain("assess");
+    expect(result.stdout).toContain("prepare-authorization");
+    expect(result.stdout).toContain("finalize-authorization");
   });
 
   test("production CI assess hides caller-controlled time and pairs authorization inputs", async () => {

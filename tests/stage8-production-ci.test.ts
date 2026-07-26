@@ -4,12 +4,22 @@ import {
   sign,
   type KeyObject
 } from "node:crypto";
-import { readFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  rm,
+  writeFile
+} from "node:fs/promises";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { Ajv2020 } from "ajv/dist/2020.js";
+import { execa } from "execa";
 import { describe, expect, test } from "vitest";
 import {
   assessProductionReadiness,
+  finalizeProductionBlockingAuthorization,
+  prepareProductionBlockingAuthorization,
   PRODUCTION_CANARY_POLICY,
   PRODUCTION_CANARY_POLICY_HASH,
   validateProductionIsolationManifest
@@ -33,6 +43,10 @@ const HASH_C = `sha256:${"c".repeat(64)}`;
 const HASH_D = `sha256:${"d".repeat(64)}`;
 const HASH_E = `sha256:${"e".repeat(64)}`;
 const HASH_F = `sha256:${"f".repeat(64)}`;
+
+async function writeJson(filePath: string, value: unknown): Promise<void> {
+  await writeFile(filePath, `${JSON.stringify(value, null, 2)}\n`);
+}
 
 describe("Stage 8 production CI boundary", () => {
   test("runs the full repository CI suite on the supported Observer isolation backend", async () => {
@@ -102,6 +116,277 @@ describe("Stage 8 production CI boundary", () => {
       ruleId: "PROD-BLOCKING-NOT-AUTHORIZED",
       productionBlockingEnabled: false
     });
+  });
+
+  test("prepares an externally signable authorization only after every production prerequisite passes", async () => {
+    const gate = passingGate();
+    const isolation = isolationManifest();
+    const canary = readyCanary(isolation, gate);
+    const runtime = runtimeManifest();
+    const runProvenance = provenance();
+    const { publicKey, privateKey } = generateKeyPairSync("ed25519");
+
+    const request = prepareProductionBlockingAuthorization({
+      gate,
+      runtimeManifest: runtime,
+      provenance: runProvenance,
+      isolationManifest: isolation,
+      canary,
+      authorizedBy: "authority://workflow-owner",
+      authorizedAt: "2026-07-26T00:00:00.000Z",
+      expiresAt: "2026-08-25T00:00:00.000Z",
+      authorityPublicKey: publicKey
+    });
+
+    expect(request).toMatchObject({
+      artifactType: "production_blocking_authorization_request",
+      status: "AWAITING_HUMAN_SIGNATURE",
+      prerequisiteAssessment: {
+        decision: "DIAGNOSTIC_ONLY",
+        ruleId: "PROD-BLOCKING-NOT-AUTHORIZED",
+        productionBlockingEnabled: false
+      },
+      humanCheckpoint: {
+        required: true,
+        action: "externally_sign_payload",
+        keyCustody: "external_only"
+      }
+    });
+    expect(request.unsignedAuthorization).toMatchObject({
+      authorizedBy: "authority://workflow-owner",
+      scope: {
+        targetId: gate.targetId,
+        suite: gate.suite
+      },
+      decision: "enable_blocking",
+      attestation: {
+        algorithm: "ed25519",
+        authorityFingerprint: expect.stringMatching(/^sha256:[a-f0-9]{64}$/u)
+      }
+    });
+    expect(request.unsignedAuthorization.attestation).not.toHaveProperty(
+      "signature"
+    );
+    expect(request.signingPayloadHash).toBe(
+      sha256Text(stableJson(request.unsignedAuthorization))
+    );
+    await expectSchemaValid(
+      "production-blocking-authorization-request.schema.json",
+      request
+    );
+
+    const signature = sign(
+      null,
+      Buffer.from(stableJson(request.unsignedAuthorization)),
+      privateKey
+    ).toString("base64");
+    const authorization = finalizeProductionBlockingAuthorization(
+      request,
+      signature,
+      publicKey
+    );
+    await expectSchemaValid(
+      "production-blocking-authorization.schema.json",
+      authorization
+    );
+
+    const result = assessProductionReadiness({
+      gate,
+      runtimeManifest: runtime,
+      provenance: runProvenance,
+      isolationManifest: isolation,
+      canary,
+      authorization,
+      trustedAuthorizationKey: publicKey,
+      now: "2026-07-26T00:00:00.000Z"
+    });
+    expect(result).toMatchObject({
+      decision: "PASS",
+      ruleId: "PROD-BLOCKING-AUTHORIZED",
+      productionBlockingEnabled: true,
+      enforcementMode: "production_blocking"
+    });
+  });
+
+  test("finalizes a CLI authorization signed over the exact emitted payload bytes", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "awb-production-auth-cli-"));
+    try {
+      const inputDir = path.join(root, "inputs");
+      const preparedDir = path.join(root, "prepared");
+      const finalizedDir = path.join(root, "finalized");
+      await mkdir(inputDir);
+      const gate = passingGate();
+      const isolation = isolationManifest();
+      const inputs = {
+        gate: path.join(inputDir, "gate-result.json"),
+        runtime: path.join(inputDir, "runtime-manifest.json"),
+        provenance: path.join(inputDir, "provenance.json"),
+        isolation: path.join(inputDir, "isolation-manifest.json"),
+        canary: path.join(inputDir, "canary-report.json")
+      };
+      const { publicKey, privateKey } = generateKeyPairSync("ed25519");
+      const publicKeyPath = path.join(inputDir, "authority-public.pem");
+      await Promise.all([
+        writeJson(inputs.gate, gate),
+        writeJson(inputs.runtime, runtimeManifest()),
+        writeJson(inputs.provenance, provenance()),
+        writeJson(inputs.isolation, isolation),
+        writeJson(inputs.canary, readyCanary(isolation, gate)),
+        writeFile(
+          publicKeyPath,
+          publicKey.export({ type: "spki", format: "pem" })
+        )
+      ]);
+
+      await execa(
+        "node",
+        [
+          "--import",
+          "tsx",
+          "src/cli/index.ts",
+          "ci",
+          "prepare-authorization",
+          "--gate-result",
+          inputs.gate,
+          "--runtime-manifest",
+          inputs.runtime,
+          "--provenance",
+          inputs.provenance,
+          "--isolation-manifest",
+          inputs.isolation,
+          "--canary-report",
+          inputs.canary,
+          "--authorized-by",
+          "authority://workflow-owner",
+          "--expires-at",
+          new Date(Date.now() + 24 * 60 * 60 * 1_000).toISOString(),
+          "--authority-public-key",
+          publicKeyPath,
+          "--out",
+          preparedDir
+        ],
+        { cwd: process.cwd() }
+      );
+
+      const payload = await readFile(
+        path.join(
+          preparedDir,
+          "production-blocking-authorization.signing-payload.txt"
+        )
+      );
+      const request = JSON.parse(
+        await readFile(
+          path.join(
+            preparedDir,
+            "production-blocking-authorization-request.json"
+          ),
+          "utf8"
+        )
+      );
+      expect(payload.equals(Buffer.from(stableJson(request.unsignedAuthorization)))).toBe(
+        true
+      );
+
+      const signaturePath = path.join(inputDir, "signature.txt");
+      await writeFile(
+        signaturePath,
+        sign(null, payload, privateKey).toString("base64")
+      );
+      await execa(
+        "node",
+        [
+          "--import",
+          "tsx",
+          "src/cli/index.ts",
+          "ci",
+          "finalize-authorization",
+          "--request",
+          path.join(
+            preparedDir,
+            "production-blocking-authorization-request.json"
+          ),
+          "--signature",
+          signaturePath,
+          "--trusted-authorization-key",
+          publicKeyPath,
+          "--out",
+          finalizedDir
+        ],
+        { cwd: process.cwd() }
+      );
+
+      await expectSchemaValid(
+        "production-blocking-authorization.schema.json",
+        JSON.parse(
+          await readFile(
+            path.join(
+              finalizedDir,
+              "production-blocking-authorization.json"
+            ),
+            "utf8"
+          )
+        )
+      );
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("refuses to prepare an authorization while canary evidence is not production-ready", () => {
+    const gate = passingGate();
+    const isolation = isolationManifest();
+    const { publicKey } = generateKeyPairSync("ed25519");
+
+    expect(() =>
+      prepareProductionBlockingAuthorization({
+        gate,
+        runtimeManifest: runtimeManifest(),
+        provenance: provenance(),
+        isolationManifest: isolation,
+        canary: readyCanary(isolation, gate, {
+          falseNegativeCount: 1
+        }),
+        authorizedBy: "authority://workflow-owner",
+        authorizedAt: "2026-07-26T00:00:00.000Z",
+        expiresAt: "2026-08-25T00:00:00.000Z",
+        authorityPublicKey: publicKey
+      })
+    ).toThrow("PROD-CANARY-NOT-READY");
+  });
+
+  test("rejects a tampered or non-external authorization signature during finalization", () => {
+    const gate = passingGate();
+    const isolation = isolationManifest();
+    const { publicKey, privateKey } = generateKeyPairSync("ed25519");
+    const request = prepareProductionBlockingAuthorization({
+      gate,
+      runtimeManifest: runtimeManifest(),
+      provenance: provenance(),
+      isolationManifest: isolation,
+      canary: readyCanary(isolation, gate),
+      authorizedBy: "authority://workflow-owner",
+      authorizedAt: "2026-07-26T00:00:00.000Z",
+      expiresAt: "2026-08-25T00:00:00.000Z",
+      authorityPublicKey: publicKey
+    });
+    const signature = sign(
+      null,
+      Buffer.from(stableJson(request.unsignedAuthorization)),
+      privateKey
+    ).toString("base64");
+    const tampered = structuredClone(request);
+    tampered.unsignedAuthorization.scope.suite = "other-suite";
+
+    expect(() =>
+      finalizeProductionBlockingAuthorization(tampered, signature, publicKey)
+    ).toThrow("authorization request integrity");
+    expect(() =>
+      finalizeProductionBlockingAuthorization(
+        request,
+        Buffer.from("not-a-valid-signature").toString("base64"),
+        publicKey
+      )
+    ).toThrow("external authorization signature");
   });
 
   test("rejects Runner-facing private-key material without leaking the secret or local key path", () => {

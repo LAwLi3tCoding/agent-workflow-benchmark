@@ -5,6 +5,7 @@ import {
   type ExternalValidityObservationSet,
   type ExternalValidityStudy
 } from "../src/validity/externalValidity.js";
+import { humanConfirmationMetadata } from "./helpers/humanLabels.js";
 
 const hash = (value: string): string =>
   `sha256:${Buffer.from(value)
@@ -272,15 +273,12 @@ function makeObservations(
 
 function makeLabels(study: ExternalValidityStudy): ExternalValidityHumanLabels {
   return {
+    ...humanConfirmationMetadata(),
     schemaVersion: "0.1.0",
     resultType: "external_validity_human_labels",
     studyId: study.studyId,
     status: "COMPLETE",
     blindingAttestation: "awb_decision_hidden",
-    raters: [
-      { raterId: "rater-a", role: "workflow_owner" },
-      { raterId: "rater-b", role: "independent_reviewer" }
-    ],
     labels: study.items.flatMap((item) => {
       const decision = expectedDecision(item.designStratum);
       return ["rater-a", "rater-b"].map((raterId) => ({

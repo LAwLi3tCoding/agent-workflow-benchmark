@@ -462,6 +462,13 @@ awb criterion-validity package --study <study.yaml> --out <dir>
 awb criterion-validity analyze --study <study.yaml> --observations <observations.json> --labels <human-labels.json> --trusted-observer-key <observer-public.pem> --trusted-qualification-key <qualification-authority-public.pem> --out <dir>
 ```
 
+`package` 会额外生成两个相互隔离的 Agent 预标模板。它们固定声明
+`source: agent_assisted_draft`、`humanTruth: false` 和
+`awbDecisionVisible: false`，只能帮助人工复核，不能作为人工真值。若使用了预标，
+最终人工标签必须声明 `assistanceDisclosure: agent_prelabels_reviewed`，并为两名
+评审分别绑定外部人工确认记录的引用与哈希；缺失时返回
+`HUMAN_CONFIRMATION_EVIDENCE_MISSING`。
+
 盲审包不能暴露真实 target 名称、runner 身份、设计分层、私有路径、内部链接或业务数据。
 每条样本需要 owner-reviewed 外部合同、已认证独立 live `workflow_trace` 观测、两名独立
 评审的 blinded label，以及冲突样本的 adjudication。`observations.json` 只记录
@@ -471,6 +478,11 @@ false PASS 0、overall agreement 至少 0.85、Cohen kappa 至少 0.8。缺 owne
 缺标签、样本不足、summary-only evidence、未认证 trace、冲突未裁决或私有数据泄漏时，
 结果只能是 `PENDING_HUMAN_INPUT`、`INSUFFICIENT_EVIDENCE` 或 `FAIL`，不能作为生产
 CI 准入 PASS。
+
+完整的最低人工流程只有三个 checkpoint：workflow owner 确认合同、两名人工确认或
+修正盲化预标并确认争议裁决、生产授权人对最终证据绑定做外部签名。其余矩阵生成、
+运行、观测、比较、统计、canary、待签包和签名回填验证均可由子 Agent 执行。详见
+`docs/human-light-execution.md`。
 
 ## 11. 建设阶段
 

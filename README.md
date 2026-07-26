@@ -3,7 +3,6 @@
 **Evidence-first regression testing and release gates for coding-agent workflows.**
 
 [English](README.md) · [简体中文](README.zh-CN.md) · [日本語](README.ja.md)
-
 Agent Workflow Bench (AWB) evaluates the workflow around a coding agent—not just its final answer.
 It tests rules, skills, hooks, sub-agents, routing, handoffs, gates, artifacts, state, budgets, side-effect policy, and recovery.
 
@@ -390,6 +389,7 @@ followed by `npm run plugin:build`.
 - [Workflow-trace observer contract](docs/workflow-trace-observer-contract.md)
 - [Gate policy calibration](docs/gate-policy-calibration.md)
 - [Artifact schema compatibility](docs/artifact-schema-compatibility.md)
+- [Human-light agent execution](docs/human-light-execution.md)
 - [简体中文 README](README.zh-CN.md)
 - [日本語 README](README.ja.md)
 

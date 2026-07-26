@@ -382,6 +382,7 @@ schema、config 或 fixture 后必须执行 `npm run plugin:build`。
 - [测评方法论](docs/ai-workflow-evaluation-methodology.md)
 - [报告与趋势](docs/reporting-and-trends.md)
 - [Workflow-Trace Observer Contract](docs/workflow-trace-observer-contract.md)
+- [最低人工介入的子 Agent 全流程](docs/human-light-execution.md)
 - [English README](README.md)
 - [日本語 README](README.ja.md)
 

@@ -68,10 +68,30 @@ describe("criterion validity CLI", () => {
         "utf8"
       )
     );
+    const agentPrelabelA = JSON.parse(
+      await readFile(
+        path.join(
+          out,
+          "external-validity-agent-prelabels.agent-rater-a.template.json"
+        ),
+        "utf8"
+      )
+    );
+    const agentPrelabelB = JSON.parse(
+      await readFile(
+        path.join(
+          out,
+          "external-validity-agent-prelabels.agent-rater-b.template.json"
+        ),
+        "utf8"
+      )
+    );
     const serialized = JSON.stringify({
       labelingPackage,
       observationsTemplate,
-      labelsTemplate
+      labelsTemplate,
+      agentPrelabelA,
+      agentPrelabelB
     });
 
     expect(labelingPackage).toMatchObject({
@@ -81,6 +101,18 @@ describe("criterion validity CLI", () => {
     });
     expect(observationsTemplate.status).toBe("DRAFT");
     expect(labelsTemplate.status).toBe("DRAFT");
+    expect([agentPrelabelA, agentPrelabelB]).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          laneId: "agent-rater-a",
+          humanTruth: false
+        }),
+        expect.objectContaining({
+          laneId: "agent-rater-b",
+          humanTruth: false
+        })
+      ])
+    );
     expect(serialized).not.toMatch(
       /known_improvement|no_change|ordinary_regression|p0_regression/u
     );

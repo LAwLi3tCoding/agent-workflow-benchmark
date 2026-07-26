@@ -195,12 +195,18 @@ fail closed。summary artifact 默认不上传；只有显式设置
 调用方可读取 `decision` 和 `gate_exit_code` 输出做记录或路由，但不能把
 observe-only 输出解释为生产授权。
 
-生产 CI 的两个命令是：
+生产 CI 的评估命令是：
 
 ```bash
 awb ci evaluate-canary --samples <samples.json> --isolation-manifest <manifest.json> --gate-policy <gate-policy.json> --out <canary-dir>
 awb ci assess --gate-result <gate-result.json> --runtime-manifest <runtime-manifest.json> --provenance <provenance.json> --isolation-manifest <manifest.json> --canary-report <production-canary-report.json> --out <assessment-dir>
 ```
+
+当 assess 唯一缺口为 `PROD-BLOCKING-NOT-AUTHORIZED` 时，子 Agent 可运行
+`awb ci prepare-authorization` 生成只含公钥指纹的待签请求和精确 payload；生产
+授权人在外部签名后，子 Agent 使用 `awb ci finalize-authorization` 验签并回填正式
+授权制品。两个命令都不接收生产授权私钥。完整参数与三个人工 checkpoint 见
+`docs/human-light-execution.md`。
 
 canary 冻结阈值为：样本数至少 `30`、false positive rate 不高于 `0.02`、false
 negative rate 为 `0`、flaky rate 不高于 `0.05`、runtime p95 不高于 `900` 秒、

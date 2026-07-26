@@ -61,6 +61,13 @@ awb criterion-validity analyze \
   --out reports/external-validity/v1
 ```
 
+`package` also writes two isolated Agent-prelabel templates. They are explicitly
+marked `humanTruth: false` and cannot be consumed as human labels. If raters use
+those suggestions, the completed human-label artifact must disclose
+`agent_prelabels_reviewed` and bind an external human-confirmation reference and
+hash for each rater. Missing confirmation evidence remains
+`PENDING_HUMAN_INPUT`.
+
 Acceptance threshold: P0 recall 100%, false PASS 0, overall agreement at least 0.85, and
 Cohen kappa at least 0.8. Missing labels, missing owner reviews, incomplete 120-item coverage,
 unqualified or summary-only evidence, unresolved adjudication, leaked private data, duplicate
@@ -332,6 +339,11 @@ Requires human input before an external-validity PASS: a completed 120-item priv
 owner-reviewed real external contracts (the public template is 112 items short and is not
 evidence), qualified independent Codex and Claude live traces, two-rater labels, adjudication for
 disagreements, and production blocking authorization.
+
+Agents may execute all preparation, observation, prelabeling, verification,
+canary, and packaging work. The three irreducible checkpoints are contract
+confirmation, human label confirmation, and the external production
+authorization signature. See [human-light execution](human-light-execution.md).
 
 Implemented mechanism through Stage 8: repository CI definition, observe-only
 external workflow template, production-blocking authorization guardrails, and

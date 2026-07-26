@@ -3,7 +3,6 @@
 **Coding Agent ワークフロー向けの、証拠優先の回帰テストとリリースゲート。**
 
 [English](README.md) · [简体中文](README.zh-CN.md) · [日本語](README.ja.md)
-
 Agent Workflow Bench（AWB）は最終回答だけでなく、Coding Agent を取り巻く
 ワークフロー全体を評価します。ルール、Skill、Hook、サブエージェント、
 ルーティング、Handoff、Gate、成果物、状態、予算、副作用ポリシー、復旧が対象です。
@@ -392,6 +391,7 @@ schema、config、fixture を変更したら `npm run plugin:build` を実行し
 - [Plugin guide](docs/agent-workflow-bench-plugin-guide.md)
 - [Evaluation methodology](docs/ai-workflow-evaluation-methodology.md) / [Reporting and trends](docs/reporting-and-trends.md)
 - [Workflow-Trace Observer Contract](docs/workflow-trace-observer-contract.md)
+- [Human-light agent execution](docs/human-light-execution.md)
 - [English README](README.md) / [简体中文 README](README.zh-CN.md)
 
 ## ライセンス

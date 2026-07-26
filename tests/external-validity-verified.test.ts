@@ -20,6 +20,7 @@ import {
   type ExternalValidityObservationSet,
   type ExternalValidityStudy
 } from "../src/validity/externalValidity.js";
+import { humanConfirmationMetadata } from "./helpers/humanLabels.js";
 
 const targetClasses = ["directory", "cli", "hybrid"] as const;
 const runners = ["codex", "claude"] as const;
@@ -80,6 +81,31 @@ describe("verified external criterion validity", () => {
     );
   });
 
+  test("preserves strong conclusions for manual-only labels without Agent confirmation metadata", async () => {
+    const study = makeStudy();
+    const labels = makeLabels(study);
+    delete labels.assistanceDisclosure;
+    labels.raters.forEach((rater) => {
+      delete rater.confirmation;
+    });
+
+    const report = await analyzeExternalValidityFromComparisons(
+      study,
+      makeObservations(study),
+      labels,
+      trustOptions()
+    );
+
+    expect(report).toMatchObject({
+      status: "PASS",
+      criterionValidity: "established",
+      strongConclusionAllowed: true,
+      gateEligibility: "ELIGIBLE",
+      blockers: [],
+      failures: []
+    });
+  });
+
   test("a reverified P0 false PASS blocks regardless of aggregate agreement", async () => {
     const study = makeStudy();
     const observations = makeObservations(study);
@@ -114,6 +140,44 @@ describe("verified external criterion validity", () => {
         "P0_RECALL_BELOW_THRESHOLD"
       ])
     );
+  });
+
+  test("does not turn unconfirmed Agent-assisted labels into a criterion-validity failure", async () => {
+    const study = makeStudy();
+    const observations = makeObservations(study);
+    const labels = makeLabels(study);
+    delete labels.raters[0]!.confirmation;
+    const p0Item = study.items.find(
+      (item) => item.designStratum === "p0_regression"
+    )!;
+    const comparisonRef = observations.items.find(
+      (item) => item.itemId === p0Item.itemId
+    )!.evidence.comparisonRef;
+    const verification = verifiedComparisons.get(comparisonRef)!;
+    verification.evidence = {
+      ...(verification.evidence as object),
+      classification: "UNCHANGED",
+      gateDecision: "PASS",
+      failureCodes: []
+    };
+
+    const report = await analyzeExternalValidityFromComparisons(
+      study,
+      observations,
+      labels,
+      trustOptions()
+    );
+
+    expect(report).toMatchObject({
+      status: "PENDING_HUMAN_INPUT",
+      criterionValidity: "pending_human_input",
+      strongConclusionAllowed: false,
+      gateEligibility: "DIAGNOSTIC_ONLY",
+      blockers: expect.arrayContaining([
+        "HUMAN_CONFIRMATION_EVIDENCE_MISSING"
+      ]),
+      failures: []
+    });
   });
 
   test("an adjudication cannot erase agreeing P0 truth from a reverified false PASS", async () => {
@@ -284,15 +348,12 @@ function makeObservations(
 
 function makeLabels(study: ExternalValidityStudy): ExternalValidityHumanLabels {
   return {
+    ...humanConfirmationMetadata(),
     schemaVersion: "0.1.0",
     resultType: "external_validity_human_labels",
     studyId: study.studyId,
     status: "COMPLETE",
     blindingAttestation: "awb_decision_hidden",
-    raters: [
-      { raterId: "rater-a", role: "workflow_owner" },
-      { raterId: "rater-b", role: "independent_reviewer" }
-    ],
     labels: study.items.flatMap((item) => {
       const decision = expectedDecision(item.designStratum);
       return ["rater-a", "rater-b"].map((raterId) => ({

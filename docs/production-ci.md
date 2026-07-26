@@ -93,6 +93,20 @@ authorization is present. That signature binds the gate result, runtime
 manifest, provenance, isolation manifest, canary report, and gate-policy
 hashes; substituting any one of them blocks assessment.
 
+When the unsigned assessment is exactly
+`PROD-BLOCKING-NOT-AUTHORIZED`, an Agent may prepare the external human
+signature checkpoint:
+
+```bash
+awb ci prepare-authorization --gate-result <gate-result.json> --runtime-manifest <runtime-manifest.json> --provenance <provenance.json> --isolation-manifest <manifest.json> --canary-report <production-canary-report.json> --authorized-by authority://workflow-owner --expires-at <ISO-8601-UTC> --authority-public-key <authorization-public.pem> --out <request-dir>
+awb ci finalize-authorization --request <request-dir>/production-blocking-authorization-request.json --signature <signature.base64> --trusted-authorization-key <authorization-public.pem> --out <authorization-dir>
+```
+
+`prepare-authorization` accepts only the external public key and writes the
+exact stable-JSON signing payload. The private key stays with the authorized
+human or external signing service. `finalize-authorization` verifies the
+returned signature before writing `production-blocking-authorization.json`.
+
 ## Production Blocking
 
 Production blocking requires all of these, outside the default observe-only
@@ -117,6 +131,9 @@ production release approval.
 
 AWB validates the isolation evidence supplied by the caller. It does not claim
 to provide a Linux isolation backend itself.
+
+The complete three-checkpoint Agent-orchestrated model is documented in
+[human-light execution](human-light-execution.md).
 
 ## Benchmark Health
 

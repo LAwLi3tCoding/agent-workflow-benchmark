@@ -10,11 +10,13 @@ import {
   type ExternalValidityObservationSet,
   type ExternalValidityStudy
 } from "../src/validity/externalValidity.js";
+import { humanConfirmationMetadata } from "./helpers/humanLabels.js";
 
 const cwd = process.cwd();
 const schemaNames = [
   "external-validity-study.schema.json",
   "external-validity-labeling-package.schema.json",
+  "external-validity-agent-prelabels.schema.json",
   "external-validity-observations.schema.json",
   "external-validity-human-labels.schema.json",
   "validity-report.schema.json"
@@ -49,6 +51,12 @@ describe("external validity schemas", () => {
       validators.humanLabels(artifacts.labelsTemplate),
       JSON.stringify(validators.humanLabels.errors)
     ).toBe(true);
+    for (const template of artifacts.agentPrelabelTemplates) {
+      expect(
+        validators.agentPrelabels(template),
+        JSON.stringify(validators.agentPrelabels.errors)
+      ).toBe(true);
+    }
     expect(validators.report(report), JSON.stringify(validators.report.errors)).toBe(true);
   });
 
@@ -204,6 +212,9 @@ async function compileSchemas() {
     ),
     observations: await compileSchema("external-validity-observations.schema.json"),
     humanLabels: await compileSchema("external-validity-human-labels.schema.json"),
+    agentPrelabels: await compileSchema(
+      "external-validity-agent-prelabels.schema.json"
+    ),
     report: await compileSchema("validity-report.schema.json")
   };
 }
@@ -288,15 +299,12 @@ function makeCompleteObservations(
 
 function makeCompleteLabels(study: ExternalValidityStudy): ExternalValidityHumanLabels {
   return {
+    ...humanConfirmationMetadata(),
     schemaVersion: "0.1.0",
     resultType: "external_validity_human_labels",
     studyId: study.studyId,
     status: "COMPLETE",
     blindingAttestation: "awb_decision_hidden",
-    raters: [
-      { raterId: "rater-a", role: "workflow_owner" },
-      { raterId: "rater-b", role: "independent_reviewer" }
-    ],
     labels: study.items.flatMap((item) => [
       {
         itemId: item.itemId,

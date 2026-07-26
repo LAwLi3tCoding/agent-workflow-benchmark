@@ -61,6 +61,56 @@ export interface ProductionCiGateResult {
   };
 }
 
+export interface ProductionBlockingAuthorizationRequest {
+  schemaVersion: "0.1.0";
+  artifactType: "production_blocking_authorization_request";
+  status: "AWAITING_HUMAN_SIGNATURE";
+  generatedAt: string;
+  prerequisiteAssessment: ProductionCiGateResult;
+  unsignedAuthorization: {
+    schemaVersion: "0.1.0";
+    artifactType: "production_blocking_authorization";
+    authorizedBy: string;
+    authorizedAt: string;
+    expiresAt: string;
+    scope: {
+      targetId: string;
+      suite: string;
+    };
+    canaryReportHash: string;
+    isolationManifestHash: string;
+    gateResultHash: string;
+    runtimeManifestHash: string;
+    provenanceHash: string;
+    gatePolicyHash: string;
+    decision: "enable_blocking";
+    authorizationId: string;
+    attestation: {
+      algorithm: "ed25519";
+      authorityFingerprint: string;
+    };
+  };
+  signingPayloadHash: string;
+  humanCheckpoint: {
+    required: true;
+    action: "externally_sign_payload";
+    keyCustody: "external_only";
+  };
+  integrity: {
+    contentHash: string;
+  };
+}
+
+export interface ProductionBlockingAuthorization
+  extends Omit<
+    ProductionBlockingAuthorizationRequest["unsignedAuthorization"],
+    "attestation"
+  > {
+  attestation: ProductionBlockingAuthorizationRequest["unsignedAuthorization"]["attestation"] & {
+    signature: string;
+  };
+}
+
 export function validateProductionIsolationManifest(
   manifest: unknown
 ): ProductionIsolationValidation {
@@ -304,6 +354,144 @@ export function assessProductionCiGate(input: {
 
 export const assessProductionReadiness = assessProductionCiGate;
 
+export function prepareProductionBlockingAuthorization(input: {
+  gate: GateResult;
+  runtimeManifest: RuntimeManifest;
+  provenance: RunProvenance;
+  isolationManifest: unknown;
+  canary: unknown;
+  authorizedBy: string;
+  authorizedAt: string;
+  expiresAt: string;
+  authorityPublicKey: KeyObject | string | Buffer;
+}): ProductionBlockingAuthorizationRequest {
+  const prerequisiteAssessment = assessProductionCiGate({
+    gate: input.gate,
+    runtimeManifest: input.runtimeManifest,
+    provenance: input.provenance,
+    isolationManifest: input.isolationManifest,
+    canary: input.canary
+  });
+  if (
+    prerequisiteAssessment.decision !== "DIAGNOSTIC_ONLY" ||
+    prerequisiteAssessment.ruleId !== "PROD-BLOCKING-NOT-AUTHORIZED" ||
+    prerequisiteAssessment.productionBlockingEnabled
+  ) {
+    throw new Error(
+      `Production authorization cannot be prepared before all prerequisites pass (${prerequisiteAssessment.ruleId}).`
+    );
+  }
+  if (!/^authority:\/\/[A-Za-z0-9][A-Za-z0-9._-]*$/u.test(input.authorizedBy)) {
+    throw new Error("Production authorization authority identifier is invalid.");
+  }
+  const authorizedAt = Date.parse(input.authorizedAt);
+  const expiresAt = Date.parse(input.expiresAt);
+  if (
+    !Number.isFinite(authorizedAt) ||
+    !Number.isFinite(expiresAt) ||
+    expiresAt <= authorizedAt
+  ) {
+    throw new Error("Production authorization time window is invalid.");
+  }
+  const authorityPublicKey = resolveAuthorizationPublicKey(
+    input.authorityPublicKey
+  );
+  const authorityFingerprint = authorizationKeyFingerprint(authorityPublicKey);
+  const authorizationBase = {
+    schemaVersion: "0.1.0" as const,
+    artifactType: "production_blocking_authorization" as const,
+    authorizedBy: input.authorizedBy,
+    authorizedAt: input.authorizedAt,
+    expiresAt: input.expiresAt,
+    scope: {
+      targetId: input.gate.targetId,
+      suite: input.gate.suite
+    },
+    canaryReportHash: prerequisiteAssessment.bindings.canaryReportHash,
+    isolationManifestHash:
+      prerequisiteAssessment.bindings.isolationManifestHash,
+    gateResultHash: prerequisiteAssessment.bindings.gateResultHash,
+    runtimeManifestHash:
+      prerequisiteAssessment.bindings.runtimeManifestHash,
+    provenanceHash: prerequisiteAssessment.bindings.provenanceHash,
+    gatePolicyHash: prerequisiteAssessment.bindings.gatePolicyHash,
+    decision: "enable_blocking" as const
+  };
+  const unsignedAuthorization = {
+    ...authorizationBase,
+    authorizationId: sha256Text(stableJson(authorizationBase)),
+    attestation: {
+      algorithm: "ed25519" as const,
+      authorityFingerprint
+    }
+  };
+  const requestWithoutIntegrity = {
+    schemaVersion: "0.1.0" as const,
+    artifactType: "production_blocking_authorization_request" as const,
+    status: "AWAITING_HUMAN_SIGNATURE" as const,
+    generatedAt: input.authorizedAt,
+    prerequisiteAssessment,
+    unsignedAuthorization,
+    signingPayloadHash: sha256Text(stableJson(unsignedAuthorization)),
+    humanCheckpoint: {
+      required: true as const,
+      action: "externally_sign_payload" as const,
+      keyCustody: "external_only" as const
+    }
+  };
+  return {
+    ...requestWithoutIntegrity,
+    integrity: {
+      contentHash: sha256Text(stableJson(requestWithoutIntegrity))
+    }
+  };
+}
+
+export function finalizeProductionBlockingAuthorization(
+  request: ProductionBlockingAuthorizationRequest,
+  signatureBase64: string,
+  trustedAuthorizationKey: KeyObject | string | Buffer
+): ProductionBlockingAuthorization {
+  const { integrity, ...requestWithoutIntegrity } = request;
+  if (
+    integrity.contentHash !==
+      sha256Text(stableJson(requestWithoutIntegrity)) ||
+    request.signingPayloadHash !==
+      sha256Text(stableJson(request.unsignedAuthorization))
+  ) {
+    throw new Error("Production authorization request integrity is invalid.");
+  }
+  const publicKey = resolveAuthorizationPublicKey(trustedAuthorizationKey);
+  if (
+    request.unsignedAuthorization.attestation.authorityFingerprint !==
+    authorizationKeyFingerprint(publicKey)
+  ) {
+    throw new Error(
+      "Production authorization request authority fingerprint is invalid."
+    );
+  }
+  const signature = Buffer.from(signatureBase64, "base64");
+  if (
+    signature.length === 0 ||
+    signature.toString("base64") !== signatureBase64 ||
+    !verify(
+      null,
+      Buffer.from(stableJson(request.unsignedAuthorization)),
+      publicKey,
+      signature
+    )
+  ) {
+    throw new Error("The external authorization signature is invalid.");
+  }
+  return {
+    ...request.unsignedAuthorization,
+    attestation: {
+      ...request.unsignedAuthorization.attestation,
+      signature: signatureBase64
+    }
+  };
+}
+
 function canaryMeetsProductionPolicy(
   value: unknown,
   isolationManifestHash: string,
@@ -532,6 +720,44 @@ function verifyBlockingAuthorization(input: {
         authorizationId: authorization.authorizationId
       }
     : { valid: false, reasonCode: "AUTHORIZATION_SIGNATURE_INVALID" };
+}
+
+function resolveAuthorizationPublicKey(
+  value: KeyObject | string | Buffer
+): KeyObject {
+  let publicKey: KeyObject;
+  try {
+    if (value instanceof KeyObject) {
+      if (value.type !== "public") {
+        throw new Error("private key");
+      }
+      publicKey = value;
+    } else {
+      const keyText = Buffer.isBuffer(value)
+        ? value.toString("utf8")
+        : value;
+      if (keyText.includes(["PRIVATE", "KEY"].join(" "))) {
+        throw new Error("private key");
+      }
+      publicKey = createPublicKey(value);
+    }
+  } catch {
+    throw new Error(
+      "Production authorization requires an external Ed25519 public key."
+    );
+  }
+  if (publicKey.asymmetricKeyType !== "ed25519") {
+    throw new Error(
+      "Production authorization requires an external Ed25519 public key."
+    );
+  }
+  return publicKey;
+}
+
+function authorizationKeyFingerprint(publicKey: KeyObject): string {
+  return `sha256:${createHash("sha256")
+    .update(publicKey.export({ type: "spki", format: "der" }))
+    .digest("hex")}`;
 }
 
 function productionResult(

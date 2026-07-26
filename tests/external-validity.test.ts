@@ -6,6 +6,7 @@ import {
   type ExternalValidityObservationSet,
   type ExternalValidityStudy
 } from "../src/validity/externalValidity.js";
+import { humanConfirmationMetadata } from "./helpers/humanLabels.js";
 
 const hash = (value: string): string =>
   `sha256:${Buffer.from(value)
@@ -61,6 +62,47 @@ describe("external criterion validity", () => {
     expect(result.observationsTemplate).toMatchObject({
       status: "DRAFT",
       items: []
+    });
+    expect(result.agentPrelabelTemplates).toHaveLength(2);
+    expect(result.agentPrelabelTemplates).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          resultType: "external_validity_agent_prelabels",
+          source: "agent_assisted_draft",
+          humanTruth: false,
+          awbDecisionVisible: false,
+          laneId: "agent-rater-a"
+        }),
+        expect.objectContaining({
+          resultType: "external_validity_agent_prelabels",
+          source: "agent_assisted_draft",
+          humanTruth: false,
+          awbDecisionVisible: false,
+          laneId: "agent-rater-b"
+        })
+      ])
+    );
+  });
+
+  test("keeps agent-assisted labels pending until both human confirmations are externally evidenced", () => {
+    const study = makeStudy();
+    const labels = makeLabels(study);
+    delete labels.raters[0]!.confirmation;
+
+    const report = analyzeExternalValidity(
+      study,
+      makeObservations(study),
+      labels
+    );
+
+    expect(report).toMatchObject({
+      status: "PENDING_HUMAN_INPUT",
+      criterionValidity: "pending_human_input",
+      strongConclusionAllowed: false,
+      gateEligibility: "DIAGNOSTIC_ONLY",
+      blockers: expect.arrayContaining([
+        "HUMAN_CONFIRMATION_EVIDENCE_MISSING"
+      ])
     });
   });
 
@@ -411,15 +453,12 @@ function makeObservations(
 
 function makeLabels(study: ExternalValidityStudy): ExternalValidityHumanLabels {
   return {
+    ...humanConfirmationMetadata(),
     schemaVersion: "0.1.0",
     resultType: "external_validity_human_labels",
     studyId: study.studyId,
     status: "COMPLETE",
     blindingAttestation: "awb_decision_hidden",
-    raters: [
-      { raterId: "rater-a", role: "workflow_owner" },
-      { raterId: "rater-b", role: "independent_reviewer" }
-    ],
     labels: study.items.flatMap((item) => {
       const decision = expectedDecision(item.designStratum);
       return ["rater-a", "rater-b"].map((raterId) => ({

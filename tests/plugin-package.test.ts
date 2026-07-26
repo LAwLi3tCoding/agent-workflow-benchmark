@@ -73,6 +73,8 @@ describe("agent workflow bench plugin package", () => {
     expect(command).toContain("artifact migrate");
     expect(command).toContain("adapter conformance");
     expect(command).toContain("ci benchmark-health");
+    expect(command).toContain("ci prepare-authorization");
+    expect(command).toContain("ci finalize-authorization");
     expect(command).toContain("report runner-ranking");
   });
 
@@ -96,8 +98,10 @@ describe("agent workflow bench plugin package", () => {
     await expect(stat(path.join(runtimeRoot, "schemas", "gold-corpus-report.schema.json"))).resolves.toBeTruthy();
     await expect(stat(path.join(runtimeRoot, "schemas", "external-validity-study.schema.json"))).resolves.toBeTruthy();
     await expect(stat(path.join(runtimeRoot, "schemas", "external-validity-labeling-package.schema.json"))).resolves.toBeTruthy();
+    await expect(stat(path.join(runtimeRoot, "schemas", "external-validity-agent-prelabels.schema.json"))).resolves.toBeTruthy();
     await expect(stat(path.join(runtimeRoot, "schemas", "external-validity-observations.schema.json"))).resolves.toBeTruthy();
     await expect(stat(path.join(runtimeRoot, "schemas", "external-validity-human-labels.schema.json"))).resolves.toBeTruthy();
+    await expect(stat(path.join(runtimeRoot, "schemas", "production-blocking-authorization-request.schema.json"))).resolves.toBeTruthy();
     await expect(stat(path.join(runtimeRoot, "schemas", "validity-report.schema.json"))).resolves.toBeTruthy();
     await expect(stat(path.join(runtimeRoot, "schemas", "gate-policy.schema.json"))).resolves.toBeTruthy();
     await expect(stat(path.join(runtimeRoot, "schemas", "calibration-report.schema.json"))).resolves.toBeTruthy();

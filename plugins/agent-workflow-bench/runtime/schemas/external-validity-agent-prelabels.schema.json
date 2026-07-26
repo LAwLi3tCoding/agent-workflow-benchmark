@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "external-validity-agent-prelabels.schema.json",
+  "title": "Agent Workflow Bench external validity agent prelabels",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "resultType",
+    "studyId",
+    "status",
+    "source",
+    "humanTruth",
+    "awbDecisionVisible",
+    "laneId",
+    "items"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "0.1.0" },
+    "resultType": { "const": "external_validity_agent_prelabels" },
+    "studyId": { "$ref": "#/$defs/semanticId" },
+    "status": { "const": "DRAFT" },
+    "source": { "const": "agent_assisted_draft" },
+    "humanTruth": { "const": false },
+    "awbDecisionVisible": { "const": false },
+    "laneId": { "enum": ["agent-rater-a", "agent-rater-b"] },
+    "items": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/item" }
+    }
+  },
+  "$defs": {
+    "semanticId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+    },
+    "item": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["itemId", "status"],
+      "properties": {
+        "itemId": { "$ref": "#/$defs/semanticId" },
+        "status": { "const": "UNASSESSED" }
+      }
+    }
+  }
+}

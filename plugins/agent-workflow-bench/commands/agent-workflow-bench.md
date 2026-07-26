@@ -29,6 +29,11 @@ awb criterion-validity analyze --study <external-validity-study.yaml> --observat
 
 The observation manifest contains comparison-bundle references and hashes, not trusted status claims. Analysis revalidates both signed traces, Observer qualification, comparison integrity, and study bindings with the explicit public keys. The bundled public fixture is an 8-item privacy-safe template, not production validity evidence. A real external-validity PASS requires the frozen 120-item study across directory/CLI/hybrid targets, Codex/Claude runners, four design strata, owner-reviewed contracts, qualified independent live `workflow_trace` observations, two independent blinded raters, adjudication, P0 recall 1.0, false PASS 0, overall agreement at least 0.85, and Cohen kappa at least 0.8. Until then the result remains pending or diagnostic-only.
 
+The package also emits two isolated Agent-prelabel templates marked
+`humanTruth: false`. They never count as human labels. Completed labels must
+disclose Agent assistance and bind external confirmation evidence for both
+human raters.
+
 For gate-policy calibration, fit on development/calibration only, then validate holdout separately:
 
 ```bash
@@ -125,6 +130,8 @@ Production CI assessment uses:
 ```bash
 awb ci evaluate-canary --samples <samples.json> --isolation-manifest <manifest.json> --gate-policy <gate-policy.json> --out <canary-dir>
 awb ci assess --gate-result <gate-result.json> --runtime-manifest <runtime-manifest.json> --provenance <provenance.json> --isolation-manifest <manifest.json> --canary-report <production-canary-report.json> --out <assessment-dir>
+awb ci prepare-authorization --gate-result <gate-result.json> --runtime-manifest <runtime-manifest.json> --provenance <provenance.json> --isolation-manifest <manifest.json> --canary-report <production-canary-report.json> --authorized-by authority://workflow-owner --expires-at <ISO-8601-UTC> --authority-public-key <authorization-public.pem> --out <request-dir>
+awb ci finalize-authorization --request <request-dir>/production-blocking-authorization-request.json --signature <signature.base64> --trusted-authorization-key <authorization-public.pem> --out <authorization-dir>
 awb ci benchmark-health --input <benchmark-health-input.json> --out <benchmark-health-dir>
 ```
 
@@ -161,6 +168,13 @@ read-only target input, controlled tool proxying, and redacted artifact
 retention. The authorization signature binds gate, runtime manifest,
 provenance, isolation, canary, and gate-policy hashes. AWB validates supplied
 isolation evidence; it does not provide a Linux isolation backend.
+
+Agents may run every safe preparation and verification step, but the workflow
+owner must confirm the contract, two humans must confirm the blinded labels and
+adjudications, and the production authority must sign externally. The
+authorization preparation and finalization commands accept only the public key;
+the private key remains outside AWB, the Runner, repository, artifacts, and
+logs.
 
 Legacy compatible pipeline: `evaluate` for the complete flow, or `plan-cases` -> inspect `ai-case-plan-validation.json` -> `materialize --strategy ai` -> `run --execution live` when you need manual stage control.
 

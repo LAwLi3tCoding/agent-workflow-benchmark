@@ -20,6 +20,7 @@
     "decision-report.schema.json",
     "doctor-result.schema.json",
     "evaluation-contract.schema.json",
+    "external-validity-agent-prelabels.schema.json",
     "external-validity-human-labels.schema.json",
     "external-validity-labeling-package.schema.json",
     "external-validity-observations.schema.json",
@@ -35,6 +36,7 @@
     "html-viewer-manifest.schema.json",
     "mutation.schema.json",
     "observer-qualification.schema.json",
+    "production-blocking-authorization-request.schema.json",
     "production-blocking-authorization.schema.json",
     "production-canary-policy.schema.json",
     "production-canary-report.schema.json",
@@ -161,6 +163,14 @@
       "currentVersion": "0.1.0",
       "compatibilityPolicyRef": "compatibility-matrix.json#production_canary_report",
       "migrationSupported": true
+    },
+    {
+      "artifactType": "production_blocking_authorization_request",
+      "fileNames": ["production-blocking-authorization-request.json"],
+      "schemaFile": "production-blocking-authorization-request.schema.json",
+      "currentVersion": "0.1.0",
+      "compatibilityPolicyRef": "compatibility-matrix.json#production_blocking_authorization_request",
+      "migrationSupported": false
     },
     {
       "artifactType": "production_blocking_authorization",

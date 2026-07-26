@@ -99,9 +99,16 @@ export interface ExternalValidityHumanLabels {
   studyId: string;
   status: "DRAFT" | "COMPLETE";
   blindingAttestation?: "awb_decision_hidden" | string;
+  assistanceDisclosure?: "none" | "agent_prelabels_reviewed" | string;
   raters: Array<{
     raterId: string;
     role: "workflow_owner" | "independent_reviewer" | string;
+    confirmation?: {
+      status: "confirmed_by_human" | string;
+      method: "external_approval" | string;
+      artifactRef: string;
+      artifactHash: string;
+    };
   }>;
   labels: Array<{
     itemId: string;
@@ -117,6 +124,21 @@ export interface ExternalValidityHumanLabels {
     gateDecision: ExternalValidityGateDecision;
     failureCodes: string[];
     resolution: string;
+  }>;
+}
+
+export interface ExternalValidityAgentPrelabels {
+  schemaVersion: "0.1.0";
+  resultType: "external_validity_agent_prelabels";
+  studyId: string;
+  status: "DRAFT";
+  source: "agent_assisted_draft";
+  humanTruth: false;
+  awbDecisionVisible: false;
+  laneId: "agent-rater-a" | "agent-rater-b";
+  items: Array<{
+    itemId: string;
+    status: "UNASSESSED";
   }>;
 }
 
@@ -195,6 +217,7 @@ export interface ExternalValidityLabelingPackage {
     ExternalValidityObservationSet,
     "schemaVersion" | "resultType" | "studyId" | "status" | "items"
   >;
+  agentPrelabelTemplates: ExternalValidityAgentPrelabels[];
 }
 
 const CLASSIFICATIONS: ExternalValidityClassification[] = [
@@ -268,7 +291,11 @@ export function createExternalValidityLabelingPackage(
       studyId: study.studyId,
       status: "DRAFT",
       items: []
-    }
+    },
+    agentPrelabelTemplates: [
+      createAgentPrelabelTemplate(study, "agent-rater-a"),
+      createAgentPrelabelTemplate(study, "agent-rater-b")
+    ]
   };
 }
 
@@ -486,6 +513,13 @@ export function analyzeExternalValidity(
   if (labels && labels.blindingAttestation !== "awb_decision_hidden") {
     blockers.add("BLINDING_ATTESTATION_MISSING");
   }
+  if (
+    labels?.status === "COMPLETE" &&
+    labels.assistanceDisclosure === "agent_prelabels_reviewed" &&
+    !hasHumanConfirmationEvidence(labels)
+  ) {
+    blockers.add("HUMAN_CONFIRMATION_EVIDENCE_MISSING");
+  }
   const decisionRecords = [...observedItems, ...humanDecisions];
   if (decisionRecords.some(hasUnknownFailureCode)) {
     blockers.add("UNKNOWN_FAILURE_CODE");
@@ -506,18 +540,22 @@ export function analyzeExternalValidity(
   }
 
   const metrics = calculateMetrics(study, observationsByItem, labelsByItem, adjudicationsByItem);
+  const humanTruthConfirmed =
+    labels?.status === "COMPLETE" &&
+    hasCompleteHumanLabels &&
+    !blockers.has("HUMAN_CONFIRMATION_EVIDENCE_MISSING");
+  const resolvedHumanTruth =
+    humanTruthConfirmed &&
+    unresolvedDisagreements.size === 0 &&
+    !blockers.has("HUMAN_LABELS_INVALID") &&
+    !blockers.has("INDEPENDENT_RATERS_MISSING");
   if (
+    humanTruthConfirmed &&
     metrics.falsePassCount !== null &&
     metrics.falsePassCount > policy.maximumFalsePassCount
   ) {
     failures.add("FALSE_PASS_DETECTED");
   }
-  const resolvedHumanTruth =
-    labels?.status === "COMPLETE" &&
-    hasCompleteHumanLabels &&
-    unresolvedDisagreements.size === 0 &&
-    !blockers.has("HUMAN_LABELS_INVALID") &&
-    !blockers.has("INDEPENDENT_RATERS_MISSING");
   if (
     resolvedHumanTruth &&
     metrics.p0Recall !== null &&
@@ -550,6 +588,7 @@ export function analyzeExternalValidity(
     [
       "HUMAN_LABELS_MISSING",
       "HUMAN_LABELS_INCOMPLETE",
+      "HUMAN_CONFIRMATION_EVIDENCE_MISSING",
       "UNRESOLVED_LABEL_DISAGREEMENT",
       "INDEPENDENT_RATERS_MISSING"
     ].includes(blocker)
@@ -1152,6 +1191,20 @@ function hasIndependentRaters(
   );
 }
 
+function hasHumanConfirmationEvidence(
+  labels: ExternalValidityHumanLabels
+): boolean {
+  return labels.raters.every((rater) => {
+    const confirmation = rater.confirmation;
+    return Boolean(
+      confirmation?.status === "confirmed_by_human" &&
+        confirmation.method === "external_approval" &&
+        isPublicSafeRef(confirmation.artifactRef) &&
+        isSha256(confirmation.artifactHash)
+    );
+  });
+}
+
 function containsDuplicateEvidence(
   items: VerifiedExternalValidityObservation[]
 ): boolean {
@@ -1210,6 +1263,26 @@ function publicArtifactRef(artifact: ExternalValidityArtifactRef): ExternalValid
   return {
     ref: `external://artifact/${artifact.contentHash.replace("sha256:", "")}`,
     contentHash: artifact.contentHash
+  };
+}
+
+function createAgentPrelabelTemplate(
+  study: ExternalValidityStudy,
+  laneId: ExternalValidityAgentPrelabels["laneId"]
+): ExternalValidityAgentPrelabels {
+  return {
+    schemaVersion: "0.1.0",
+    resultType: "external_validity_agent_prelabels",
+    studyId: study.studyId,
+    status: "DRAFT",
+    source: "agent_assisted_draft",
+    humanTruth: false,
+    awbDecisionVisible: false,
+    laneId,
+    items: study.items.map((item) => ({
+      itemId: item.blindedChangeId,
+      status: "UNASSESSED"
+    }))
   };
 }
 

@@ -36,7 +36,8 @@ export async function validateExternalValidityPackage(artifacts) {
     await Promise.all([
         assertExternalValiditySchema("external-validity-labeling-package.schema.json", artifacts.package, "External validity labeling package"),
         assertExternalValiditySchema("external-validity-observations.schema.json", artifacts.observationsTemplate, "External validity observations template"),
-        assertExternalValiditySchema("external-validity-human-labels.schema.json", artifacts.labelsTemplate, "External validity human-label template")
+        assertExternalValiditySchema("external-validity-human-labels.schema.json", artifacts.labelsTemplate, "External validity human-label template"),
+        ...artifacts.agentPrelabelTemplates.map((template) => assertExternalValiditySchema("external-validity-agent-prelabels.schema.json", template, "External validity agent-prelabel template"))
     ]);
 }
 export async function validateExternalValidityReport(report) {
