@@ -48,7 +48,7 @@ flowchart LR
 
 ### 环境要求
 
-- Node.js 和 npm，建议使用当前 LTS。
+- Node.js 22 或更高版本和 npm；Hosted CI 固定使用 Node.js 22。
 - 使用对应 live runner 时需要 Codex 或 Claude Code。
 - simulated 运行不需要真实 Coding Agent CLI。
 
@@ -59,7 +59,7 @@ flowchart LR
 ```bash
 git clone https://github.com/GITHUB_OWNER/agent-workflow-bench.git
 cd agent-workflow-bench
-npm install
+npm ci
 npm run validate
 npm run benchmark -- --help
 ```
@@ -289,7 +289,7 @@ PASS 仍然只是 harness 诊断，`releaseEligible: false`；真实 criterion v
 | `doctor` | 发现 target、runner 和证据就绪度 |
 | `init-target` | 生成可审阅的 target-pack draft |
 | `profile` | 构建稳定的工作流 `ContractModel` |
-| `plan-cases` | 按合约覆盖目标生成 case |
+| `plan-cases` | 按合约覆盖和 reference/counterexample outcome 生成平衡 case |
 | `materialize` | 生成可执行 Case YAML 与 manifest |
 | `run` | 执行单 case 或 suite |
 | `evaluate` | 执行 profile、规划、case、评分和报告 |
@@ -297,7 +297,11 @@ PASS 仍然只是 harness 诊断，`releaseEligible: false`；真实 criterion v
 | `compare` | 比较匹配的 baseline/candidate 证据 |
 | `gate` | 执行确定性 CI 发布策略 |
 | `gate-policy ...` | 校准或 holdout 验证版本化评分和 Gate 策略 |
+| `artifact migrate` | 读取或迁移已注册制品，输出稳定状态和 reason code |
+| `adapter conformance` | 以诊断证据验证 Runner Adapter 合约和 `CaseRun` |
+| `ci benchmark-health` | 聚合周期性自检并生成 fail-closed 版本结论 |
 | `score` / `report` | 查看运行；渲染 decision、trace-diff、trend 和静态 viewer |
+| `report trial-metrics` | 计算有限样本 pass@k/pass^k；仅凭源报告仍为 diagnostic-only |
 | `criterion-validity ...` | 生成盲化外部研究包或分析独立人工标签 |
 | `debug ...` | 反向验证并诊断 benchmark harness |
 
@@ -309,12 +313,15 @@ PASS 仍然只是 harness 诊断，`releaseEligible: false`；真实 criterion v
 | `suite-result.json` | 单次运行汇总 |
 | `runtime-manifest.json` | 实际 runner/runtime 事实 |
 | `provenance.json` | Target、case、环境和完整性身份 |
+| `schema-registry.json` / `compatibility-matrix.json` | 制品 schema 清单、semver 策略和迁移规则 |
 | `workflow-trace.json` | 独立签名的标准化 live trace |
 | `comparison-result.json` | 完整性绑定的配对比较 |
 | `gate-result.json` | 确定性发布结论 |
 | `gate-policy.json` / `calibration-report.*` | 版本化策略、拟合证据和 holdout 诊断 |
 | `report.md` / `decision-report.*` / `trace-diff.json` / `trend-report.json` / `viewer.html` | 人读诊断、决策、脱敏轨迹差异、分 era 趋势和静态查看 |
 | `validity-report.*` / `reliability-report.*` | 外部效度、可靠性和 quarantine 证据 |
+| `adapter-conformance-report.json` / `benchmark-health-report.json` | Adapter 诊断与 Benchmark 版本健康度 |
+| `runner-ranking-report.json` / `trial-metrics-report.*` | 可比性明确的 Runner 排名与带信任上限的 trial 指标 |
 
 完整参数请执行 `awb <command> --help`。
 
@@ -337,21 +344,13 @@ policy；缺失或不匹配的 policy version、rules hash、policy hash 会被�
 ## 开发
 
 ```bash
-npm install
-npm run typecheck
-npm test
-npm run validate
-npm run plugin:build
+npm ci
+npm run ci:local
 ```
 
-从源码目录之外验证打包 runtime：
-
-```bash
-plugins/agent-workflow-bench/bin/awb validate-schema
-```
-
-`plugins/agent-workflow-bench/runtime/` 是需要提交的生成物。修改 runtime 行为、
-schema、config 或 fixture 后必须执行 `npm run plugin:build`。
+这条本地与 Hosted CI 共用的 Gate 会依次执行 diff hygiene、typecheck、全量测试、
+Plugin 构建、runtime parity、源码与打包 schema 校验、命名/隐私扫描和 fresh-install
+smoke。`plugins/agent-workflow-bench/runtime/` 是需要提交的生成物。
 
 ```text
 .
@@ -369,6 +368,7 @@ schema、config 或 fixture 后必须执行 `npm run plugin:build`。
 - [建设方案说明](docs/agent-workflow-bench-human-guide.md)
 - [Plugin 使用说明](docs/agent-workflow-bench-plugin-guide.md)
 - [测评方法论](docs/ai-workflow-evaluation-methodology.md)
+- [2026 Agent 评测版图与优化路线图](docs/agent-evaluation-landscape-2026.md)
 - [报告与趋势](docs/reporting-and-trends.md)
 - [Workflow-Trace Observer Contract](docs/workflow-trace-observer-contract.md)
 - [最低人工介入的子 Agent 全流程](docs/human-light-execution.md)

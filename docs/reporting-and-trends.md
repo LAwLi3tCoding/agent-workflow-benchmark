@@ -12,6 +12,7 @@ the legacy run renderer.
 | `awb report trace-diff` | redacted `workflow-trace.json` files | `trace-diff.json` | `0` for a bounded diff; bad mode, missing trace role, untrusted qualification shape, or schema failure exits `1` |
 | `awb report trend` | JSON `{ "seriesId": "...", "points": [...] }` | `trend-report.json` | `0` for valid ordered points; empty, duplicate, out-of-order, or schema-invalid input exits `1` |
 | `awb report viewer` | already-redacted public artifacts | `viewer.html`, `html-viewer-manifest.json` | `0` when all inputs validate and the viewer hash matches; unredacted/private input exits `1` |
+| `awb report trial-metrics` | `reliability-report.json` | `trial-metrics-report.json`, `trial-metrics-report.md` | `2` for valid diagnostic estimates; invalid or blocking source evidence exits `1` |
 
 The Stage 9 command surface was verified with `npm run benchmark -- report
 --help` and each subcommand help. The examples below require caller-supplied
@@ -138,6 +139,29 @@ AWB splits history into separate eras whenever schema version, gate-policy
 version/hash/rules, runner name or capabilities, conditions, contract, target,
 suite, or observation level changes. It never draws a chart line across an
 incompatible boundary.
+
+## Trial Metrics
+
+```bash
+awb report trial-metrics \
+  --reliability reports/reliability/reliability-report.json \
+  --k 1,2,5 \
+  --out reports/reliability/trial-metrics
+```
+
+For `n` observed attempts and `c` gate-PASS attempts, the report computes
+`pass@k = 1 - C(n-c,k) / C(n,k)` and
+`pass^k = C(c,k) / C(n,k)`. `BLOCK` and `DIAGNOSTIC_ONLY` attempts are not
+successes. The source file hash, source content hash, contributing attempt
+identities, counts, formulas, and estimates are persisted in the registered
+artifact.
+
+This command intentionally has a diagnostic ceiling. A reliability report can
+be internally self-consistent without independently proving its live Observer
+claims, and `trial-metrics` does not receive the original trace bundles or trust
+anchors. It therefore never upgrades source JSON to PASS. A future verified
+mode must reopen each signed trace and qualification artifact before removing
+that ceiling.
 
 ## Static Viewer
 

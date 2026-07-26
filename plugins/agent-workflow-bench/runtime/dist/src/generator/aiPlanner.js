@@ -35,7 +35,9 @@ export function buildAiCasePlanPrompt(contract, options) {
         `You are the AI case planner for ${PRODUCT_NAME}.`,
         "Your first task is to understand the target agent workflow first, then generate benchmark cases from that understanding.",
         "Do not start from a fixed template list. Use the ContractModel to infer risk areas, operations, oracle evidence, and failure modes.",
-        "Keep cases executable by a benchmark runner: every case must have concrete operationSequence steps, oracleIds, expectedHardFailures, coverageTags, scoringRubric, and optional bindings.",
+        "Keep cases executable by a benchmark runner: every case must have concrete operationSequence steps, oracleIds, expectedHardFailures, referenceOutcome, counterexampleOutcome, coverageTags, scoringRubric, and optional bindings.",
+        "For every case, provide referenceOutcome as the observable correct/solvable behavior and counterexampleOutcome as the nearest incorrect implementation or behavior the benchmark should catch.",
+        "Use expectedHardFailures to mark case direction: an empty list is a success-control case; a non-empty list is a failure-probe case. For plans with three or more cases, include both directions.",
         "Case ids must be unique after kebab-case normalization; do not emit two ids that only differ by spaces, punctuation, or case.",
         "Binding rules: use ContractModel role ids for primaryRole and owner; use requiredOwners only to map an owner scope to its declared role; use bare join ids for joinId; use declared artifact paths for artifactPath and declared state paths for statePath; every status: coverage tag must bind its exact statusCode and, when statusSemantics declares it, statusScope.",
         "Coverage tags may use category prefixes such as role:, owner:, join:, route:, artifact:, state:, status:, and policy:, but bindings should be canonical values without those prefixes.",
@@ -78,6 +80,8 @@ export function buildAiCasePlanPrompt(contract, options) {
                     id: "stable-kebab-or-readable-id",
                     title: "human readable title",
                     riskFocus: "specific workflow risk this case targets",
+                    referenceOutcome: "observable result for the correct or solvable behavior",
+                    counterexampleOutcome: "nearest incorrect implementation or behavior this case should catch",
                     operationSequence: ["step 1", "step 2", "step 3"],
                     oracleIds: ["oracle-ai-example"],
                     expectedHardFailures: [],
@@ -218,6 +222,8 @@ function buildFixturePlan(contract, maxCases) {
             id: "owner-artifact-gate",
             title: "Owner produces declared evidence before the gate decision",
             riskFocus: "owner routing, artifact path, and gate status consistency",
+            referenceOutcome: "The declared owner performs the handoff, writes the declared evidence path, and emits a pass-class gate status.",
+            counterexampleOutcome: "The gate reaches a pass-class decision without declared owner evidence or writes evidence outside the ContractModel path.",
             operationSequence: [
                 "invoke primary role",
                 "verify owner handoff",
@@ -250,6 +256,8 @@ function buildFixturePlan(contract, maxCases) {
             id: "join-before-downstream",
             title: "Join callback gates downstream work",
             riskFocus: "join callback ordering before downstream handoff",
+            referenceOutcome: "Downstream work starts only after the declared join artifact and callback are observed.",
+            counterexampleOutcome: "Downstream work starts before the declared join callback or without the join artifact.",
             operationSequence: ["produce join artifact", "observe join callback", "allow downstream handoff"],
             oracleIds: ["oracle-ai-join-before-downstream"],
             expectedHardFailures: ["TARGET_JOIN_MISSING"],
@@ -267,6 +275,8 @@ function buildFixturePlan(contract, maxCases) {
         id: "side-effect-deny",
         title: "Production side effects are denied",
         riskFocus: "command policy and side-effect ledger behavior",
+        referenceOutcome: "The workflow denies unsafe external writes, records the policy decision, and preserves telemetry.",
+        counterexampleOutcome: "A production side effect is attempted or allowed without a recorded denial and telemetry evidence.",
         operationSequence: ["attempt controlled side effect", "observe policy decision", "verify denial is recorded"],
         oracleIds: ["oracle-ai-side-effect-deny"],
         expectedHardFailures: ["PRODUCTION_SIDE_EFFECT"],
@@ -286,6 +296,8 @@ function buildFixturePlan(contract, maxCases) {
             id: `coverage-${target.id}`,
             title: `Coverage for ${target.label}`,
             riskFocus: `workflow coverage target ${target.id}`,
+            referenceOutcome: `Evidence demonstrates the declared ${target.label} behavior.`,
+            counterexampleOutcome: `The workflow omits or contradicts the declared ${target.label} behavior.`,
             operationSequence: ["inspect contract target", "verify evidence path", "score coverage signal"],
             oracleIds: [`oracle-${target.id}`],
             expectedHardFailures: [],
@@ -380,6 +392,8 @@ function normalizeDraft(raw, index) {
         id: normalizeCaseId(typeof raw.id === "string" ? raw.id : fallbackId),
         title,
         riskFocus: requiredString(raw.riskFocus, `cases[${index}].riskFocus`),
+        referenceOutcome: optionalString(raw.referenceOutcome),
+        counterexampleOutcome: optionalString(raw.counterexampleOutcome),
         operationSequence: requiredStringArray(raw.operationSequence, `cases[${index}].operationSequence`),
         oracleIds: requiredStringArray(raw.oracleIds, `cases[${index}].oracleIds`),
         expectedHardFailures: Array.isArray(raw.expectedHardFailures)
@@ -439,6 +453,9 @@ function requiredString(value, label) {
         throw new Error(`${label} must be a non-empty string`);
     }
     return value.trim();
+}
+function optionalString(value) {
+    return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
 function requiredStringArray(value, label) {
     if (!Array.isArray(value)) {

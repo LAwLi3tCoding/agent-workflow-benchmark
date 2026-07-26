@@ -124,7 +124,7 @@ export function validateAiCasePlan(plan: AiCasePlan, contract: ContractModel, op
   }
 
   const missing = targets.filter((target) => target.required && !covered.has(target.id)).map((target) => target.id);
-  const warnings = buildWarnings(plan, targets.length, covered.size, missing.length, unknown.size);
+  const warnings = buildWarnings(normalizedPlan, targets.length, covered.size, missing.length, unknown.size);
   const status = invalidBindings.length > 0 ? "FAIL" : warnings.length > 0 ? "WARN" : "PASS";
 
   return {
@@ -508,8 +508,27 @@ function buildWarnings(plan: AiCasePlan, targetCount: number, coveredCount: numb
   if (!plan.workflowUnderstanding) {
     warnings.push("Plan is missing workflowUnderstanding; targetUnderstanding alone is weaker evidence.");
   }
+  for (const testCase of plan.cases) {
+    if (!testCase.referenceOutcome) {
+      warnings.push(`Case ${testCase.id} is missing referenceOutcome; benchmark generation cannot state the expected correct observable result.`);
+    }
+    if (!testCase.counterexampleOutcome) {
+      warnings.push(`Case ${testCase.id} is missing counterexampleOutcome; benchmark generation cannot state the nearest incorrect behavior it should catch.`);
+    }
+  }
   if (plan.cases.length < 3) {
     warnings.push("Plan has fewer than three cases; workflow-level coverage is likely too narrow.");
+  }
+  if (plan.cases.length >= 3) {
+    const successControlCount = plan.cases.filter(
+      (testCase) => testCase.expectedHardFailures.length === 0
+    ).length;
+    const failureProbeCount = plan.cases.length - successControlCount;
+    if (successControlCount === 0) {
+      warnings.push("Plan has three or more cases but only failure-probe cases; include at least one success-control case with no expectedHardFailures.");
+    } else if (failureProbeCount === 0) {
+      warnings.push("Plan has three or more cases but only success-control cases; include at least one failure-probe case with expectedHardFailures.");
+    }
   }
   if (targetCount > 0 && coveredCount / targetCount < 0.7) {
     warnings.push(`Coverage tags cover ${coveredCount}/${targetCount} targets; ${missingCount} target(s) remain uncovered.`);

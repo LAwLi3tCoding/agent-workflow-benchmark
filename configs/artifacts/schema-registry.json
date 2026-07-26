@@ -56,6 +56,7 @@
     "target-pack.schema.json",
     "trace-diff.schema.json",
     "trend-report.schema.json",
+    "trial-metrics-report.schema.json",
     "validity-report.schema.json",
     "workflow-trace.schema.json"
   ],
@@ -242,6 +243,14 @@
       "schemaFile": "runner-ranking-report.schema.json",
       "currentVersion": "0.1.0",
       "compatibilityPolicyRef": "compatibility-matrix.json#runner_ranking_report",
+      "migrationSupported": true
+    },
+    {
+      "artifactType": "trial_metrics_report",
+      "fileNames": ["trial-metrics-report.json"],
+      "schemaFile": "trial-metrics-report.schema.json",
+      "currentVersion": "0.1.0",
+      "compatibilityPolicyRef": "compatibility-matrix.json#trial_metrics_report",
       "migrationSupported": true
     }
   ]

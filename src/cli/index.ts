@@ -180,6 +180,11 @@ import {
   buildRunnerRankingReport,
   type RunnerRankingInput
 } from "../report/runnerRanking.js";
+import {
+  assertTrialMetricsReportIntegrity,
+  buildTrialMetricsReport,
+  renderTrialMetricsMarkdown
+} from "../report/trialMetrics.js";
 import { hashFile, sha256Text, stableJson } from "../utils/hash.js";
 
 const program = new Command();
@@ -622,7 +627,7 @@ program
     const attemptId = `attempt-${randomUUID()}`;
     const mode = normalizeRunMode(options.mode);
     await ensureDir(runDir);
-    const { target, profile, contract, cases } = await resolveRunInputs(options);
+    const { target, profile, contract, cases, aiPlanValidation } = await resolveRunInputs(options);
     const runnerCapability = await detectRunnerCapability(normalizeRunnerName(options.runner));
     const executionMode = normalizeExecutionMode(options.execution);
     const mutation = options.mutation ? (await loadMutations({ mutation: options.mutation }))[0] : undefined;
@@ -640,7 +645,11 @@ program
         [],
         runEvidenceContext(executionMode, true)
       );
+      applyProvidedCasesHarnessValidation(suiteResult, profile, aiPlanValidation, cases, true);
       await writeJson(path.join(runDir, "suite-result.json"), suiteResult);
+      if (suiteResult.harnessValidation) {
+        await writeJson(path.join(runDir, "harness-validation.json"), suiteResult.harnessValidation);
+      }
       await writeRecommendationArtifacts(runDir, suiteResult);
       await writeP0CaseArtifacts(runDir, suiteResult, options.p0CaseLog);
       const runtimeManifestPath = path.join(runDir, "runtime-manifest.json");
@@ -710,7 +719,11 @@ program
       caseResults,
       runEvidenceContext(executionMode)
     );
+    applyProvidedCasesHarnessValidation(suiteResult, profile, aiPlanValidation, cases);
     await writeJson(path.join(runDir, "suite-result.json"), suiteResult);
+    if (suiteResult.harnessValidation) {
+      await writeJson(path.join(runDir, "harness-validation.json"), suiteResult.harnessValidation);
+    }
     await writeRecommendationArtifacts(runDir, suiteResult);
     await writeP0CaseArtifacts(runDir, suiteResult, options.p0CaseLog);
     const runtimeManifestPath = path.join(runDir, "runtime-manifest.json");
@@ -1629,6 +1642,50 @@ reportCommands
       `runner ranking ${report.status}: ${options.out}`
     );
   });
+
+reportCommands
+  .command("trial-metrics")
+  .description(
+    "Compute diagnostic Inspect-compatible pass@k and pass^k metrics from a schema-valid reliability report"
+  )
+  .requiredOption(
+    "--reliability <path>",
+    "reliability-report.json; source JSON alone is never independent attestation"
+  )
+  .option("--k <values>", "comma-separated k values; each must satisfy 1 <= k <= observed trials")
+  .requiredOption("--out <dir>")
+  .action(
+    async (options: { reliability: string; k?: string; out: string }) => {
+      const sourcePath = await resolveExistingPath(options.reliability);
+      const reliability = await readJsonWithSchema<ReliabilityReport>(
+        sourcePath,
+        "reliability-report.schema.json",
+        "Reliability report"
+      );
+      const report = buildTrialMetricsReport({
+        source: reliability,
+        sourceRef: path.basename(sourcePath),
+        sourceHash: sha256Text(stableJson(reliability)),
+        kValues: options.k ? parseKValues(options.k) : undefined
+      });
+      assertTrialMetricsReportIntegrity(report);
+      await assertJsonSchema(
+        report,
+        "trial-metrics-report.schema.json",
+        "Trial metrics report"
+      );
+      await writeJson(
+        path.join(options.out, "trial-metrics-report.json"),
+        report
+      );
+      await writeReportFile(
+        path.join(options.out, "trial-metrics-report.md"),
+        renderTrialMetricsMarkdown(report)
+      );
+      console.log(`trial metrics ${report.status}: ${options.out}`);
+      process.exitCode = reportStatusExitCode(report.status);
+    }
+  );
 
 reportCommands
   .command("decision")
@@ -2709,6 +2766,97 @@ function applyHarnessGate(suiteResult: SuiteResult): void {
   suiteResult.releaseRuleId = harnessStatus === "FAIL" ? "REL-HARNESS-VALIDATION-FAIL" : "REL-HARNESS-VALIDATION-WARN";
 }
 
+async function readOptionalAiPlanValidation(
+  casesDir: string
+): Promise<AiPlanValidation | undefined> {
+  const validationPath = path.join(casesDir, "ai-case-plan-validation.json");
+  if (!existsSync(validationPath)) {
+    return undefined;
+  }
+  return readJson<AiPlanValidation>(validationPath);
+}
+
+function applyProvidedCasesHarnessValidation(
+  suiteResult: SuiteResult,
+  profile: ProfileResult,
+  planValidation: AiPlanValidation | undefined,
+  cases: BenchmarkCase[],
+  dryRun = false
+): void {
+  if (!planValidation) {
+    return;
+  }
+  suiteResult.harnessValidation = buildProvidedCasesHarnessValidation(
+    profile,
+    planValidation,
+    cases,
+    suiteResult,
+    dryRun
+  );
+  applyHarnessGate(suiteResult);
+}
+
+function buildProvidedCasesHarnessValidation(
+  profile: ProfileResult,
+  planValidation: AiPlanValidation,
+  cases: BenchmarkCase[],
+  suiteResult: SuiteResult,
+  dryRun: boolean
+): HarnessValidation {
+  const planSummary = {
+    status: planValidation.status,
+    recommendedCaseCount: planValidation.recommendedCaseCount,
+    coverageTargetCount: planValidation.coverageTargetCount,
+    coveredCoverageTargetCount: planValidation.coveredCoverageTargetIds.length,
+    missingCoverageTargetCount: planValidation.missingCoverageTargetIds.length,
+    unknownCoverageTagCount: planValidation.unknownCoverageTags.length,
+    invalidBindingCount: planValidation.invalidBindings.length,
+    warnings: planValidation.warnings
+  };
+  const phases: HarnessValidation["phases"] = [
+    profile.evidence.missingFiles.length === 0
+      ? { phase: "profile", status: "PASS", why: "Target pack files were found and hashed into a ContractModel." }
+      : { phase: "profile", status: "FAIL", why: `${profile.evidence.missingFiles.length} declared target file(s) were missing.` },
+    { phase: "understand", status: planValidation.status, why: "Provided cases directory includes persisted AI case-plan validation metadata." },
+    {
+      phase: "plan",
+      status: planValidation.status,
+      why:
+        planValidation.status === "PASS"
+          ? "AI case plan bindings and coverage tags match the ContractModel."
+          : `${planValidation.invalidBindings.length} invalid binding(s), ${planValidation.unknownCoverageTags.length} unknown tag(s), and ${planValidation.missingCoverageTargetIds.length} missing coverage target(s) were recorded.`
+    },
+    cases.length > 0
+      ? { phase: "materialize", status: "PASS", why: `${cases.length} executable benchmark case(s) were loaded from the provided cases directory.` }
+      : { phase: "materialize", status: "FAIL", why: "No executable benchmark cases were loaded from the provided cases directory." },
+    dryRun
+      ? { phase: "execute", status: "PASS", why: "Dry run intentionally skipped execution for the provided cases directory." }
+      : suiteResult.caseResults.length === cases.length
+        ? { phase: "execute", status: "PASS", why: "Every provided case has a scored result." }
+        : { phase: "execute", status: "FAIL", why: `${suiteResult.caseResults.length}/${cases.length} provided case(s) produced scored results.` },
+    dryRun
+      ? { phase: "score", status: "PASS", why: "Dry run produced a capability-only suite result without case scoring." }
+      : suiteResult.dimensionScores.length > 0
+        ? { phase: "score", status: "PASS", why: "Suite result includes multi-dimensional scores and score provenance." }
+        : { phase: "score", status: "FAIL", why: "Suite result does not include dimension scores." },
+    {
+      phase: "recommend",
+      status: suiteResult.p0CaseRecords.length > 0 && suiteResult.recommendations.length === 0 ? "FAIL" : "PASS",
+      why:
+        suiteResult.p0CaseRecords.length > 0
+          ? `${suiteResult.recommendations.length} recommendation(s) were generated for ${suiteResult.p0CaseRecords.length} P0 case record(s).`
+          : "No P0 case records required target workflow repair recommendations."
+    }
+  ];
+  const status = phases.some((phase) => phase.status === "FAIL") ? "FAIL" : phases.some((phase) => phase.status === "WARN") ? "WARN" : "PASS";
+  return {
+    schemaVersion: "0.1.0",
+    status,
+    plan: planSummary,
+    phases
+  };
+}
+
 function runEvidenceContext(
   executionMode: "simulated" | "live",
   dryRun = false
@@ -3301,6 +3449,7 @@ async function resolveRunInputs(options: {
   profile: ProfileResult;
   contract: ContractModel;
   cases: BenchmarkCase[];
+  aiPlanValidation?: AiPlanValidation;
 }> {
   if (options.case) {
     const testCase = await readYaml<BenchmarkCase>(options.case);
@@ -3318,7 +3467,13 @@ async function resolveRunInputs(options: {
     const cases = await Promise.all(caseFiles.map((file) => readYaml<BenchmarkCase>(path.join(options.casesDir!, file))));
     const target = await loadTargetPack(cases[0]!.targetId, { rootOverride: options.targetRoot });
     const profile = await profileTarget(target);
-    return { target, profile, contract: profile.contract, cases };
+    return {
+      target,
+      profile,
+      contract: profile.contract,
+      cases,
+      aiPlanValidation: await readOptionalAiPlanValidation(options.casesDir)
+    };
   }
   if (!options.target) {
     throw new Error("--target, --case, or --cases-dir is required");
@@ -3425,6 +3580,21 @@ function reliabilityExitCode(report: ReliabilityReport): 0 | 1 | 2 {
     return 1;
   }
   return report.strongConclusionAllowed ? 0 : 2;
+}
+
+function reportStatusExitCode(status: "PASS" | "BLOCK" | "DIAGNOSTIC_ONLY"): 0 | 1 | 2 {
+  if (status === "PASS") {
+    return 0;
+  }
+  return status === "BLOCK" ? 1 : 2;
+}
+
+function parseKValues(value: string): number[] {
+  const parts = value.split(",").map((part) => part.trim()).filter(Boolean);
+  if (parts.length === 0) {
+    throw new Error("--k must include at least one integer.");
+  }
+  return parts.map((part) => parsePositiveInt(part, "k"));
 }
 
 function calibrationExitCode(report: CalibrationReport): 0 | 1 | 2 {

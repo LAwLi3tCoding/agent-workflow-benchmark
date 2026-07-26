@@ -4,8 +4,12 @@ import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const defaultRepoRoot = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  ".."
+);
 const args = parseArgs(process.argv.slice(2));
+const scanRoot = args.root ? path.resolve(args.root) : defaultRepoRoot;
 const outPath = args.out ? path.resolve(args.out) : "";
 
 const categories = [
@@ -45,17 +49,16 @@ const excludedDirs = new Set([
   ".agents",
   ".omx",
   "node_modules",
-  "dist",
   "reports",
   "coverage",
   ".DS_Store"
 ]);
 
-const files = await listFiles(repoRoot);
+const files = await listFiles(scanRoot);
 const findings = [];
 
 for (const file of files) {
-  const relativePath = path.relative(repoRoot, file).split(path.sep).join("/");
+  const relativePath = path.relative(scanRoot, file).split(path.sep).join("/");
   const bytes = await readFile(file);
   if (isLikelyBinary(bytes)) {
     continue;
@@ -124,6 +127,9 @@ function parseArgs(argv) {
     const arg = argv[index];
     if (arg === "--out") {
       parsed.out = argv[index + 1];
+      index += 1;
+    } else if (arg === "--root") {
+      parsed.root = argv[index + 1];
       index += 1;
     } else {
       throw new Error(`Unsupported privacy-scan argument: ${arg}`);

@@ -32,6 +32,8 @@
         "model": { "type": "string" },
         "targetUnderstanding": { "type": "string" },
         "riskFocus": { "type": "string" },
+        "referenceOutcome": { "type": "string" },
+        "counterexampleOutcome": { "type": "string" },
         "operationSequence": { "type": "array", "items": { "type": "string" } },
         "coverageTags": { "type": "array", "items": { "type": "string" } },
         "scoringRubric": { "type": "array", "items": { "type": "string" } }

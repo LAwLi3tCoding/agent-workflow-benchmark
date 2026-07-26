@@ -33,6 +33,18 @@ awb debug reliability --study <reliability-study.json> --out <reliability-dir>
 
 The report includes deterministic reproducibility, live A/A stability, variance, missing rate, telemetry completeness, attempt-identity and duplicate-evidence quarantine, fixed-context drift, P0 detection rate, and gate eligibility. Live attempt identity is derived from the signed trace hash. Simulated consistency is `DIAGNOSTIC_REPRODUCIBLE` with no strong conclusion; this layer never upgrades simulated or unqualified evidence into release PASS.
 
+For finite-sample capability and consistency metrics, derive a diagnostic report
+from the reliability artifact:
+
+```bash
+awb report trial-metrics --reliability <reliability-report.json> --k 1,2,5 --out <trial-metrics-dir>
+```
+
+The report publishes Inspect-compatible pass@k and pass^k estimators and counts
+only gate `PASS` as success. It always remains `DIAGNOSTIC_ONLY` because the
+source reliability JSON is self-authenticating and this command does not reopen
+the original signed traces. `BLOCK`/`INVALID` source evidence still blocks.
+
 For external criterion-validity diagnostics, generate a blinded labeling package before collecting human labels:
 
 ```bash
@@ -78,6 +90,7 @@ awb report trace-diff --mode baseline-candidate --baseline <baseline-workflow-tr
 awb report trace-diff --mode baseline-mutant-restore --baseline <baseline-workflow-trace.json> --mutant <mutant-workflow-trace.json> --restore <restore-workflow-trace.json> --out <trace-diff-dir>
 awb report trend --input <trend-input.json> --out <trend-dir>
 awb report viewer --decision <decision-report.json> --comparison <comparison-result.json> --trace-diff <trace-diff.json> --trend <trend-report.json> --out <viewer-dir>
+awb report trial-metrics --reliability <reliability-report.json> --k 1,2,5 --out <trial-metrics-dir>
 ```
 
 `decision` revalidates the comparison and recomputes the matching gate; optional reliability and validity inputs add only supplied statistics and never invent human truth. `trace-diff` writes event refs, source positions, and payload/actor hashes only; `verified_live` requires trusted Observer and qualification evidence, otherwise the diff is diagnostic. `trend` splits incompatible schema, policy, runner, conditions, contract, target, suite, or observation eras and never connects them. `viewer` reads already-redacted public artifacts and writes static read-only HTML with no remote assets, commands, gate mutation, artifact writes, or unredacted-trace reads. See `docs/reporting-and-trends.md`.
@@ -100,7 +113,7 @@ Use `--gate-policy <gate-policy.json>` on both `compare` and `gate` when recompu
 
 Both private signing keys must remain outside the evaluated Runner, repository, artifacts, and logs, and the Observer and qualification authority must use different key pairs. The bundled reference Observer currently requires Darwin plus `/usr/bin/sandbox-exec`; it fails closed elsewhere. Its deny-default boundary actively proves signing-key reads, direct network, and nested process execution are denied with `EPERM`; Runner HOME/TMPDIR changes stay observable, and the signed trace output must be outside every Runner workspace. The qualification suite binds known-good/P0/blind-spot/repeat evidence to the exact Observer implementation, Contract, case set, canonical evaluation-contract content, and Schemas. AWB never enrolls either key automatically.
 
-For repository CI, use `.github/workflows/ci.yml`; it covers `git diff --check`, typecheck, full tests, plugin build, runtime parity, schema validation, canonical naming scan, privacy scan, and fresh-install smoke. For external workflows, `.github/workflows/awb-external-observe-only.yml` is observe-only: it compares baseline/candidate runs and records PASS, DIAGNOSTIC_ONLY, or BLOCK without enforcing the AWB decision; command/runtime failures still fail closed. Redacted summary upload is explicit opt-in with short retention. Stage 8 production assessment uses `awb ci evaluate-canary` and `awb ci assess`; frozen canary thresholds are sample count >= 30, false positive rate <= 0.02, false negative rate 0, flaky rate <= 0.05, runtime p95 <= 900 seconds, and cost p95 <= 10 USD. False-positive and false-negative rates use known-good and known-bad denominators, both classes are required, and `sampleSetHash` binds the sample set. When every prerequisite passes and `ci assess` is exactly `PROD-BLOCKING-NOT-AUTHORIZED`, use `awb ci prepare-authorization` to create an integrity-bound external signing payload and `awb ci finalize-authorization` to verify and attach the returned signature. Neither command accepts a private key. Production blocking requires explicit owner authorization, qualified independent live Observer evidence, caller-provided strong Runner isolation, separate public trust anchors, network denial or allowlist, read-only target inputs, controlled tool proxying, and redacted artifact retention. The signed authorization binds gate, runtime manifest, provenance, isolation, canary, and gate-policy hashes. AWB validates supplied isolation evidence; it does not provide a Linux isolation backend.
+For repository CI, use `npm run ci:local`; `.github/workflows/ci.yml` invokes the same ordered gate. It covers the Node runtime preflight, `git diff --check`, typecheck, full tests, plugin build, runtime parity, schema validation, canonical naming scan, privacy scan including the shipped runtime, and fresh-install smoke. For external workflows, `.github/workflows/awb-external-observe-only.yml` is observe-only: it compares baseline/candidate runs and records PASS, DIAGNOSTIC_ONLY, or BLOCK without enforcing the AWB decision; command/runtime failures still fail closed. Redacted summary upload is explicit opt-in with short retention. Stage 8 production assessment uses `awb ci evaluate-canary` and `awb ci assess`; frozen canary thresholds are sample count >= 30, false positive rate <= 0.02, false negative rate 0, flaky rate <= 0.05, runtime p95 <= 900 seconds, and cost p95 <= 10 USD. False-positive and false-negative rates use known-good and known-bad denominators, both classes are required, and `sampleSetHash` binds the sample set. When every prerequisite passes and `ci assess` is exactly `PROD-BLOCKING-NOT-AUTHORIZED`, use `awb ci prepare-authorization` to create an integrity-bound external signing payload and `awb ci finalize-authorization` to verify and attach the returned signature. Neither command accepts a private key. Production blocking requires explicit owner authorization, qualified independent live Observer evidence, caller-provided strong Runner isolation, separate public trust anchors, network denial or allowlist, read-only target inputs, controlled tool proxying, and redacted artifact retention. The signed authorization binds gate, runtime manifest, provenance, isolation, canary, and gate-policy hashes. AWB validates supplied isolation evidence; it does not provide a Linux isolation backend.
 
 Run periodic benchmark health before treating an AWB version as release-eligible:
 
@@ -148,7 +161,7 @@ awb profile --target <target-id> --out reports/profile/<target-id>
 awb plan-cases --target <target-id> --runner codex --coverage-mode smoke --out reports/ai-plans/<target-id>
 ```
 
-Use `--runner claude` when running inside Claude Code. Use `--coverage-mode full` for broad workflow coverage and `--coverage-mode adaptive` when follow-up generation should target missing coverage. Inspect `ai-case-plan-validation.json`; it records recommended case count, coverage tags, missing targets, unknown tags, and invalid bindings. Do not treat a low-coverage plan as a full workflow benchmark. `--max-cases` is only a per-pass budget override.
+Use `--runner claude` when running inside Claude Code. Use `--coverage-mode full` for broad workflow coverage and `--coverage-mode adaptive` when follow-up generation should target missing coverage. Cases should include `referenceOutcome` and `counterexampleOutcome` and balance success controls with failure probes. Inspect `ai-case-plan-validation.json`; it records recommended case count, coverage tags, missing targets, unknown tags, invalid bindings, missing references, and one-sided plans. A later `run --cases-dir` preserves its WARN/FAIL diagnostic disposition. Do not treat a low-coverage plan as a full workflow benchmark. `--max-cases` is only a per-pass budget override.
 
 3. Materialize executable cases from the AI plan:
 

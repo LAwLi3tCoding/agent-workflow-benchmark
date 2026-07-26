@@ -4,9 +4,13 @@
   "private": true,
   "license": "MIT",
   "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "benchmark": "tsx src/cli/index.ts",
+    "ci:local": "node scripts/run-local-ci.mjs",
     "plugin:build": "npm run build && node scripts/build-plugin-runtime.mjs",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",

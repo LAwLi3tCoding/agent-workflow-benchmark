@@ -31,17 +31,27 @@ external_validity_report
 suite
 comparison_result
 gate_result
+provenance
+production_isolation_manifest
+production_canary_report
+production_blocking_authorization_request
+production_blocking_authorization
+production_ci_gate_result
 decision_report
 trace_diff
 trend_report
 html_viewer_manifest
-provenance
+adapter_conformance_report
+benchmark_health_report
+runner_ranking_report
+trial_metrics_report
 ```
 
 Formal schemas now cover `ContractModel`, public profile evidence, generation
 manifest, runtime manifest, Observer qualification, reliability report, validity
-report, run/comparison/gate/provenance artifacts, decision reports, trace
-diffs, trend reports, and static viewer manifests.
+report, run/comparison/gate/provenance artifacts, production authorization
+artifacts, decision reports, trace diffs, trend reports, adapter conformance,
+benchmark health, runner ranking, trial metrics, and static viewer manifests.
 
 ## Semver Policy
 
@@ -119,6 +129,8 @@ Examples:
 - a `trace-diff.json` with no qualified Observer binding remains diagnostic;
 - a `trend-report.json` separates incompatible eras instead of migrating them
   into one chart series;
+- a `trial-metrics-report.json` without its source binding and explicit
+  diagnostic trust ceiling remains `DIAGNOSTIC_ONLY`;
 - an `html-viewer-manifest.json` is read-only display metadata, not a gate
   decision artifact;
 - a `provenance.json` without integrity bindings is `DIAGNOSTIC_ONLY`;

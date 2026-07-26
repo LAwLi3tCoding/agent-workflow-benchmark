@@ -24,11 +24,17 @@ plugins/agent-workflow-bench/
 4. 用 `awb gate --comparison <comparison-dir>/comparison-result.json --out <gate-dir>` 执行 CI gate：PASS exit `0`，DIAGNOSTIC_ONLY exit `2`，BLOCK exit `1`。
 5. 需要验证重复运行稳定性时，用 `awb debug reliability --study <reliability-study.json> --out <reliability-dir>`；它保留所有 attempt，统计 A/A、方差、置信区间、missing、P0 detection 和 quarantine。Unsigned simulated repeat 最多得到 `DIAGNOSTIC_REPRODUCIBLE`，不会输出 strong conclusion；只有稳定且已认证的 live `workflow_trace` 能得到 `RELIABLE`。
 
+需要查看多次 trial 的能力与一致性时，执行
+`awb report trial-metrics --reliability <reliability-report.json> --k 1,2,5 --out <trial-metrics-dir>`。
+它按 Inspect 的有限样本公式同时输出 pass@k 和 pass^k，且只把 Gate `PASS`
+计为成功。当前命令不会重新打开原始签名 Trace，所以仅凭 reliability JSON
+始终为 `DIAGNOSTIC_ONLY`；自洽哈希不等于独立认证。
+
 传统分步 evaluate 流程仍兼容：
 
 1. 通过 `profile` 建立被测 workflow 的结构化 `ContractModel`。
 2. 通过 `plan-cases` 调用当前运行时 LLM，例如 Codex 或 Claude Code，让 LLM 基于 `ContractModel`、被扫描 agent 文件摘录和覆盖目标先理解 workflow，再生成 case plan。
-3. 检查 `ai-case-plan-validation.json`，确认 case 数量、coverage tags、missing targets 和 bindings 没有明显缺口。
+3. 检查 `ai-case-plan-validation.json`，确认 case 数量、coverage tags、missing targets、bindings、reference/counterexample outcomes 和正反向样本没有明显缺口。
 4. 通过 `materialize --strategy ai` 把 LLM plan 结构化成可执行 case YAML。
 5. 通过 `run --cases-dir` 执行 AI-generated cases。
 6. 通过 `report/score/debug reverse-validate/diagnose` 生成解释性结果和工具自调试证据。
@@ -338,5 +344,5 @@ claude --plugin-dir "$(git rev-parse --show-toplevel)/plugins/agent-workflow-ben
 - `plugins/agent-workflow-bench/bin/awb validate-schema`：验证插件 runtime 的 schema、runner config 和 target pack 可加载；带完整 `--target/--runner/--out` 参数的 `doctor` 验证 target profile、runner 能力和 evidence 上限。
 - `plan-cases --runner codex` 可以把 agent 文件摘录作为 transient LLM input 生成真实 case plan；持久化的 prompt artifact 只保留相对路径、hash 和字节数，response artifact 只保留内容 hash，不保存原始 excerpt 或原始模型响应。
 - `materialize --strategy ai` 成功生成 AI cases。
-- `run --cases-dir` 成功执行 AI-generated cases。
+- `run --cases-dir` 成功执行 AI-generated cases，并保留已保存 plan validation 的 WARN/FAIL 诊断降级。
 - AI-generated 单 case 的 `--execution live` Codex verdict 如果为 `PASS`，作用范围仍是 live runner prompt/transcript 诊断结果；在 current `contract-summary` adapter 下不是对真实 target entrypoint 执行的发布批准，也不能作为 CI gate PASS。

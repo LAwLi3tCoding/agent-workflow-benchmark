@@ -154,6 +154,8 @@ export interface BenchmarkCase {
     model?: string;
     targetUnderstanding?: string;
     riskFocus?: string;
+    referenceOutcome?: string;
+    counterexampleOutcome?: string;
     operationSequence?: string[];
     coverageTags?: string[];
     scoringRubric?: string[];
@@ -212,6 +214,8 @@ export interface AiCaseDraft {
   id: string;
   title: string;
   riskFocus: string;
+  referenceOutcome?: string;
+  counterexampleOutcome?: string;
   operationSequence: string[];
   oracleIds: string[];
   expectedHardFailures: string[];

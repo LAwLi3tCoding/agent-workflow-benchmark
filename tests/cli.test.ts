@@ -661,6 +661,120 @@ describe("benchmark CLI", () => {
     }
   });
 
+  test("run propagates AI plan validation warnings from a provided cases directory", async () => {
+    const casesOut = await tmp("awb-ai-warn-cases-");
+    const planDir = await tmp("awb-ai-warn-plan-");
+    const runOut = await tmp("awb-ai-warn-run-");
+    const dryRunOut = await tmp("awb-ai-warn-dry-run-");
+    try {
+      const planPath = path.join(planDir, "plan.json");
+      await writeFile(
+        planPath,
+        JSON.stringify(
+          {
+            planner: "external",
+            targetUnderstanding: "A legacy external plan with enough executable case data but weak harness evidence.",
+            cases: [
+              {
+                id: "owner-artifact-gate",
+                title: "Owner writes declared artifact before PASS gate",
+                riskFocus: "owner routing and artifact/gate ordering",
+                operationSequence: ["invoke primary role", "verify owner handoff", "verify artifact write"],
+                oracleIds: ["oracle-ai-owner-artifact-gate"],
+                expectedHardFailures: [],
+                coverageTags: ["dimension:owner-routing", "dimension:artifacts", "role:orchestrator-agent"],
+                scoringRubric: ["Owner and artifact evidence must match the contract."],
+                bindings: {
+                  primaryRole: "orchestrator-agent",
+                  owner: "orchestrator-agent",
+                  artifactPath: "deliverables/implementation-plan.md"
+                }
+              }
+            ]
+          },
+          null,
+          2
+        )
+      );
+      await execa(
+        "npm",
+        [
+          "run",
+          "benchmark",
+          "--",
+          "materialize",
+          "--target",
+          "minimal-directory-agent",
+          "--strategy",
+          "ai",
+          "--ai-plan",
+          planPath,
+          "--out",
+          casesOut
+        ],
+        { cwd }
+      );
+
+      const validation = JSON.parse(
+        await readFile(path.join(casesOut, "ai-case-plan-validation.json"), "utf8")
+      );
+      expect(validation.status).toBe("WARN");
+
+      await execa(
+        "npm",
+        [
+          "run",
+          "benchmark",
+          "--",
+          "run",
+          "--cases-dir",
+          casesOut,
+          "--runner",
+          "simulated",
+          "--out",
+          runOut
+        ],
+        { cwd }
+      );
+      const suiteResult = JSON.parse(
+        await readFile(path.join(runOut, "suite-result.json"), "utf8")
+      );
+      expect(suiteResult.harnessValidation.status).toBe("WARN");
+      expect(suiteResult.harnessValidation.plan.status).toBe("WARN");
+      expect(suiteResult.releaseDecision).toBe("DIAGNOSTIC_ONLY");
+      expect(suiteResult.releaseRuleId).toBe("REL-HARNESS-VALIDATION-WARN");
+      await expect(stat(path.join(runOut, "harness-validation.json"))).resolves.toBeTruthy();
+
+      await execa(
+        "npm",
+        [
+          "run",
+          "benchmark",
+          "--",
+          "run",
+          "--cases-dir",
+          casesOut,
+          "--runner",
+          "simulated",
+          "--dry-run",
+          "--out",
+          dryRunOut
+        ],
+        { cwd }
+      );
+      const dryRunSuiteResult = JSON.parse(
+        await readFile(path.join(dryRunOut, "suite-result.json"), "utf8")
+      );
+      expect(dryRunSuiteResult.harnessValidation.status).toBe("WARN");
+      expect(dryRunSuiteResult.releaseRuleId).toBe("REL-HARNESS-VALIDATION-WARN");
+    } finally {
+      await rm(casesOut, { recursive: true, force: true });
+      await rm(planDir, { recursive: true, force: true });
+      await rm(runOut, { recursive: true, force: true });
+      await rm(dryRunOut, { recursive: true, force: true });
+    }
+  });
+
   test("run and report produce readable suite artifacts", async () => {
     const out = await tmp("awb-run-");
     try {

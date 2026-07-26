@@ -76,6 +76,7 @@ describe("agent workflow bench plugin package", () => {
     expect(command).toContain("ci prepare-authorization");
     expect(command).toContain("ci finalize-authorization");
     expect(command).toContain("report runner-ranking");
+    expect(command).toContain("report trial-metrics");
   });
 
   test("ships a self-contained plugin runtime for installs without a source checkout", async () => {
@@ -141,6 +142,9 @@ describe("agent workflow bench plugin package", () => {
     ).resolves.toBeTruthy();
     await expect(
       stat(path.join(runtimeRoot, "schemas", "runner-ranking-report.schema.json"))
+    ).resolves.toBeTruthy();
+    await expect(
+      stat(path.join(runtimeRoot, "schemas", "trial-metrics-report.schema.json"))
     ).resolves.toBeTruthy();
     await expect(
       stat(path.join(runtimeRoot, "configs", "artifacts", "schema-registry.json"))
@@ -228,6 +232,9 @@ describe("agent workflow bench plugin package", () => {
     await expect(
       stat(path.join(runtimeRoot, "dist", "src", "report", "runnerRanking.js"))
     ).resolves.toBeTruthy();
+    await expect(
+      stat(path.join(runtimeRoot, "dist", "src", "report", "trialMetrics.js"))
+    ).resolves.toBeTruthy();
 
     const wrapper = await readFile(path.join(pluginRoot, "bin", "awb"), "utf8");
     expect(wrapper).toContain("RUNTIME_DIR");
@@ -267,6 +274,7 @@ describe("agent workflow bench plugin package", () => {
       expect(reportHelp.stdout).toContain("trace-diff");
       expect(reportHelp.stdout).toContain("trend");
       expect(reportHelp.stdout).toContain("viewer");
+      expect(reportHelp.stdout).toContain("trial-metrics");
       const legacyRuntimePath = path.join(
         outsideCwd,
         "runtime-manifest.json"

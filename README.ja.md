@@ -49,7 +49,7 @@ flowchart LR
 
 ### 要件
 
-- Node.js と npm。現行 LTS を推奨します。
+- Node.js 22 以降と npm。Hosted CI は Node.js 22 に固定されています。
 - 対応する live runner には Codex または Claude Code が必要です。
 - simulated 実行には実際の Coding Agent CLI は不要です。
 
@@ -60,7 +60,7 @@ flowchart LR
 ```bash
 git clone https://github.com/GITHUB_OWNER/agent-workflow-bench.git
 cd agent-workflow-bench
-npm install
+npm ci
 npm run validate
 npm run benchmark -- --help
 ```
@@ -297,7 +297,7 @@ Committed public synthetic evidence は `fixtures/calibration/v1/fit` と
 | `doctor` | Target、runner、証拠 readiness の検出 |
 | `init-target` | レビュー可能な Target Pack draft の生成 |
 | `profile` | 安定した `ContractModel` の構築 |
-| `plan-cases` | 契約由来 Coverage から Case を生成 |
+| `plan-cases` | 契約 Coverage と reference/counterexample outcome から均衡 Case を生成 |
 | `materialize` | 実行可能な Case YAML と manifest を生成 |
 | `run` | Case または Suite を実行 |
 | `evaluate` | Profile、計画、Case、Score、Report を実行 |
@@ -305,7 +305,11 @@ Committed public synthetic evidence は `fixtures/calibration/v1/fit` と
 | `compare` | 揃った baseline/candidate 証拠を比較 |
 | `gate` | 決定論的 CI release policy の適用 |
 | `gate-policy ...` | Versioned score/gate policy の校正または holdout 検証 |
+| `artifact migrate` | 登録済み Artifact を安定した status/reason code で読取・移行 |
+| `adapter conformance` | Runner Adapter contract と `CaseRun` を診断証拠として検証 |
+| `ci benchmark-health` | 定期 self-check を fail-closed な version disposition に集約 |
 | `score` / `report` | Run 確認、decision、trace-diff、trend、静的 viewer の描画 |
+| `report trial-metrics` | 有限標本 pass@k/pass^k を計算。source report 単独では diagnostic-only |
 | `criterion-validity ...` | 盲検化した外部研究 package の生成・独立ラベル分析 |
 | `debug ...` | Benchmark Harness の逆検証と診断 |
 
@@ -317,12 +321,15 @@ Committed public synthetic evidence は `fixtures/calibration/v1/fit` と
 | `suite-result.json` | 単一 Run の集計 |
 | `runtime-manifest.json` | 観測された runner/runtime の事実 |
 | `provenance.json` | Target、Case、環境、完全性の identity |
+| `schema-registry.json` / `compatibility-matrix.json` | Artifact schema inventory、semver policy、migration rule |
 | `workflow-trace.json` | 独立署名済みの正規化 live trace |
 | `comparison-result.json` | 完全性に結び付いたペア比較 |
 | `gate-result.json` | 決定論的リリース判定 |
 | `gate-policy.json` / `calibration-report.*` | Versioned policy、fit evidence、holdout diagnostics |
 | `report.md` / `decision-report.*` / `trace-diff.json` / `trend-report.json` / `viewer.html` | 診断、判定、Redacted trace diff、era 別 trend、静的 viewer |
 | `validity-report.*` / `reliability-report.*` | 外部妥当性、信頼性、quarantine の証拠 |
+| `adapter-conformance-report.json` / `benchmark-health-report.json` | Adapter 診断と Benchmark version health |
+| `runner-ranking-report.json` / `trial-metrics-report.*` | 比較可能性を明示した Runner ranking と trust ceiling 付き trial metrics |
 
 完全なオプションは `awb <command> --help` で確認できます。
 
@@ -347,21 +354,13 @@ Diagnostic Prompt 自体は Sandbox ではありません。
 ## 開発
 
 ```bash
-npm install
-npm run typecheck
-npm test
-npm run validate
-npm run plugin:build
+npm ci
+npm run ci:local
 ```
 
-ソース checkout の外から packaged runtime を検証します。
-
-```bash
-plugins/agent-workflow-bench/bin/awb validate-schema
-```
-
-`plugins/agent-workflow-bench/runtime/` は commit 対象の生成物です。runtime behavior、
-schema、config、fixture を変更したら `npm run plugin:build` を実行してください。
+この Local/Hosted CI 共通 Gate は diff hygiene、typecheck、全 Test、Plugin build、
+runtime parity、source/package schema、命名/Privacy scan、fresh-install smoke を実行します。
+`plugins/agent-workflow-bench/runtime/` は commit 対象の生成物です。
 
 ```text
 .
@@ -379,6 +378,7 @@ schema、config、fixture を変更したら `npm run plugin:build` を実行し
 - [Human guide](docs/agent-workflow-bench-human-guide.md)
 - [Plugin guide](docs/agent-workflow-bench-plugin-guide.md)
 - [Evaluation methodology](docs/ai-workflow-evaluation-methodology.md) / [Reporting and trends](docs/reporting-and-trends.md)
+- [2026 Agent evaluation landscape and optimization roadmap](docs/agent-evaluation-landscape-2026.md)
 - [Workflow-Trace Observer Contract](docs/workflow-trace-observer-contract.md)
 - [Human-light agent execution](docs/human-light-execution.md)
 - [English README](README.md) / [简体中文 README](README.zh-CN.md)

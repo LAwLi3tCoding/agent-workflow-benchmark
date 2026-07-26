@@ -248,6 +248,8 @@ describe("case materialization", () => {
             id: "owner-artifact-gate",
             title: "Owner writes declared artifact before PASS gate",
             riskFocus: "owner routing and artifact/gate ordering",
+            referenceOutcome: "The declared owner writes the implementation plan before the gate passes.",
+            counterexampleOutcome: "The gate passes without owner-bound implementation evidence.",
             operationSequence: ["invoke primary role", "verify owner handoff", "verify artifact write", "verify PASS gate"],
             oracleIds: ["oracle-ai-owner-artifact-gate"],
             expectedHardFailures: [],
@@ -289,7 +291,11 @@ describe("case materialization", () => {
     expect(validation!.coveredCoverageTargetIds).toContain("dimension:joins");
     expect(suite.cases[0].templateId).toBe("ai-owner-artifact-gate");
     expect(suite.cases[0].prompt).toContain("Risk focus: owner routing and artifact/gate ordering");
+    expect(suite.cases[0].prompt).toContain("Reference outcome: The declared owner writes the implementation plan before the gate passes.");
+    expect(suite.cases[0].prompt).toContain("Counterexample outcome: The gate passes without owner-bound implementation evidence.");
     expect(suite.cases[0].generation?.mode).toBe("ai-first");
+    expect(suite.cases[0].generation?.referenceOutcome).toBe("The declared owner writes the implementation plan before the gate passes.");
+    expect(suite.cases[0].generation?.counterexampleOutcome).toBe("The gate passes without owner-bound implementation evidence.");
     expect(suite.cases[0].generation?.coverageTags).toContain("dimension:artifacts");
     expect(suite.cases[0].generation?.scoringRubric).toContain("Owner binding must match a declared role.");
     expect(suite.cases[0].generation?.operationSequence).toContain("verify artifact write");

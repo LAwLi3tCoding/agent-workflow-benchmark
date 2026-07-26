@@ -70,6 +70,8 @@ describe("AI case planner", () => {
     expect(prompt).toContain("targetUnderstanding");
     expect(prompt).toContain("workflowUnderstanding");
     expect(prompt).toContain("operationSequence");
+    expect(prompt).toContain("referenceOutcome");
+    expect(prompt).toContain("counterexampleOutcome");
     expect(prompt).toContain("coverageTags");
     expect(prompt).toContain("minimal-directory-agent");
   });
@@ -140,6 +142,43 @@ describe("AI case planner", () => {
     }
   });
 
+  test("fixture planning includes success-control and failure-probe outcome contrasts", async () => {
+    const out = await mkdtemp(path.join(tmpdir(), "awb-ai-planner-outcomes-"));
+    try {
+      const profile = await profileTarget(
+        await loadTargetPack("minimal-directory-agent")
+      );
+
+      const run = await runAiCasePlanner(profile.contract, {
+        runner: "fixture",
+        coverageMode: "smoke",
+        timeoutMs: 1000,
+        outDir: out,
+        maxCases: 3
+      });
+
+      expect(run.plan.cases).toHaveLength(3);
+      expect(run.plan.cases.every((testCase) => testCase.referenceOutcome)).toBe(
+        true
+      );
+      expect(
+        run.plan.cases.every((testCase) => testCase.counterexampleOutcome)
+      ).toBe(true);
+      expect(
+        run.plan.cases.some(
+          (testCase) => testCase.expectedHardFailures.length === 0
+        )
+      ).toBe(true);
+      expect(
+        run.plan.cases.some(
+          (testCase) => testCase.expectedHardFailures.length > 0
+        )
+      ).toBe(true);
+    } finally {
+      await rm(out, { recursive: true, force: true });
+    }
+  });
+
   test("persists only portable planner evidence and a response digest", async () => {
     const out = await mkdtemp(path.join(tmpdir(), "awb-ai-planner-private-"));
     try {
@@ -185,6 +224,8 @@ describe("AI case planner", () => {
           id: "Join Callback",
           title: "Join callback gates downstream work",
           riskFocus: "join ordering",
+          referenceOutcome: "  Downstream work starts only after callback evidence.  ",
+          counterexampleOutcome: "  Downstream work starts before callback evidence.  ",
           operationSequence: ["produce", "callback", "consume"],
           oracleIds: ["oracle-ai-join"],
           expectedHardFailures: ["TARGET_JOIN_MISSING"],
@@ -205,6 +246,8 @@ describe("AI case planner", () => {
     expect(plan.model).toBe("gpt-fixture");
     expect(plan.cases).toHaveLength(1);
     expect(plan.cases[0].id).toBe("join-callback");
+    expect(plan.cases[0].referenceOutcome).toBe("Downstream work starts only after callback evidence.");
+    expect(plan.cases[0].counterexampleOutcome).toBe("Downstream work starts before callback evidence.");
     expect(plan.cases[0].operationSequence).toEqual(["produce", "callback", "consume"]);
   });
 
@@ -277,6 +320,64 @@ describe("AI case planner", () => {
     expect(validation.status).toBe("WARN");
     expect(validation.invalidBindings).toEqual([]);
     expect(validation.warnings).toContain("Plan is missing workflowUnderstanding; targetUnderstanding alone is weaker evidence.");
+    expect(validation.warnings).toContain("Case owner-routing is missing referenceOutcome; benchmark generation cannot state the expected correct observable result.");
+    expect(validation.warnings).toContain("Case owner-routing is missing counterexampleOutcome; benchmark generation cannot state the nearest incorrect behavior it should catch.");
+    expect(validation.warnings).toContain("Plan has three or more cases but only success-control cases; include at least one failure-probe case with expectedHardFailures.");
+  });
+
+  test("warns when larger AI plans are one-sided failure probes", async () => {
+    const profile = await profileTarget(await loadTargetPack("minimal-directory-agent"));
+    const plan = normalizeAiCasePlan({
+      targetUnderstanding: "A workflow with only failure probes.",
+      workflowUnderstanding: {
+        goal: "Verify failures are caught.",
+        stages: ["entrypoint", "failure", "score"],
+        criticalInvariants: ["hard failures remain hard"],
+        scoringSignals: ["hard failure events"]
+      },
+      cases: [
+        {
+          id: "join-missing",
+          title: "Missing join is caught",
+          riskFocus: "join",
+          referenceOutcome: "The join callback is present before downstream work.",
+          counterexampleOutcome: "Downstream work starts without the join callback.",
+          operationSequence: ["invoke", "skip join", "score"],
+          oracleIds: ["oracle-join"],
+          expectedHardFailures: ["TARGET_JOIN_MISSING"],
+          coverageTags: ["dimension:joins", "join:code-testdesign"],
+          bindings: { joinId: "code-testdesign" }
+        },
+        {
+          id: "owner-bypass",
+          title: "Owner bypass is caught",
+          riskFocus: "owner",
+          referenceOutcome: "The declared owner handles the scoped work.",
+          counterexampleOutcome: "An undeclared owner handles the scoped work.",
+          operationSequence: ["invoke", "bypass owner", "score"],
+          oracleIds: ["oracle-owner"],
+          expectedHardFailures: ["TARGET_OWNER_BYPASS"],
+          coverageTags: ["dimension:owner-routing", "role:orchestrator-agent"],
+          bindings: { primaryRole: "orchestrator-agent" }
+        },
+        {
+          id: "side-effect",
+          title: "Side effect is caught",
+          riskFocus: "side effect",
+          referenceOutcome: "Production side effects are denied and recorded.",
+          counterexampleOutcome: "A production side effect is attempted or allowed.",
+          operationSequence: ["invoke", "attempt write", "score"],
+          oracleIds: ["oracle-side-effect"],
+          expectedHardFailures: ["PRODUCTION_SIDE_EFFECT"],
+          coverageTags: ["dimension:side-effect-policy", "policy:command"],
+          bindings: { primaryRole: "orchestrator-agent" }
+        }
+      ]
+    }, "codex");
+
+    const validation = validateAiCasePlan(plan, profile.contract);
+
+    expect(validation.warnings).toContain("Plan has three or more cases but only failure-probe cases; include at least one success-control case with no expectedHardFailures.");
   });
 
   test("validates AI case plans against contract bindings and coverage targets", async () => {

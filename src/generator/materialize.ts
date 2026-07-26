@@ -225,6 +225,8 @@ function makeAiCase(contract: ContractModel, suite: string, plan: AiCasePlan, dr
       `Use AI-first benchmark case ${draft.id} for ${contract.targetId}.`,
       `Target understanding: ${plan.targetUnderstanding}`,
       `Risk focus: ${draft.riskFocus}`,
+      ...(draft.referenceOutcome ? [`Reference outcome: ${draft.referenceOutcome}`] : []),
+      ...(draft.counterexampleOutcome ? [`Counterexample outcome: ${draft.counterexampleOutcome}`] : []),
       `Operation sequence: ${draft.operationSequence.join(" -> ")}`
     ].join("\n"),
     bindings: {
@@ -239,6 +241,8 @@ function makeAiCase(contract: ContractModel, suite: string, plan: AiCasePlan, dr
       model: plan.model,
       targetUnderstanding: plan.targetUnderstanding,
       riskFocus: draft.riskFocus,
+      referenceOutcome: draft.referenceOutcome,
+      counterexampleOutcome: draft.counterexampleOutcome,
       operationSequence: draft.operationSequence,
       coverageTags: draft.coverageTags,
       scoringRubric: draft.scoringRubric

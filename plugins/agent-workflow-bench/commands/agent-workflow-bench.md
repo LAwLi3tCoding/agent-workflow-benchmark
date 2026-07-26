@@ -20,6 +20,17 @@ awb debug reliability --study <reliability-study.json> --out reports/reliability
 
 Reliability reports preserve every requested attempt and quarantine unstable or duplicated evidence. Unsigned simulated repeats can only produce `DIAGNOSTIC_REPRODUCIBLE`; only stable qualified live `workflow_trace` studies can produce a strong `RELIABLE` conclusion and become gate-eligible.
 
+Compute finite-sample capability and consistency metrics from that report:
+
+```bash
+awb report trial-metrics --reliability <reliability-report.json> --k 1,2,5 --out reports/reliability/"$ARGUMENTS"/trial-metrics
+```
+
+The command publishes Inspect-compatible pass@k and pass^k, with only gate
+`PASS` counted as success. It remains `DIAGNOSTIC_ONLY` because a source
+reliability JSON is not independent attestation and the command does not reopen
+the original signed traces. An invalid or blocking source still blocks.
+
 For external criterion-validity diagnostics, generate a blinded package and analyze it only after external observations and independent human labels are present:
 
 ```bash
@@ -88,6 +99,7 @@ awb report trace-diff --mode baseline-candidate --baseline <baseline-workflow-tr
 awb report trace-diff --mode baseline-mutant-restore --baseline <baseline-workflow-trace.json> --mutant <mutant-workflow-trace.json> --restore <restore-workflow-trace.json> --out <trace-diff-dir>
 awb report trend --input <trend-input.json> --out <trend-dir>
 awb report viewer --decision <decision-report.json> --comparison <comparison-result.json> --trace-diff <trace-diff.json> --trend <trend-report.json> --out <viewer-dir>
+awb report trial-metrics --reliability <reliability-report.json> --k 1,2,5 --out <trial-metrics-dir>
 ```
 
 `decision` revalidates the comparison and matching gate before writing; optional
@@ -116,9 +128,10 @@ awb gate --comparison <comparison-dir>/comparison-result.json --trusted-observer
 
 Never make either private key available to the evaluated Runner, repository, artifacts, or logs, and never reuse the Observer key as the qualification-authority key. The bundled reference Observer currently requires Darwin plus `/usr/bin/sandbox-exec`. Its deny-default boundary actively verifies that signing-key reads, direct network, and undeclared nested processes fail with `EPERM`; unsupported isolation fails closed. The qualification suite covers known-good, every P0 mutation, omission/order/forgery, wrong key, private-key leakage, tool/network blind spots, repeats, and the canonical evaluation-contract content hash. Never auto-enroll either public key.
 
-For GitHub CI, this repository runs `.github/workflows/ci.yml`: `git diff
---check`, typecheck, full tests, plugin build, runtime parity, schema
-validation, canonical naming scan, privacy scan, and fresh-install smoke.
+For repository validation, run `npm run ci:local`; GitHub CI invokes the same
+ordered gate: Node runtime preflight, `git diff --check`, typecheck, full tests,
+plugin build, runtime parity, source/package schema validation, canonical
+naming, privacy scanning including shipped runtime, and fresh-install smoke.
 External callers can copy or call
 `.github/workflows/awb-external-observe-only.yml` for observe-only
 baseline/candidate checks. PASS, DIAGNOSTIC_ONLY, and BLOCK are recorded, not
@@ -194,7 +207,7 @@ Use the manual flow below only when you need to inspect or replace an intermedia
 awb plan-cases --target "$ARGUMENTS" --runner claude --coverage-mode full --out reports/ai-plans/"$ARGUMENTS"
 ```
 
-The plan must include `workflowUnderstanding`, `coverageTags`, and `scoringRubric`; coverage gaps are written to `ai-case-plan-validation.json`. Use `--max-cases` only to override the per-pass budget.
+The plan must include `workflowUnderstanding`, `coverageTags`, and `scoringRubric`. Cases should carry `referenceOutcome` and `counterexampleOutcome` and balance success controls with failure probes. Missing references, one-sided plans, and coverage gaps are written to `ai-case-plan-validation.json`; `run --cases-dir` preserves its WARN/FAIL diagnostic disposition. Use `--max-cases` only to override the per-pass budget.
 
 2. Materialize executable cases from that AI plan:
 

@@ -34,7 +34,7 @@ matched baseline/candidate `run` -> `compare` -> `gate`.
 
 ### Requirements
 
-- Node.js and npm; use a current LTS release.
+- Node.js 22 or newer and npm. Hosted CI is pinned to Node.js 22.
 - Codex or Claude Code for the corresponding live runner.
 - No live agent CLI is required for simulated runs.
 
@@ -45,7 +45,7 @@ Replace `GITHUB_OWNER` with the account or organization hosting the repository.
 ```bash
 git clone https://github.com/GITHUB_OWNER/agent-workflow-bench.git
 cd agent-workflow-bench
-npm install
+npm ci
 npm run validate
 npm run benchmark -- --help
 ```
@@ -307,7 +307,7 @@ target source and do not prove live runner behavior.
 | `doctor` | Discover target, runner, and evidence readiness |
 | `init-target` | Generate a reviewable target-pack draft |
 | `profile` | Build a stable workflow `ContractModel` |
-| `plan-cases` | Generate cases from contract-derived coverage |
+| `plan-cases` | Generate balanced cases with contract coverage and reference/counterexample outcomes |
 | `materialize` | Produce executable case YAML and manifest |
 | `run` | Execute a case or suite |
 | `evaluate` | Run profile, planning, cases, scoring, and reports |
@@ -319,6 +319,7 @@ target source and do not prove live runner behavior.
 | `adapter conformance` | Validate a Runner Adapter contract and emitted `CaseRun` shape as diagnostic evidence |
 | `ci benchmark-health` | Aggregate periodic benchmark self-checks into a fail-closed version disposition |
 | `score` / `report` | Inspect runs; render decision, trace-diff, trend, runner-ranking, and static viewer artifacts |
+| `report trial-metrics` | Compute finite-sample pass@k and pass^k; source reports alone remain diagnostic-only |
 | `criterion-validity ...` | Package blinded external studies or analyze independent labels |
 | `debug ...` | Reverse-validate the harness or analyze repeated-run reliability |
 
@@ -340,6 +341,7 @@ target source and do not prove live runner behavior.
 | `adapter-conformance-report.json` | Adapter contract and runtime conformance diagnostics; never workflow PASS evidence |
 | `benchmark-health-report.json` | Periodic benchmark health and version disposition |
 | `runner-ranking-report.json` | Cross-runner ranking or explicit incomparability reason codes |
+| `trial-metrics-report.*` | Source-bound pass@k/pass^k estimates with an explicit independent-verification ceiling |
 
 Unsigned simulated repeats can report `DIAGNOSTIC_REPRODUCIBLE`, but only stable qualified live `workflow_trace` studies can report a strong `RELIABLE` conclusion.
 Run `awb <command> --help` for the complete option set.
@@ -361,28 +363,21 @@ diagnostic prompt is not a sandbox by itself.
 ## Development
 
 ```bash
-npm install
-npm run typecheck
-npm test
-npm run validate
-npm run plugin:build
+npm ci
+npm run ci:local
 ```
 
-Validate the packaged runtime from outside the source checkout:
-
-```bash
-plugins/agent-workflow-bench/bin/awb validate-schema
-```
-
-The generated runtime under `plugins/agent-workflow-bench/runtime/` is
-committed. Changes to runtime behavior, schemas, configs, or fixtures must be
-followed by `npm run plugin:build`.
+The shared local/hosted gate runs diff hygiene, typecheck, all tests, plugin
+build, runtime parity, source and packaged schema validation, naming and privacy
+scans, and a fresh-install smoke test. The generated runtime under
+`plugins/agent-workflow-bench/runtime/` is committed.
 
 ## Documentation
 
 - [Human guide](docs/agent-workflow-bench-human-guide.md)
 - [Plugin guide](docs/agent-workflow-bench-plugin-guide.md)
 - [Evaluation methodology](docs/ai-workflow-evaluation-methodology.md)
+- [2026 evaluation landscape and optimization roadmap](docs/agent-evaluation-landscape-2026.md)
 - [Adapter SDK](docs/adapter-sdk.md)
 - [Benchmark health](docs/benchmark-health.md)
 - [Reporting and trends](docs/reporting-and-trends.md)

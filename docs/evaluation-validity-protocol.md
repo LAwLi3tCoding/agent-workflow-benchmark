@@ -115,6 +115,24 @@ refuse a strong conclusion. Unstable cases, repeated evidence, or context drift 
 without deleting failures. Any P0 that is not blocked makes the study `INVALID` and gate
 eligibility `BLOCK`.
 
+Use the observed trials in a reliability report for capability and consistency
+estimates:
+
+```bash
+awb report trial-metrics \
+  --reliability reports/reliability/reliability-report.json \
+  --k 1,2,5 \
+  --out reports/reliability/trial-metrics
+```
+
+The report uses the Inspect draw-without-replacement estimators
+`pass@k = 1 - C(n-c,k) / C(n,k)` and `pass^k = C(c,k) / C(n,k)`. Only gate
+`PASS` counts as success. The current command validates schema and internal
+hashes but does not reopen the source study's signed traces, so a reliability
+report alone always produces `DIAGNOSTIC_ONLY`; a self-consistent hash is not
+independent attestation. A source study that is already `BLOCK` or `INVALID`
+still produces `BLOCK`.
+
 ## Score and Gate Calibration
 
 Gate policy calibration uses only development and calibration Gold Corpus splits to

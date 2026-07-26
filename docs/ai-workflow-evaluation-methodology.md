@@ -7,13 +7,18 @@ Agent Workflow Bench (AWB) evaluates agent workflows, not isolated prompts. The 
 This method follows current practice from agent and LLM evaluation systems:
 
 - OpenAI Evals and grader guidance: use explicit rubrics, structured evidence, and reusable eval artifacts.
-- Anthropic agent evaluation guidance: evaluate real task trajectories and failure modes, not only final answers.
+- Anthropic agent evaluation guidance: use reference solutions, balanced positive/negative cases, repeated trials, and real task trajectories rather than only final answers.
+- Inspect metrics: publish both finite-sample pass@k capability and pass^k consistency estimators.
+- AgentLens and ProcBench: retain evidence-linked trajectory review and process-level diagnosis instead of reducing every run to a final bit.
 - General trace/eval tooling practice: combine broad case coverage, negative tests, repeatable scoring artifacts, and transcript inspection when routing, tools, and intermediate decisions matter.
 
 Reference URLs:
 
 - https://developers.openai.com/api/docs/guides/evals
 - https://www.anthropic.com/engineering/demystifying-evals-for-ai-agents
+- https://inspect.aisi.org.uk/metrics.html
+- https://arxiv.org/abs/2607.06624
+- https://arxiv.org/abs/2605.20251
 
 ## Method
 
@@ -33,7 +38,7 @@ Reference URLs:
    Case count is no longer treated as a small fixed number. `smoke` mode keeps a small single-pass budget for fast diagnosis, while `full` and `adaptive` modes derive larger budgets from the ContractModel coverage targets. Large workflow target packs should use `full` or `adaptive` when the goal is full stage-graph and multi-dimensional coverage.
 
 6. **Validate generated cases before materialization.**
-   `ai-case-plan-validation.json` records recommended count, covered targets, missing targets, unknown tags, and invalid bindings. AWB normalizes deterministic AI drift such as owner-scope bindings, prefixed `join:<id>` bindings, artifact ids, and common coverage tag aliases before validation. Materialization still rejects unresolved invalid role, join, and artifact bindings instead of producing misleading YAML.
+   `ai-case-plan-validation.json` records recommended count, covered targets, missing targets, unknown tags, invalid bindings, and case-quality warnings. AI plans may carry `referenceOutcome` and `counterexampleOutcome`; the planner is asked for both success controls and failure probes, and validation warns when either reference is absent or a plan of at least three cases is one-sided. These descriptions do not replace executable oracles. AWB normalizes deterministic AI drift such as owner-scope bindings, prefixed `join:<id>` bindings, artifact ids, and common coverage tag aliases before validation. Materialization still rejects unresolved invalid role, join, and artifact bindings instead of producing misleading YAML, and a later `run --cases-dir` preserves the saved WARN/FAIL harness disposition.
 
 7. **Materialize only executable benchmark cases.**
    Materialized YAML cases must use canonical ContractModel bindings, stable case hashes, explicit oracle ids, expected hard failures, operation sequence evidence, coverage tags, and scoring rubrics. This is the harness boundary between free-form AI understanding and repeatable execution.
@@ -63,7 +68,7 @@ Reference URLs:
    Every P0 hard failure must be recorded as structured local evidence, not only rendered in a report. AWB writes `p0-cases.json`, `p0-cases.md`, and can append durable JSONL records with `--p0-case-log`. These records identify the target, run, case, contract hash, failure code, evidence events, and recommended action so previously evaluated agent workflows can be retested against their most important failures.
 
 16. **Produce read-only reporting artifacts without changing evidence truth.**
-   Stage 9 reporting keeps the legacy `awb report --run` renderer and adds `awb report decision`, `trace-diff`, `trend`, and `viewer`. Decision reports revalidate the comparison and matching gate before writing. Trace diffs expose event refs, source positions, and payload and actor hashes only; `verified_live` requires trusted Observer and qualification evidence. Trend reports split incompatible schema, policy, runner, conditions, contract, target, suite, or observation eras. The static viewer reads already-redacted artifacts and cannot mutate gates, fetch remote assets, execute commands, or read unredacted traces.
+   Stage 9 reporting keeps the legacy `awb report --run` renderer and adds `awb report decision`, `trace-diff`, `trend`, `viewer`, and `trial-metrics`. Decision reports revalidate the comparison and matching gate before writing. Trace diffs expose event refs, source positions, and payload and actor hashes only; `verified_live` requires trusted Observer and qualification evidence. Trend reports split incompatible schema, policy, runner, conditions, contract, target, suite, or observation eras. Trial metrics use finite-sample pass@k and pass^k estimators, count only gate `PASS` as success, and remain diagnostic-only because a source reliability JSON is not independent attestation. The static viewer reads already-redacted artifacts and cannot mutate gates, fetch remote assets, execute commands, or read unredacted traces.
 
 17. **Use reverse validation to test the benchmark itself.**
    Overlay-only mutation reverse validation checks configured simulated mutations against the benchmark scorer and oracle fixtures without mutating the real target source. If a mutation survives, repair the benchmark oracle, fixture, observer, target pack, or scorer before trusting the suite. Live Codex/Claude runner behavior must be validated separately through live execution artifacts.

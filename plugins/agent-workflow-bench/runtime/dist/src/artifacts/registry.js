@@ -25,7 +25,8 @@ export const ARTIFACT_TYPES = [
     "html_viewer_manifest",
     "adapter_conformance_report",
     "benchmark_health_report",
-    "runner_ranking_report"
+    "runner_ranking_report",
+    "trial_metrics_report"
 ];
 export async function loadArtifactSchemaRegistry(benchmarkRoot = getBenchmarkRoot()) {
     const registry = await readJson(path.join(benchmarkRoot, "configs/artifacts/schema-registry.json"));
